@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load django_bootstrap5 %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+{% block content %}
+<body class="bg-light">
+<h2>Review Your Order</h2>
+<div class="card mb-4 p-4 shadow-sm">
+<table class="table table-striped mt-4">
+  <thead>
+    <tr>
+      <th>Product</th>
+      <th>Quantity</th>
+      <th>Price</th>
+      <th>Subtotal</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in cart_items %}
+    <tr>
+      <td>{{ item.product.name }}</td>
+      <td>{{ item.quantity }}</td>
+      <td>${{ item.product.price }}</td>
+      <td>${{ item.subtotal }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="d-flex justify-content-start">
+<h4>Total: ${{ total }}</h4>
+</div>
+</div>
+
+
+
+<form method="POST" action="{% url 'submit_order' %}">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-success">Place Order</button>
+</form>
+
+<a href="{% url 'create_order' %}" class="btn btn-secondary mt-2">Back to Order</a>
+</body>
+{% endblock %}

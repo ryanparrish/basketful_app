@@ -1,0 +1,17 @@
+{% extends 'admin/base.html' %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+html[data-theme="light"], :root {
+  --primary: #3c4f5e;
+  --secondary: #3c4f5e;
+  --link-fg: #6c5678;
+  --link-selected-fg: #8f5bb2;
+  --accent: #f5dd5d;
+  --header-color: #ffc;
+  --body-fg: #333;
+  --breadcrumbs-fg: #c4dce8;
+  --breadcrumbs-bg: #DE5F47;
+}
+</style>
+{% endblock %}

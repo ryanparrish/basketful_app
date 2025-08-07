@@ -1,0 +1,59 @@
+{% load django_bootstrap5 %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Participant Login | Basketful</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body class="bg-light">
+
+<div class="container min-vh-100 d-flex justify-content-center align-items-center">
+  <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-5 px-3">
+    <div class="card shadow">
+      <div class="card-header text-center bg-white">
+        <div class="fw-bold text-primary fs-3">🥕 Basketful</div>
+        <h2 class="mt-2 fs-5">Participant Login</h2>
+      </div>
+
+      <div class="card-body">
+      {% if form.non_field_errors %}
+  <div class="alert alert-danger">
+    <strong>Login failed:</strong>
+    {% if form.non_field_errors %}
+      {{ form.non_field_errors.0 }}
+    {% else %}
+      Please check your username and password.
+    {% endif %}
+  </div>
+{% endif %}
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% bootstrap_form form layout="vertical" %}
+  
+  {% if form.captcha.errors %}
+    <div class="alert alert-warning mt-2">
+      {{ form.captcha.errors.0 }}
+    </div>
+  {% endif %}
+
+  <div class="d-grid mt-3">
+    {% bootstrap_button button_type="submit" content="Log In" button_class="btn-primary" %}
+  </div>
+</form>
+<a href=" {% url 'password_reset' %}"> Forgot Your Password? </a>
+      </div>
+
+      <div class="card-footer text-center text-muted small">
+        Need help? Contact your program coordinator.
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

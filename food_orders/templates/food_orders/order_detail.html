@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% load django_bootstrap5 %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+{% block content %}
+<body class="bg-light">
+<div class="container my-4">
+  <h2>Order #{{ order.id }} Details</h2>
+    <div class="container">
+      <div class="col">
+        <div class="row align-items-start">
+          <p><strong>Placed on:</strong> {{ order.created_at|date:"M d, Y H:i" }}</p>
+          <p><strong>Status:</strong> {{ order.status_type|default:"N/A" }}</p>
+        </div>
+      </div>
+<div class="d-flex gap-2 align-items-stretch">
+  <div class="d-flex align-items-stretch">
+    <form action="{% url 'participant_dashboard' %}">
+    <button type="submit" class="btn btn-md btn-primary" > Back to Dashboard </button>
+</form>
+ 
+  </div>
+<div class="">
+  <form method="post" class="">
+    {% csrf_token %}
+    <button type="submit" name="duplicate_order" class="btn btn-md btn-secondary"> Copy Order to Cart</button>
+  </form>
+  </div>
+</div>
+</div>
+
+      
+
+
+
+  
+</div>
+  <div class="card mb-4 p-4 shadow-sm">
+  <table class="table table-striped mt-4">
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Category</th>
+        <th class="text-center">Quantity</th>
+        <th class="text-end">Price</th>
+        <th class="text-end">Line Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in order.items.all %}
+      <tr>
+        <td>{{ item.product.name }}</td>
+        <td>{{ item.product.category.name }}</td>
+        <td class="text-center">{{ item.quantity }}</td>
+        <td class="text-end">${{ item.product.price|floatformat:2 }}</td>
+        <td class="text-end">${{ item.total_price|floatformat:2 }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="5" class="text-center text-muted">No items in this order.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="4" class="text-end">Order Total:</th>
+        <th class="text-end">${{ order.total_price|floatformat:2 }}</th>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+
+</div>
+</body>
+{% endblock %}

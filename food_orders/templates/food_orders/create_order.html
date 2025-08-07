@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% load django_bootstrap5 %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+{% load static %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Create Order</li>
+  </ol>
+</nav>
+
+<h2 class="mb-4">Create Order</h2>
+<div class="container-fluid">
+  <div class="row">
+    <!-- Sidebar filters -->
+    <div class="col-md-3 mb-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Filter by Category</h5>
+          <ul class="list-group">
+            {% for category, items in products_by_category.items %}
+              <li class="list-group-item">
+                <a href="#" class="category-toggle" data-category="{{ category|slugify }}">{{ category }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div class="col-md-9">
+      {% for category, items in products_by_category.items %}
+        <div class="category-section" data-category="{{ category|slugify }}">
+          <h4 class="mt-4 mb-3">{{ category }}</h4>
+          <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-3">
+            {% for product in items %}
+              <div class="col">
+                <div class="card h-100 shadow-sm">
+                  <div class="card-body text-center">
+                    <h5 class="card-title">{{ product.name }}</h5>
+                    <p class="card-text text-muted">${{ product.price }}</p>
+                    <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="{{ product.id }}">
+                    <button class="btn btn-primary w-100 add-to-cart" data-product-id="{{ product.id }}">Add to Cart</button>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Sticky Cart Icon (All Viewports) -->
+<button id="cart-drawer-toggle" class="btn btn-primary position-fixed bottom-0 end-0 m-3 rounded-circle shadow" style="z-index: 1050;">
+  🛒
+</button>
+
+<!-- Offcanvas Cart Drawer -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="mobileCartDrawer" aria-labelledby="mobileCartDrawerLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="mobileCartDrawerLabel">Your Cart</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column">
+    <ul id="mobile-cart-items" class="list-group mb-3"></ul>
+    <button class="btn btn-success mt-auto" id="mobile-submit-order">Submit Order</button>
+  </div>
+</div>
+
+<!-- Embed product data -->
+<script>
+  const products = JSON.parse("{{ products_json|escapejs }}");
+</script>
+
+<!-- Cart + Filter JS -->
+<script>
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document !== '') {
+    for (let cookie of document.cookie.split(';')) {
+      cookie = cookie.trim();
+      if (cookie.startsWith(name + '=')) {
+        cookieValue = decodeURIComponent(cookie.slice(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+const csrftoken = getCookie('csrftoken');
+let cart = loadCartFromStorage();
+
+function saveCartToStorage() {
+  localStorage.setItem('cart', JSON.stringify(cart));
+}
+
+function loadCartFromStorage() {
+  try {
+    const stored = localStorage.getItem('cart');
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    console.warn("Cart data in localStorage is invalid.");
+    return {};
+  }
+}
+
+function renderCart() {
+  const mobileCartList = document.getElementById('mobile-cart-items');
+  mobileCartList.innerHTML = '';
+  let total = 0;
+  for (const [productId, quantity] of Object.entries(cart)) {
+    const product = products[productId];
+    if (!product) continue;
+    const subtotal = product.price * quantity;
+    total += subtotal;
+    const li = document.createElement('li');
+    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+    li.innerHTML = `
+      <div>
+        <strong>${product.name}</strong><br>
+        <small>$${product.price.toFixed(2)} × ${quantity} = $${subtotal.toFixed(2)}</small>
+      </div>
+      <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
+        <i class="bi bi-trash"></i>
+      </button>
+    `;
+    mobileCartList.appendChild(li);
+  }
+  const totalLi = document.createElement('li');
+  totalLi.className = 'list-group-item d-flex justify-content-between align-items-center fw-bold';
+  totalLi.innerHTML = `<span>Total</span><span>$${total.toFixed(2)}</span>`;
+  mobileCartList.appendChild(totalLi);
+
+  document.querySelectorAll('.remove-item').forEach(button => {
+    button.addEventListener('click', () => {
+      const id = button.dataset.productId;
+      delete cart[id];
+      saveCartToStorage();
+      renderCart();
+    });
+  });
+}
+
+function submitOrder() {
+  fetch("{% url 'update_cart' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": csrftoken
+    },
+    body: JSON.stringify(cart)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === "ok") {
+      localStorage.removeItem('cart');
+      window.location.href = "{% url 'review_order' %}";
+    } else {
+      alert("There was a problem submitting your cart.");
+    }
+  })
+  .catch(() => alert("Error submitting order."));
+}
+
+// Add to cart
+
+document.querySelectorAll('.add-to-cart').forEach(button => {
+  button.addEventListener('click', () => {
+    const productId = button.dataset.productId;
+    const quantityInput = document.querySelector(`input[data-product-id="${productId}"]`);
+    const quantity = parseInt(quantityInput.value);
+    if (quantity > 0) {
+      cart[productId] = (cart[productId] || 0) + quantity;
+      quantityInput.value = 0;
+      saveCartToStorage();
+      renderCart();
+    }
+  });
+});
+
+document.getElementById('mobile-submit-order').addEventListener('click', submitOrder);
+
+document.getElementById('cart-drawer-toggle').addEventListener('click', () => {
+  const drawer = new bootstrap.Offcanvas(document.getElementById('mobileCartDrawer'));
+  drawer.show();
+});
+
+// Category toggle
+
+document.querySelectorAll('.category-toggle').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const cat = link.dataset.category;
+    const section = document.querySelector(`.category-section[data-category="${cat}"]`);
+    if (section) section.classList.toggle('d-none');
+  });
+});
+
+document.addEventListener('DOMContentLoaded', renderCart);
+</script>
+
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {% if additional_inline_script %}
+        {{ additional_inline_script|safe }}
+    {% endif %}
+{% endblock %}

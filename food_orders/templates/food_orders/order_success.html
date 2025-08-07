@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+<div class="container mt-5 text-center">
+  <h2 class="text-success mb-4">🎉 Order Submitted Successfully!</h2>
+
+  <p>Thank you, {{ request.user.participant.name }}. Your order <strong>#{{ order.id }}</strong> has been received.</p>
+
+  <p>We'll notify you when your items are ready for pickup or delivery.</p>
+
+  <div class="mt-4">
+    <a href="{% url 'participant_dashboard' %}" class="btn btn-outline-primary me-2">Return to Dashboard</a>
+    <a href="{% url 'create_order' %}" class="btn btn-success">Place Another Order</a>
+  </div>
+</div>
+{% endblock %}
