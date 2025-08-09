@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from food_orders import views
-from food_orders.views import participant_dashboard
+from food_orders.views import participant_dashboard,CustomPasswordChangeView
 from django.contrib.auth.views import LoginView
 from django.contrib.auth import views as auth_views
 from django.conf import settings
@@ -31,6 +31,7 @@ admin.site.site_title = "Love Your Neighbor - Basketfull"  # Changes the HTML <t
 admin.site.index_title = "Welcome to Your Admin"  # Changes the title on the admin index page
 
 urlpatterns = [
+    path('accounts/password_change/', CustomPasswordChangeView.as_view(), name='password_change'),
     path('admin/', admin.site.urls),
     path('', views.index, name='index'),
     path('index/', views.index, name='index'),

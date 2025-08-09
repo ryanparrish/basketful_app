@@ -36,7 +36,7 @@ if ENVIRONMENT == 'prod':
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
 else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # Database setup
 if ENVIRONMENT == 'prod':
     DATABASES = {
@@ -115,7 +115,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_bootstrap5',
     'django_recaptcha',
-    'storages',  # Required for S3 storage support
+    'storages',  
 ]
 
 # Middleware configuration

@@ -12,10 +12,21 @@ from django.shortcuts import get_object_or_404,render,redirect
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth import update_session_auth_hash,login
 from .forms import ParticipantUpdateForm, CustomLoginForm
-from django.contrib.auth.views import LoginView
 from django.utils.safestring import mark_safe
+from django.contrib.auth.views import PasswordChangeView
+from django.urls import reverse_lazy
+from django.conf import settings
 
-# utils.py or at the top of views.py
+class CustomPasswordChangeView(PasswordChangeView):
+    success_url = reverse_lazy('home')  # or wherever you want
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.request.user.must_change_password = False
+        self.request.user.save()
+        return response
+
+
 
 def get_active_vouchers(participant):
     try:

@@ -10,8 +10,7 @@ from .utils import generate_memorable_password, generate_unique_username
 from django import forms
 from django_recaptcha.fields import ReCaptchaField
 from django.contrib.auth.forms import AuthenticationForm
-
-
+from django.contrib.auth import get_user_model
 
 class OrderItemInlineForm(forms.ModelForm):
     class Meta:
@@ -156,3 +155,38 @@ class CustomLoginForm(AuthenticationForm):
         
         if use_captcha:
             self.fields['captcha'] = ReCaptchaField()
+User = get_user_model()
+
+class CustomUserCreationForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'email')  # no username or password here
+
+class ParticipantAdminForm(forms.ModelForm):
+    create_user = forms.BooleanField(required=False, label="Create linked user?")
+
+    class Meta:
+        model = Participant
+        fields = '__all__'
+
+    def save(self, commit=True):
+        participant = super().save(commit=False)
+
+        # Create user only if requested and missing
+        if self.cleaned_data.get('create_user') and not participant.user:
+            username = generate_unique_username(participant.name)
+            password = generate_memorable_password()
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                email=participant.email
+            )
+            participant.user = user
+
+            # Optional: staff notification
+            print(f"[INFO] Created user '{username}' with password: {password}")
+
+        if commit:
+            participant.save()
+        return participant
+

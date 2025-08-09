@@ -7,10 +7,10 @@ from django.utils.safestring import mark_safe
 from .models import (
     Product, Order, OrderItem, OrderPacker, Program, Participant,
     LifeSkillsCoach, CombinedOrder, Voucher, AccountBalance,
-    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager
+    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, UserProfile
 )
 import json
-from .forms import OrderItemInlineForm, OrderItemInlineFormSet
+from .forms import OrderItemInlineForm, OrderItemInlineFormSet,CustomUserCreationForm,ParticipantAdminForm
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from reportlab.lib.pagesizes import letter
@@ -18,8 +18,61 @@ from reportlab.pdfgen import canvas
 from .models import CombinedOrder
 from django.contrib.auth.models import User
 from .validators import validate_order_items
-from .utils import generate_memorable_password, generate_unique_username
-# --- Custom Form and FormSet ---
+from .utils import generate_memorable_password, generate_unique_username, set_random_password_for_user,generate_username_if_missing
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import PasswordResetForm
+from django.conf import settings
+from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
+
+User = get_user_model()
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass  # If not registered yet, ignore
+from django import forms
+from django.contrib.auth import get_user_model
+ 
+@admin.register(User)
+class CustomUserAdmin(DefaultUserAdmin):
+    add_form = CustomUserCreationForm  # custom user creation form without password fields
+
+    # Override add_fieldsets to exclude password fields since you handle passwords differently
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('email', 'first_name', 'last_name'),
+        }),
+    )
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:  # when adding a new user, use custom add_form
+            kwargs['form'] = self.add_form
+        return super().get_form(request, obj, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        is_new = obj.pk is None
+
+        if is_new:
+            # Generate username if missing
+            generate_username_if_missing(obj)
+
+            # Set random password and flag user
+            set_random_password_for_user(obj)
+
+        super().save_model(request, obj, form, change)
+
+        if is_new:
+            # Send password reset email
+            reset_form = PasswordResetForm({'email': obj.email})
+            if reset_form.is_valid():
+                reset_form.save(
+                    request=request,
+                    use_https=request.is_secure(),
+                    email_template_name='registration/new_user_onboarding.html',
+                )
+
+            # Ensure UserProfile exists
+            UserProfile.objects.get_or_create(user=obj)
 
 class SubcategoryInline(admin.StackedInline):
     model = Subcategory
@@ -109,33 +162,9 @@ class ProductAdmin(admin.ModelAdmin):
 
     class Media:
         js = ('food_orders/js/admin_image_preview.js',)
-
-
-
-class ParticipantAdminForm(forms.ModelForm):
-    create_user = forms.BooleanField(required=False, label="Create linked user?")
-
-    class Meta:
-        model = Participant
-        fields = '__all__'
-
-    def save(self, commit=True):
-        participant = super().save(commit=False)
-
-        if self.cleaned_data.get('create_user') and not participant.user:
-            username = generate_unique_username(participant.name)
-            password = generate_memorable_password()
-            user = User.objects.create_user(username=username, password=password, email=participant.email)
-            participant.user = user
-            print(f"[INFO] Created user '{username}' with password: {password}")
-
-        if commit:
-            participant.save()
-        return participant
-
 @admin.register(Participant)
 class ParticipantAdmin(admin.ModelAdmin):
-    form = ParticipantAdminForm 
+    form = ParticipantAdminForm
     list_display = ('name', 'voucher_balance_display', 'hygiene_balance_display')
     readonly_fields = ('voucher_balance_display', 'hygiene_balance_display')
 
@@ -158,31 +187,26 @@ class ParticipantAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         is_new = obj.pk is None
+
         super().save_model(request, obj, form, change)
+
         if is_new:
             obj.setup_account_and_vouchers()
 
-            obj.setup_account_and_vouchers()
-    def save(self, commit=True):
-        participant = super().save(commit=False)
+            # Optional: email password reset if user exists
+            if obj.user and obj.user.email:
+                reset_form = PasswordResetForm({'email': obj.user.email})
+                if reset_form.is_valid():
+                    reset_form.save(
+                        request=request,
+                        use_https=request.is_secure(),
+                        email_template_name='registration/new_user_onboarding.html'
+                    )
 
-        if self.cleaned_data.get('create_user') and not participant.user:
-            username = generate_unique_username(participant.full_name)
-            password = generate_memorable_password()
-            user = User.objects.create_user(username=username, password=password)
-            participant.user = user
-
-            # Optional: print password to console or log for staff
-            print(f"[INFO] Created user '{username}' with password: {password}")
-
-        if commit:
-            participant.save()
-        return participant
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
     list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'active')
     readonly_fields = ('voucher_amnt', 'notes')  # or just 'amount' if you're using that as the field name
-
 
 @admin.register(CombinedOrder)
 class CombinedOrderAdmin(admin.ModelAdmin):
