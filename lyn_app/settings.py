@@ -34,22 +34,26 @@ DEBUG = env.bool('DEBUG', default=True)
 # Set default allowed hosts for dev
 if ENVIRONMENT == 'prod':
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
-else:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-# Database setup
-if ENVIRONMENT == 'prod':
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = env('EMAIL_HOST')
+    EMAIL_PORT = env('EMAIL_PORT')
+    EMAIL_USE_TLS = env('EMAIL_USE_TLS')
+    EMAIL_USE_SSL = env('EMAIL_USE_SSL')
+    EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
     DATABASES = {
         'default': env.db()  # uses DATABASE_URL
     }
 else:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-
 # AWS / Linode S3 storage toggle
 USE_S3 = env.bool('USE_S3', default=False)
 
