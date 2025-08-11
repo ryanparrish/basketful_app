@@ -61,7 +61,7 @@ class OrderItemInlineFormSet(BaseInlineFormSet):
             elif scope == "per_child":
                 allowed = limit_quantity * participant.children
             elif scope == "per_infant":
-                allowed = limit_quantity if participant.infant else 0
+                allowed = limit_quantity * participant.diaper_count
             elif scope == "per_household":
                 allowed = limit_quantity * participant.household_size()
             elif scope == "per_order":

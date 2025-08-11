@@ -176,7 +176,7 @@ class Participant(models.Model):
     email = models.EmailField()
     adults = models.PositiveIntegerField(default=1)
     children = models.PositiveIntegerField(default=0)
-    infant = models.BooleanField(default=False)
+    diaper_count= models.PositiveIntegerField(default=0, help_text="Count of Children in Diapers of Pull-Ups")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True)
@@ -186,10 +186,6 @@ class Participant(models.Model):
 
     def __str__(self):
         return self.name
-    def clean(self):
-        super().clean()
-        if self.infant == True and self.children == 0:
-            raise ValidationError("The infant modifier can only be used if there are children in the household.")
     def setup_account_and_vouchers(self):
         from .models import AccountBalance, Voucher
         # Avoid duplicate account creation
@@ -209,7 +205,7 @@ class Participant(models.Model):
         if is_new:
             self.setup_account_and_vouchers()
     def household_size(self):
-        return self.adults + self.children + (1 if self.infant else 0)
+        return self.adults + self.children 
 # Class to represent account balance
 class AccountBalance(models.Model):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
@@ -358,12 +354,10 @@ class CombinedOrder(models.Model):
             category_name = product.category.name if product.category else "Uncategorized"
             summary[category_name][product.name] += item.quantity
 
-        return summary  # ✅ moved outside the loop
-
-    
+        return summary  
+  
     def __str__(self):
         return f"{self.program.name} Combined Order"
-
 
 # Class to represent who packed the order
 class OrderPacker(models.Model):
@@ -421,7 +415,7 @@ class Voucher(models.Model):
         return self.account.participant.children
     @property
     def diaper_modifier(self):
-        return self.account.participant.infant
+        return self.account.participant.diaper_count
     def voucher_amnt(self):
         setting = VoucherSetting.objects.filter(active=True).first()
         # Get the active voucher setting, if it exists
@@ -431,7 +425,7 @@ class Voucher(models.Model):
         if self.voucher_type == "Life":
             return 0
         elif self.diaper_modifier == True and self.voucher_type == "Grocery":
-            return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount)+ setting.infant_modifier
+            return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount) + (setting.infant_modifier*self.diaper_modifier)
         else: 
             return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount)
   
