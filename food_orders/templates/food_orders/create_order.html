@@ -50,6 +50,12 @@
                   <div class="card-body text-center">
                     <h5 class="card-title">{{ product.name }}</h5>
                     <p class="card-text text-muted">${{ product.price }}</p>
+                    {% if product.image %}
+                    <img src="{{ product.image.url }}" alt="{{ product.name }}" class="img-fluid">
+                    {% else %}
+                    <p>No image available</p>
+                       {% endif %}
+                    <p class="card-text">{{ product.description }}</p>
                     <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="{{ product.id }}">
                     <button class="btn btn-primary w-100 add-to-cart" data-product-id="{{ product.id }}">Add to Cart</button>
                   </div>
