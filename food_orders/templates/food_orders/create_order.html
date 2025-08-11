@@ -4,6 +4,7 @@
 {% bootstrap_javascript %}
 {% load static %}
 {% block content %}
+
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="/">Home</a></li>
@@ -124,7 +125,7 @@ function renderCart() {
     li.innerHTML = `
       <div>
         <strong>${product.name}</strong><br>
-        <small>$${product.price.toFixed(2)} × ${quantity} = $${subtotal.toFixed(2)}</small>
+        <small>$${product.price.toFixed(2)} * ${quantity} = $${subtotal.toFixed(2)}</small>
       </div>
       <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
         <i class="bi bi-trash"></i>
@@ -196,13 +197,29 @@ document.getElementById('cart-drawer-toggle').addEventListener('click', () => {
 document.querySelectorAll('.category-toggle').forEach(link => {
   link.addEventListener('click', e => {
     e.preventDefault();
+
     const cat = link.dataset.category;
     const section = document.querySelector(`.category-section[data-category="${cat}"]`);
-    if (section) section.classList.toggle('d-none');
+
+    if (section) {
+      // If hidden, unhide it
+      section.classList.remove('d-none');
+
+      // Start from transparent + slightly above
+      section.classList.add('hidden-fade');
+
+      // Move it to the top of the container
+      const container = section.parentNode;
+      container.prepend(section);
+
+      // Trigger fade+slide on next frame
+      requestAnimationFrame(() => {
+        section.classList.remove('hidden-fade');
+      });
+    }
   });
 });
 
-document.addEventListener('DOMContentLoaded', renderCart);
 </script>
 
 {% endblock %}

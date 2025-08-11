@@ -238,8 +238,6 @@ def submit_order(request):
 
         order.used_voucher()  # Must be inside transaction
 
-        # Optionally update account balances here if needed
-
     # Clear cart only after successful commit
     request.session['cart'] = {}
     request.session.modified = True
