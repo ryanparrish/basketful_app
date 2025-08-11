@@ -16,6 +16,7 @@ from django.utils.safestring import mark_safe
 from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
 from django.conf import settings
+from django.db.models import Q
 
 class CustomPasswordChangeView(PasswordChangeView):
     success_url = reverse_lazy('home')  # or wherever you want
@@ -25,8 +26,6 @@ class CustomPasswordChangeView(PasswordChangeView):
         self.request.user.must_change_password = False
         self.request.user.save()
         return response
-
-
 
 def get_active_vouchers(participant):
     try:
@@ -78,7 +77,6 @@ def order_detail(request, order_id):
         'order_items': order_items,
     })
 
-
 @login_required
 def participant_dashboard(request):
     participant = request.user.participant
@@ -97,16 +95,28 @@ def participant_dashboard(request):
 
 @login_required
 def create_order(request):
-    # Group products by category
+    # Get search term from query params
+    query = request.GET.get("q", "")
+
+    # Filter products if search term exists
     products = Product.objects.all().order_by('category', 'name')
+    if query:
+        products = products.filter(
+            Q(name__icontains=query) | 
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)  # if category has a 'name' field
+        )
+
     participant = request.user.participant
-    products_by_category = {}
-    all_products = {}
     has_vouchers = get_active_vouchers(participant).exists()
 
     if not has_vouchers:
         print("Redirecting to dashboard - no vouchers are active")
         return redirect('participant_dashboard')
+
+    # Group products by category
+    products_by_category = {}
+    all_products = {}
 
     for product in products:
         products_by_category.setdefault(product.category, []).append(product)
@@ -119,7 +129,8 @@ def create_order(request):
 
     return render(request, 'food_orders/create_order.html', {
         'products_by_category': products_by_category,
-        'products_json': products_json
+        'products_json': products_json,
+        'query': query,  # pass current search back to template
     })
 
 @require_POST
@@ -162,7 +173,6 @@ def account_update_view(request):
         'user_form': user_form,
         'password_form': password_form,
     })
-
 
 @login_required
 def review_order(request):
@@ -221,7 +231,7 @@ def submit_order(request):
         messages.error(request, str(e))
         return redirect('review_order')
 
-    # ✅ Transaction block to ensure atomicity
+    # Transaction block to ensure atomicity
     with transaction.atomic():
         order = Order.objects.create(account=account)
 
