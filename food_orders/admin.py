@@ -152,6 +152,7 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     readonly_fields = ['image_preview']
+    search_fields = ['name', 'description', 'category__name']
 
     def image_preview(self, obj):
         if obj.image:
