@@ -1,0 +1,23 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore local env files
+.env
+
+# Ignore git files
+.git
+.gitignore
+
+# Ignore Dockerfile and compose files if you want (optional)
+# Dockerfile
+# docker-compose.yml
+
+# Ignore local media or static files not needed in the build context
+media/
+staticfiles/
+
+# Ignore IDE/editor folders
+.vscode/
+.idea/
+
