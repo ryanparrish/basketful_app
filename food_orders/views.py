@@ -200,6 +200,7 @@ def review_order(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def submit_order(request):
     cart = request.session.get('cart', {})
     if not cart:
