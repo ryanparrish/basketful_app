@@ -1,10 +1,22 @@
-Django>=4.2
-Django==4.2.3
+# Django 5.x series
+Django>=5.2,<5.3
+
+# Database adapters
 psycopg2-binary==2.9.6
+psycopg>=3.1.0
+
+# Web server
 gunicorn==20.1.0
+
+# Django packages
 django-recaptcha==4.1.0
 django-bootstrap5==25.1
 django-environ==0.12.0
-django-storages[s3] >=1.13.2
-psycopg>=3.1.0
+django-storages[s3]>=1.13.2
+
+# PDF generation
 reportlab>=3.0.0
+
+# Celery and broker
+celery>=5.3,<6.0
+redis>=5.0,<6.0
