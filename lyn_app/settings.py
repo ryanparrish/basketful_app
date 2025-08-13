@@ -53,7 +53,7 @@ if ENVIRONMENT == 'prod':
         'handlers': {
             'console': {
                 'class': 'logging.StreamHandler',
-                'stream': sys.stdout,  # or sys.stderr
+                'stream': sys.stderr,  
             },
         },
         'root': {
@@ -66,6 +66,12 @@ if ENVIRONMENT == 'prod':
                 'level': 'ERROR',
                 'propagate': True,
             },
+        },
+        'django.request':{
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propogate': False,
+
         },
     }
 
