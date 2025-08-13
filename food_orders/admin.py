@@ -23,6 +23,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django.conf import settings
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
+from food_orders.tasks import send_password_reset_email
 
 User = get_user_model()
 try:
@@ -35,8 +36,6 @@ from django.contrib.auth import get_user_model
 @admin.register(User)
 class CustomUserAdmin(DefaultUserAdmin):
     add_form = CustomUserCreationForm  # custom user creation form without password fields
-
-    # Override add_fieldsets to exclude password fields since you handle passwords differently
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
@@ -45,7 +44,7 @@ class CustomUserAdmin(DefaultUserAdmin):
     )
 
     def get_form(self, request, obj=None, **kwargs):
-        if obj is None:  # when adding a new user, use custom add_form
+        if obj is None:  # when adding a new user
             kwargs['form'] = self.add_form
         return super().get_form(request, obj, **kwargs)
 
@@ -62,14 +61,10 @@ class CustomUserAdmin(DefaultUserAdmin):
         super().save_model(request, obj, form, change)
 
         if is_new:
-            # Send password reset email
-            reset_form = PasswordResetForm({'email': obj.email})
-            if reset_form.is_valid():
-                reset_form.save(
-                    request=request,
-                    use_https=request.is_secure(),
-                    email_template_name='registration/new_user_onboarding.html',
-                )
+            # Send password reset / onboarding email via Celery
+            domain = settings.DOMAIN_NAME
+            use_https = request.is_secure()
+            send_password_reset_email.delay(obj.email, domain, use_https)
 
             # Ensure UserProfile exists
             UserProfile.objects.get_or_create(user=obj)
@@ -194,15 +189,12 @@ class ParticipantAdmin(admin.ModelAdmin):
         if is_new:
             obj.setup_account_and_vouchers()
 
-            # Optional: email password reset if user exists
+            # Send password reset / onboarding email via Celery
             if obj.user and obj.user.email:
-                reset_form = PasswordResetForm({'email': obj.user.email})
-                if reset_form.is_valid():
-                    reset_form.save(
-                        request=request,
-                        use_https=request.is_secure(),
-                        email_template_name='registration/new_user_onboarding.html'
-                    )
+                domain = settings.DOMAIN_NAME
+                use_https = request.is_secure()
+                send_password_reset_email.delay(obj.user.email, domain, use_https)
+
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):

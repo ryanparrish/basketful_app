@@ -29,6 +29,7 @@ if os.path.exists(env_path):
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
+DOMAIN_NAME =env('DOMAIN_NAME')
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=True)
@@ -151,6 +152,8 @@ INSTALLED_APPS = [
     'storages',  
 ]
 
+SITE_ID=1
+
 # Middleware configuration
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -216,5 +219,11 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
 
 
