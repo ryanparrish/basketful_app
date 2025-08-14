@@ -1,0 +1,10 @@
+Welcome to Basketful, {{ user.first_name|default:user.username }}!
+
+We're excited to have you join our community. To get started, please set your password by visiting the following link:
+
+{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
+
+If you didn't request this account or believe this was a mistake, please ignore this email.
+
+Thanks,
+The Basketful Team

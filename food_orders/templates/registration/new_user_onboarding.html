@@ -11,7 +11,7 @@
             padding: 20px;
         }
         .container {
-            background: white;
+            background: #ffffff;
             border-radius: 8px;
             padding: 20px;
             max-width: 600px;
@@ -38,7 +38,7 @@
 <body>
     <div class="container">
         <h2>Welcome to Basketful, {{ user.first_name|default:user.username }}!</h2>
-        <p>We're excited to have you join our community. To get started, please set your password by clicking the link below:</p>
+        <p>We're excited to have you join our community. To get started, please set your password by clicking the button below:</p>
 
         <p style="text-align: center;">
             <a href="{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}" class="btn">

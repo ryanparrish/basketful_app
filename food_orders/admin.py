@@ -23,8 +23,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django.conf import settings
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
-from food_orders.tasks import send_password_reset_email
-
+from food_orders.tasks import send_new_user_onboarding_email
 User = get_user_model()
 try:
     admin.site.unregister(User)
@@ -64,7 +63,7 @@ class CustomUserAdmin(DefaultUserAdmin):
             # Send password reset / onboarding email via Celery
             domain = settings.DOMAIN_NAME
             use_https = request.is_secure()
-            send_password_reset_email.delay(obj.email, domain, use_https)
+            send_new_user_onboarding_email.delay(obj.email, domain, use_https)
 
             # Ensure UserProfile exists
             UserProfile.objects.get_or_create(user=obj)
@@ -193,7 +192,7 @@ class ParticipantAdmin(admin.ModelAdmin):
             if obj.user and obj.user.email:
                 domain = settings.DOMAIN_NAME
                 use_https = request.is_secure()
-                send_password_reset_email.delay(obj.user.email, domain, use_https)
+                send_new_user_onboarding_email.delay(obj.user.email, domain, use_https)
 
 
 @admin.register(Voucher)
