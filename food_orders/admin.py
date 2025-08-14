@@ -1,8 +1,6 @@
 # admin.py
 
 from django.contrib import admin
-from django import VERSION as DJANGO_VERSION , forms
-from django.forms.models import BaseInlineFormSet
 from django.utils.safestring import mark_safe
 from .models import (
     Product, Order, OrderItem, OrderPacker, Program, Participant,
@@ -18,9 +16,8 @@ from reportlab.pdfgen import canvas
 from .models import CombinedOrder
 from django.contrib.auth.models import User
 from .validators import validate_order_items
-from .utils import generate_memorable_password, generate_unique_username, set_random_password_for_user,generate_username_if_missing
+from .utils import set_random_password_for_user,generate_username_if_missing
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import PasswordResetForm
 from django.conf import settings
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from food_orders.tasks import send_new_user_onboarding_email
@@ -47,26 +44,24 @@ class CustomUserAdmin(DefaultUserAdmin):
             kwargs['form'] = self.add_form
         return super().get_form(request, obj, **kwargs)
 
-    def save_model(self, request, obj, form, change):
-        is_new = obj.pk is None
+def save_model(self, request, obj, form, change):
+    is_new = obj.pk is None
 
-        if is_new:
-            # Generate username if missing
-            generate_username_if_missing(obj)
+    if is_new:
+        # Generate username if missing
+        generate_username_if_missing(obj)
 
-            # Set random password and flag user
-            set_random_password_for_user(obj)
+        # Set random password and flag user
+        set_random_password_for_user(obj)
 
-        super().save_model(request, obj, form, change)
+    super().save_model(request, obj, form, change)
 
-        if is_new:
-            # Send password reset / onboarding email via Celery
-            domain = settings.DOMAIN_NAME
-            use_https = request.is_secure()
-            send_new_user_onboarding_email.delay(obj.email, domain, use_https)
+    if is_new and obj.user:
+        # Send onboarding email via Celery
+        send_new_user_onboarding_email.delay(user_id=obj.user.id)
 
-            # Ensure UserProfile exists
-            UserProfile.objects.get_or_create(user=obj)
+        # Ensure UserProfile exists
+        UserProfile.objects.get_or_create(user=obj)
 
 class SubcategoryInline(admin.StackedInline):
     model = Subcategory
@@ -94,17 +89,12 @@ class OrderItemInline(admin.TabularInline):
         product_json = json.dumps({str(p['id']): float(p['price']) for p in products})
         formset.product_json = product_json  # no mark_safe
         return formset
-
-
     def clean(self):
         super().clean()
         participant = getattr(self.instance.account, 'participant', None)
         account_balance = self.instance.account
-
         validate_order_items(self.forms, participant, account_balance)
-
-# --- Admin for Order ---
-
+        
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'updated_at', 'total_price','paid')
@@ -181,19 +171,26 @@ class ParticipantAdmin(admin.ModelAdmin):
     hygiene_balance_display.short_description = "Hygiene Balance"
 
     def save_model(self, request, obj, form, change):
-        is_new = obj.pk is None
+        is_new = obj.pk is None  # True if creating a new Participant
+        create_user = form.cleaned_data.get("create_user", False)  # check the boolean
+
+        if is_new and create_user:
+            # Create a User if one doesn't exist
+                if not obj.user:
+                    username = generate_username_if_missing(obj)  # implement to create a unique username
+                    password = set_random_password_for_user(obj)  # implement to generate a secure password
+
+                user = User.objects.create_user(username=username, password=password, email=obj.email)
+                obj.user = user
 
         super().save_model(request, obj, form, change)
 
-        if is_new:
-            obj.setup_account_and_vouchers()
+        if is_new and obj.user:
+             # Send onboarding email via Celery
+            send_new_user_onboarding_email.delay(user_id=obj.user.id)
 
-            # Send password reset / onboarding email via Celery
-            if obj.user and obj.user.email:
-                domain = settings.DOMAIN_NAME
-                use_https = request.is_secure()
-                send_new_user_onboarding_email.delay(obj.user.email, domain, use_https)
-
+        # Ensure UserProfile exists
+        UserProfile.objects.get_or_create(user=obj.user)
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):

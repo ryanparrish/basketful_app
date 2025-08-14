@@ -152,8 +152,6 @@ INSTALLED_APPS = [
     'storages',  
 ]
 
-SITE_ID=1
-
 # Middleware configuration
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
