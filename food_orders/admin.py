@@ -1,5 +1,4 @@
 # admin.py
-
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 from .models import (
@@ -31,37 +30,57 @@ from django.contrib.auth import get_user_model
  
 @admin.register(User)
 class CustomUserAdmin(DefaultUserAdmin):
-    add_form = CustomUserCreationForm  # custom user creation form without password fields
+    add_form = CustomUserCreationForm
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'first_name', 'last_name'),
+            'fields': ('email', 'first_name', 'last_name', 'is_staff'),
         }),
     )
 
+    # Default fieldsets for editing users
+    base_fieldsets = (
+        (None, {
+            'fields': ('email', 'first_name', 'last_name', 'is_staff', 'is_active'),
+        }),
+    )
+
+    staff_extra_fieldsets = (
+        ('Permissions', {
+            'fields': ('groups', 'user_permissions', 'is_superuser'),
+        }),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        """
+        Show additional fields if the user is staff.
+        """
+        if obj is None:
+            # Add form
+            return self.add_fieldsets
+
+        # Edit form
+        fieldsets = list(self.base_fieldsets)
+
+        if obj.is_staff:
+            fieldsets += list(self.staff_extra_fieldsets)
+
+        return fieldsets
+
     def get_form(self, request, obj=None, **kwargs):
-        if obj is None:  # when adding a new user
+        if obj is None:
             kwargs['form'] = self.add_form
         return super().get_form(request, obj, **kwargs)
 
-def save_model(self, request, obj, form, change):
-    is_new = obj.pk is None
-
-    if is_new:
-        # Generate username if missing
-        generate_username_if_missing(obj)
-
-        # Set random password and flag user
-        set_random_password_for_user(obj)
-
-    super().save_model(request, obj, form, change)
-
-    if is_new and obj.user:
-        # Send onboarding email via Celery
-        send_new_user_onboarding_email.delay(user_id=obj.user.id)
-
-        # Ensure UserProfile exists
-        UserProfile.objects.get_or_create(user=obj)
+    def save_model(self, request, obj, form, change):
+        is_new = obj.pk is None
+        if is_new:
+            generate_username_if_missing(obj)
+            set_random_password_for_user(obj)
+        super().save_model(request, obj, form, change)
+        if is_new:
+            UserProfile.objects.get_or_create(user=obj)
+            send_new_user_onboarding_email.delay(user_id=obj.id)
 
 class SubcategoryInline(admin.StackedInline):
     model = Subcategory
