@@ -190,19 +190,20 @@ class ParticipantAdmin(admin.ModelAdmin):
     hygiene_balance_display.short_description = "Hygiene Balance"
 
     def save_model(self, request, obj, form, change):
-        is_new = obj.pk is None  # True if creating a new Participant
-        create_user = form.cleaned_data.get("create_user", False)  # check the boolean
+        is_new = obj.pk is None
+        create_user = form.cleaned_data.get("create_user", False)
 
         if is_new and create_user:
-            # Create a User if one doesn't exist
-                if not obj.user:
-                    username = generate_username_if_missing(obj)  # implement to create a unique username
-                    password = set_random_password_for_user(obj)  # implement to generate a secure password
+            # Only create a User if one doesn't exist
+            if not obj.user:
+                username = generate_username_if_missing(obj)
+                password = set_random_password_for_user(obj)
 
                 user = User.objects.create_user(username=username, password=password, email=obj.email)
                 obj.user = user
 
         super().save_model(request, obj, form, change)
+
 
         if is_new and obj.user:
              # Send onboarding email via Celery
