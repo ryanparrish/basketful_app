@@ -20,14 +20,19 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from food_orders.tasks import send_new_user_onboarding_email
+from django.urls import path
+from django.shortcuts import render
+from .models import Order, Product, Voucher
+from .inlines import OrderItemInline
+import json
+from django.urls import path
+from .models import Order, Voucher
+from . import utils
 User = get_user_model()
 try:
     admin.site.unregister(User)
 except admin.sites.NotRegistered:
-    pass  # If not registered yet, ignore
-from django import forms
-from django.contrib.auth import get_user_model
- 
+    pass  # If not registered yet, ignore 
 @admin.register(User)
 class CustomUserAdmin(DefaultUserAdmin):
     add_form = CustomUserCreationForm
@@ -113,38 +118,47 @@ class OrderItemInline(admin.TabularInline):
         participant = getattr(self.instance.account, 'participant', None)
         account_balance = self.instance.account
         validate_order_items(self.forms, participant, account_balance)
-        
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'updated_at', 'total_price','paid')
-    readonly_fields=('paid',)
+    list_display = ('id', 'updated_at', 'total_price', 'paid')
+    readonly_fields = ('paid',)
     inlines = [OrderItemInline]
+    change_form_template = "admin/food_orders/order/change_form.html"
+
     class Media:
         js = ('food_orders/js/orderitem_inline.js',)
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:order_id>/print/',
+                self.admin_site.admin_view(self.print_order),
+                name='order-print',
+            ),
+        ]
+        return custom_urls + urls
+
+    def print_order(self, request, order_id):
+        order = utils.get_order_or_404(order_id)
+        context = utils.get_order_print_context(order)
+        return render(request, "admin/food_orders/order/print_order.html", context)
+
     def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
-        products = Product.objects.all().values('id', 'price')
-        product_json = json.dumps({str(p['id']): float(p['price']) for p in products})
+        product_json = utils.get_product_prices_json()
         script_tag = f'<script>window.productPrices = {product_json};</script>'
-        context['additional_inline_script'] = script_tag  # this is safe
+        context['additional_inline_script'] = script_tag
         return super().render_change_form(request, context, add, change, form_url, obj)
 
-    def save_model(self, request, obj, form, change):
-        # Save the Order instance normally
-        super().save_model(request, obj, form, change)
-
     def save_related(self, request, form, formsets, change):
-        # Save inlines first
         super().save_related(request, form, formsets, change)
-
-        # Then apply voucher logic
         order = form.instance
         used = False
 
-        if order.status_type == "Confirmed":
-            if not Voucher.objects.filter(account=order.account, active=True).exists():
-                raise ValidationError("Cannot confirm order: no active vouchers available.")
-        
+        if order.status_type == "Confirmed" and not Voucher.objects.filter(account=order.account, active=True).exists():
+            raise ValidationError("Cannot confirm order: no active vouchers available.")
+
         if not order.paid and order.total_price() > 0:
             used = order.used_voucher()
 

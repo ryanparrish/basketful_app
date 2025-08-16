@@ -6,3 +6,18 @@
         {{ additional_inline_script|safe }}
     {% endif %}
 {% endblock %}
+{% load static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    {% if original.pk %}
+    <li>
+        <a class="btn btn-outline-primary btn-sm"
+           href="{% url 'admin:order-print' original.pk %}"
+           target="_blank"
+           title="Print Order">
+            <i class="bi bi-printer"></i> Print
+        </a>
+    </li>
+    {% endif %}
+{% endblock %}
