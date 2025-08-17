@@ -304,15 +304,30 @@ class Order(models.Model):
         if used:
             self.paid = True
             super().save(update_fields=["paid"])
+
 class OrderItem(models.Model):
-    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='items')
+    order = models.ForeignKey(
+        'Order',
+        on_delete=models.CASCADE,
+        related_name='items'
+    )
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
-    price = models.DecimalField(max_digits=8, decimal_places=2)
-    price_at_order = models.DecimalField(max_digits=8, decimal_places=2)
-
     
+    # Current product price reference (useful for comparisons/reports)
+    price = models.DecimalField(max_digits=8, decimal_places=2)
 
+    # Historical price locked at time of order
+    price_at_order = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Only set once (don’t overwrite if it already exists)
+        if self.price_at_order is None and self.product_id:
+            self.price_at_order = self.product.price
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.quantity} × {self.product.name} (Order #{self.order_id})"
     def total_price(self):
         return self.quantity * self.price
     def __str__(self):
