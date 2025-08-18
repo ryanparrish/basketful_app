@@ -1,4 +1,3 @@
-from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from .models import AccountBalance, Order, Product, OrderItem, Participant,Voucher
 from django.http import JsonResponse
@@ -15,7 +14,6 @@ from .forms import ParticipantUpdateForm, CustomLoginForm
 from django.utils.safestring import mark_safe
 from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
-from django.conf import settings
 from django.db.models import Q
 
 class CustomPasswordChangeView(PasswordChangeView):

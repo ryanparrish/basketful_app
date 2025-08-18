@@ -36,7 +36,7 @@ def validate_order_items(forms, participant, account_balance):
         elif scope == "per_child":
             allowed = limit_quantity * participant.children
         elif scope == "per_infant":
-            if not participant.infant:
+            if participant.diaper_count == 0:
                 raise ValidationError("Limit is per infant, but participant has none.")
             allowed = limit_quantity
         elif scope == "per_household":
