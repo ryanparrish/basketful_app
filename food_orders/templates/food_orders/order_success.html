@@ -13,4 +13,8 @@
     <a href="{% url 'create_order' %}" class="btn btn-success">Place Another Order</a>
   </div>
 </div>
+<script>
+  // Clear cart only when success page is reached
+  localStorage.removeItem('cart');
+</script>
 {% endblock %}

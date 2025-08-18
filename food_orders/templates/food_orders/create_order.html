@@ -93,146 +93,156 @@
 
 <!-- Cart + Filter JS -->
 <script>
-function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document !== '') {
-    for (let cookie of document.cookie.split(';')) {
-      cookie = cookie.trim();
-      if (cookie.startsWith(name + '=')) {
-        cookieValue = decodeURIComponent(cookie.slice(name.length + 1));
-        break;
+(() => {
+  // ---------- CSRF & Cart Setup ----------
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      for (let cookie of document.cookie.split(';')) {
+        cookie = cookie.trim();
+        if (cookie.startsWith(name + '=')) {
+          cookieValue = decodeURIComponent(cookie.slice(name.length + 1));
+          break;
+        }
       }
     }
+    return cookieValue;
   }
-  return cookieValue;
-}
 
-const csrftoken = getCookie('csrftoken');
-let cart = loadCartFromStorage();
+  const csrftoken = getCookie('csrftoken');
+  let cart = loadCartFromStorage();
 
-function saveCartToStorage() {
-  localStorage.setItem('cart', JSON.stringify(cart));
-}
-
-function loadCartFromStorage() {
-  try {
-    const stored = localStorage.getItem('cart');
-    return stored ? JSON.parse(stored) : {};
-  } catch (e) {
-    console.warn("Cart data in localStorage is invalid.");
-    return {};
+  function saveCartToStorage() {
+    localStorage.setItem('cart', JSON.stringify(cart));
   }
-}
 
-function renderCart() {
-  const mobileCartList = document.getElementById('mobile-cart-items');
-  mobileCartList.innerHTML = '';
-  let total = 0;
-  for (const [productId, quantity] of Object.entries(cart)) {
-    const product = products[productId];
-    if (!product) continue;
-    const subtotal = product.price * quantity;
-    total += subtotal;
-    const li = document.createElement('li');
-    li.className = 'list-group-item d-flex justify-content-between align-items-center';
-    li.innerHTML = `
-      <div>
-        <strong>${product.name}</strong><br>
-        <small>$${product.price.toFixed(2)} * ${quantity} = $${subtotal.toFixed(2)}</small>
-      </div>
-      <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
-        <i class="bi bi-trash"></i>
-      </button>
-    `;
-    mobileCartList.appendChild(li);
+  function loadCartFromStorage() {
+    try {
+      const stored = localStorage.getItem('cart');
+      return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+      console.warn("Cart data in localStorage is invalid.");
+      return {};
+    }
   }
-  const totalLi = document.createElement('li');
-  totalLi.className = 'list-group-item d-flex justify-content-between align-items-center fw-bold';
-  totalLi.innerHTML = `<span>Total</span><span>$${total.toFixed(2)}</span>`;
-  mobileCartList.appendChild(totalLi);
 
-  document.querySelectorAll('.remove-item').forEach(button => {
+  // ---------- Cart Rendering ----------
+  function renderCart() {
+    const mobileCartList = document.getElementById('mobile-cart-items');
+    if (!mobileCartList) return;
+
+    mobileCartList.innerHTML = '';
+    let total = 0;
+
+    for (const [productId, quantity] of Object.entries(cart)) {
+      const product = products[productId];
+      if (!product) continue;
+
+      const subtotal = product.price * quantity;
+      total += subtotal;
+
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      li.innerHTML = `
+        <div>
+          <strong>${product.name}</strong><br>
+          <small>$${product.price.toFixed(2)} * ${quantity} = $${subtotal.toFixed(2)}</small>
+        </div>
+        <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
+          <i class="bi bi-trash"></i>
+        </button>
+      `;
+      mobileCartList.appendChild(li);
+    }
+
+    // Total row
+    const totalLi = document.createElement('li');
+    totalLi.className = 'list-group-item d-flex justify-content-between align-items-center fw-bold';
+    totalLi.innerHTML = `<span>Total</span><span>$${total.toFixed(2)}</span>`;
+    mobileCartList.appendChild(totalLi);
+
+    // Attach remove handlers
+    mobileCartList.querySelectorAll('.remove-item').forEach(button => {
+      button.onclick = () => {
+        const id = button.dataset.productId;
+        delete cart[id];
+        saveCartToStorage();
+        renderCart();
+      };
+    });
+  }
+
+  // ---------- Add to Cart ----------
+  document.querySelectorAll('.add-to-cart').forEach(button => {
     button.addEventListener('click', () => {
-      const id = button.dataset.productId;
-      delete cart[id];
-      saveCartToStorage();
-      renderCart();
+      const productId = button.dataset.productId;
+      const quantityInput = document.querySelector(`input[data-product-id="${productId}"]`);
+      const quantity = parseInt(quantityInput.value);
+
+      if (quantity > 0) {
+        cart[productId] = (cart[productId] || 0) + quantity;
+        saveCartToStorage();
+        quantityInput.value = 0;
+        renderCart();
+      }
     });
   });
-}
 
-function submitOrder() {
-  fetch("{% url 'update_cart' %}", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRFToken": csrftoken
-    },
-    body: JSON.stringify(cart)
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.status === "ok") {
-      localStorage.removeItem('cart');
-      window.location.href = "{% url 'review_order' %}";
-    } else {
-      alert("There was a problem submitting your cart.");
-    }
-  })
-  .catch(() => alert("Error submitting order."));
-}
+  // ---------- Submit Order ----------
+  function submitOrder() {
+    fetch("{% url 'update_cart' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrftoken
+      },
+      body: JSON.stringify(cart)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === "ok") {
+        // Cart persists until user reaches the review/order page
+        window.location.href = "{% url 'review_order' %}";
+      } else {
+        alert("There was a problem submitting your cart.");
+      }
+    })
+    .catch(() => alert("Error submitting order."));
+  }
 
-// Add to cart
+  const submitBtn = document.getElementById('mobile-submit-order');
+  if (submitBtn) submitBtn.addEventListener('click', submitOrder);
 
-document.querySelectorAll('.add-to-cart').forEach(button => {
-  button.addEventListener('click', () => {
-    const productId = button.dataset.productId;
-    const quantityInput = document.querySelector(`input[data-product-id="${productId}"]`);
-    const quantity = parseInt(quantityInput.value);
-    if (quantity > 0) {
-      cart[productId] = (cart[productId] || 0) + quantity;
-      quantityInput.value = 0;
-      saveCartToStorage();
-      renderCart();
-    }
-  });
-});
+  // ---------- Mobile Cart Drawer ----------
+  const drawerToggle = document.getElementById('cart-drawer-toggle');
+  if (drawerToggle) {
+    drawerToggle.addEventListener('click', () => {
+      const drawerEl = document.getElementById('mobileCartDrawer');
+      if (drawerEl) new bootstrap.Offcanvas(drawerEl).show();
+    });
+  }
 
-document.getElementById('mobile-submit-order').addEventListener('click', submitOrder);
+  // ---------- Category Toggle ----------
+  document.querySelectorAll('.category-toggle').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const cat = link.dataset.category;
+      const section = document.querySelector(`.category-section[data-category="${cat}"]`);
+      if (!section) return;
 
-document.getElementById('cart-drawer-toggle').addEventListener('click', () => {
-  const drawer = new bootstrap.Offcanvas(document.getElementById('mobileCartDrawer'));
-  drawer.show();
-});
-
-// Category toggle
-
-document.querySelectorAll('.category-toggle').forEach(link => {
-  link.addEventListener('click', e => {
-    e.preventDefault();
-
-    const cat = link.dataset.category;
-    const section = document.querySelector(`.category-section[data-category="${cat}"]`);
-
-    if (section) {
-      // If hidden, unhide it
       section.classList.remove('d-none');
-
-      // Start from transparent + slightly above
       section.classList.add('hidden-fade');
+      section.parentNode.prepend(section);
 
-      // Move it to the top of the container
-      const container = section.parentNode;
-      container.prepend(section);
-
-      // Trigger fade+slide on next frame
       requestAnimationFrame(() => {
         section.classList.remove('hidden-fade');
       });
-    }
+    });
   });
-});
 
+  // Initial render
+  renderCart();
+})();
 </script>
 
 {% endblock %}
