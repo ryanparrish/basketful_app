@@ -20,3 +20,5 @@ reportlab>=3.0.0
 # Celery and broker
 celery>=5.3,<6.0
 redis>=5.0,<6.0
+# Celery beat scheduler
+django-celery-beat>=3.3,<4.0
