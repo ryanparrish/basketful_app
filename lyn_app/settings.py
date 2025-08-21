@@ -14,6 +14,7 @@ import os
 import environ
 from pathlib import Path
 import sys
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -33,8 +34,13 @@ DOMAIN_NAME =env('DOMAIN_NAME')
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=True)
+import sys
+import environ
 
-# Set default allowed hosts for dev
+env = environ.Env()
+environ.Env.read_env()  # read .env file
+
+# Set defaults based on environment
 if ENVIRONMENT == 'prod':
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -44,46 +50,42 @@ if ENVIRONMENT == 'prod':
     EMAIL_HOST_USER = env('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
     DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-    DATABASES = {
-        'default': env.db()  # uses DATABASE_URL
-    }
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-                'stream': sys.stderr,  
-            },
-        },
-        'root': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
-        'loggers': {
-            'django': {
-                'handlers': ['console'],
-                'level': 'ERROR',
-                'propagate': True,
-            },
-        },
-        'django.request':{
-            'handlers': ['console'],
-            'level': 'ERROR',
-            'propogate': False,
-
-        },
-    }
-
-else:
+else:  # dev/local
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+
+DATABASES = {
+    'default': env.db('DATABASE_URL')
+}
+
+# LOGGING
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'stream': sys.stderr,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+    },
+    'django.request': {
+        'handlers': ['console'],
+        'level': 'ERROR',
+        'propagate': False,
+    },
+}
+
 # AWS / Linode S3 storage toggle
 USE_S3 = env.bool('USE_S3', default=False)
 
@@ -217,11 +219,19 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+# Celery Settings 
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+CELERY_BEAT_SCHEDULE = {
+    'create_weekly_combined_orders': {
+        'task': 'orders.tasks.create_weekly_combined_orders',  # path to your task
+        'schedule': crontab(hour=0, minute=0),  # runs daily at midnight
+        'options': {'queue': 'default'},
+    },
+}
 
 

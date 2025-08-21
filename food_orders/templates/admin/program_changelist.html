@@ -1,0 +1,20 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+    <div class="object-tools">
+        <ul>
+            <li>
+                <a href="{% url 'admin:food_orders_combinedorder_run_weekly_task' %}"
+                class="addlink">
+                Run Weekly Task
+                </a>
+            </li>
+        </ul>
+    </div>
+    {{ block.super }}
+{% endblock %}
+
+{% block content %}
+    <h2>Custom CombinedOrder Changelist</h2>
+    {{ block.super }}
+{% endblock %}

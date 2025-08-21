@@ -28,6 +28,9 @@ import json
 from django.urls import path
 from .models import Order, Voucher
 from . import utils
+from django.http import HttpResponseRedirect
+from .tasks import create_weekly_combined_orders
+
 User = get_user_model()
 try:
     admin.site.unregister(User)
@@ -235,6 +238,24 @@ class VoucherAdmin(admin.ModelAdmin):
 class CombinedOrderAdmin(admin.ModelAdmin):
     actions = ['download_combined_order_pdf']
     readonly_fields = ('orders',)
+    change_list_template = "admin/program_changelist.html"
+    list_display = ('program', 'created_at', 'updated_at')
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "run-weekly-task/",
+                self.admin_site.admin_view(self.run_weekly_task),
+                name="food_orders_combinedorder_run_weekly_task",
+            ),
+        ]
+        return custom_urls + urls
+    
+    def run_weekly_task(self, request):
+        create_weekly_combined_orders.delay()  # run asynchronously
+        self.message_user(request, "Weekly combined orders task has been triggered!")
+        return HttpResponseRedirect("../")
 
     def download_combined_order_pdf(self, request, queryset):
         if queryset.count() != 1:

@@ -2,12 +2,17 @@ from django.db import models
 from django.utils.timezone import now
 from decimal import Decimal
 from django.core.validators import MinValueValidator
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.core.exceptions import ValidationError
 from collections import defaultdict
-from django.db.models import Sum
 from django.contrib.auth.models import User
+from collections import defaultdict
 from django.db import models
+from django.db.models.functions import ExtractWeek, ExtractYear
+from django.db.models import F
+from django.db.models.constraints import UniqueConstraint  
+
+
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -15,7 +20,6 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.user.username
-
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -326,8 +330,6 @@ class OrderItem(models.Model):
             self.price_at_order = self.product.price
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f"{self.quantity} × {self.product.name} (Order #{self.order_id})"
     def total_price(self):
         return self.quantity * self.price
     def __str__(self):
@@ -337,46 +339,68 @@ class OrderItem(models.Model):
             self.price = self.product.price
         super().save(*args, **kwargs)
 
+from collections import defaultdict
+from django.db import models
+from django.db.models import F
+from django.db.models.functions import ExtractYear, ExtractWeek
+from django.db.models.constraints import UniqueConstraint
+
 class CombinedOrder(models.Model):
-    program = models.OneToOneField('Program', on_delete=models.CASCADE, related_name='combined_order')
-    orders = models.ManyToManyField('Order', related_name='combined_orders')
-    packed_by = models.ForeignKey('OrderPacker', on_delete=models.CASCADE, related_name='combined_orders')
+    program = models.ForeignKey(
+        'Program',
+        on_delete=models.CASCADE,
+        related_name='combined_orders'
+    )
+    orders = models.ManyToManyField(
+        'Order',
+        related_name='combined_orders',
+        blank=True
+    )
+    packed_by = models.ForeignKey(
+        'OrderPacker',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='combined_orders'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    summarized_data = models.JSONField(default=dict, blank=True)
 
     def summarized_items_by_category(self):
-        """
-        Summarize items grouped by category and product,
-        only for orders in this combined order and in this program.
-        Returns:
-        dict: {category_name: {product_name: total_quantity}}
-        """
         summary = defaultdict(lambda: defaultdict(int))
-
         orders_qs = self.orders.select_related(
             'account__participant__program'
         ).prefetch_related(
             'items__product__category'
         )
-
         for order in orders_qs:
             participant = getattr(order.account, 'participant', None)
             if not participant or participant.program != self.program:
-                continue  # Skip if participant doesn't match program
+                continue
+            for item in order.items.all():
+                product = item.product
+                category_name = product.category.name if product.category else "Uncategorized"
+                summary[category_name][product.name] += item.quantity
+        return summary
 
-        for item in order.items.all():
-            product = item.product
-            category_name = product.category.name if product.category else "Uncategorized"
-            summary[category_name][product.name] += item.quantity
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                F("program"),
+                ExtractYear("created_at"),
+                ExtractWeek("created_at"),
+                name="unique_program_per_week",
+            )
+        ]
 
-        return summary  
-  
     def __str__(self):
-        return f"{self.program.name} Combined Order"
+        return f"{self.program.name} Combined Order ({self.created_at.strftime('%Y-%m-%d')})"
 
 # Class to represent who packed the order
 class OrderPacker(models.Model):
     name= models.CharField(max_length=100)
+    programs = models.ManyToManyField('Program', related_name='packers', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     def __str__(self):
@@ -397,7 +421,6 @@ class VoucherSetting(models.Model):
             VoucherSetting.objects.exclude(id=self.id).update(active=False)
         super().save(*args, **kwargs)
     # Ensure only one active setting at a time
-
     class Meta:
         verbose_name_plural = "Voucher Settings"
 
