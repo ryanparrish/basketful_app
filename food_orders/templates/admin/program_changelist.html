@@ -1,20 +1,59 @@
 {% extends "admin/change_list.html" %}
 
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        /* Force object-tools buttons to stay horizontal */
+        .object-tools {
+            display: flex !important;
+            flex-wrap: wrap !important;      /* wrap on very small screens */
+            justify-content: flex-end !important;
+            align-items: center !important;
+            float: none !important;          /* override admin responsive float */
+            width: auto !important;          /* override admin responsive width */
+            padding-bottom: 2%;
+        }
+
+        .object-tools ul {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            list-style: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .object-tools li {
+            display: inline-block !important;
+        }
+
+        .object-tools .addlink,
+        .object-tools .btn {
+            display: inline-block !important;
+            margin: 0 !important;
+        }
+
+        /* Optional: Stack on very small screens */
+        @media (max-width: 600px) {
+            .object-tools ul {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+    </style>
+{% endblock %}
+
 {% block object-tools %}
     <div class="object-tools">
         <ul>
             <li>
-                <a href="{% url 'admin:food_orders_combinedorder_run_weekly_task' %}"
-                class="addlink">
-                Run Weekly Task
+                <a href="{% url 'admin:food_orders_combinedorder_run_weekly_task' %}" 
+                   class="addlink btn btn-primary">
+                   Run Weekly Task
                 </a>
             </li>
         </ul>
-    </div>
-    {{ block.super }}
-{% endblock %}
+         {{block.super}}
+      </div>
 
-{% block content %}
-    <h2>Custom CombinedOrder Changelist</h2>
-    {{ block.super }}
 {% endblock %}
