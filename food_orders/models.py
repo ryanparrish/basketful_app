@@ -411,6 +411,7 @@ class VoucherSetting(models.Model):
     adult_amount = models.PositiveIntegerField(default=40)
     child_amount = models.PositiveIntegerField(default=25)
     infant_modifier = models.PositiveIntegerField(default=5)
+    infant_modifier = models.DecimalField(max_digits=2, decimal_places=2)
     active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -462,7 +463,7 @@ class Voucher(models.Model):
             return 0
         if self.voucher_type == "Life":
             return 0
-        elif self.diaper_modifier == True and self.voucher_type == "Grocery":
+        elif self.diaper_modifier >= 0 and self.voucher_type == "Grocery":
             return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount) + (setting.infant_modifier*self.diaper_modifier)
         else: 
             return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount)
