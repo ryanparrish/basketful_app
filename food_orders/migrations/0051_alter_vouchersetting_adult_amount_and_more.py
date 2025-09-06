@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('food_orders', '0050_alter_vouchersetting_adult_amount_and_more'),
+        ('food_orders', '0049_voucherlog'),
     ]
 
     operations = [
