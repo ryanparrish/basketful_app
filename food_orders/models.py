@@ -119,15 +119,12 @@ class ProductManager(models.Model):
     
 #Class to represent a calender of when there is no class 
 
-
-
 class ProgramPauseQuerySet(models.QuerySet):
     def with_annotations(self):
         return program_pause_annotations(self)
 
     def active(self):
         return self.with_annotations().filter(is_active_gate=True)
-
 
 class ProgramPause(models.Model):
     start_date = models.DateField()

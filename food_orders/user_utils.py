@@ -84,7 +84,7 @@ def _create_user(
                         "password": make_password(password),
                     },
                 )
-                profile, _ = models.UserProfile.objects.get_or_create(user=user)
+                profile, _ = UserProfile.objects.get_or_create(user=user)
                 profile.must_change_password = True
                 profile.save(update_fields=["must_change_password"])
                 return user
