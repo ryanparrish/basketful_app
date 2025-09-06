@@ -3,18 +3,38 @@
 from django.db.models.signals import post_save, post_delete, pre_save, pre_delete
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-
-from .models import Participant, UserProfile, Voucher
+from .models import Participant, UserProfile, Voucher,AccountBalance
 from .user_utils import create_participant_user
 from .tasks import send_new_user_onboarding_email
 from .voucher_utils import setup_account_and_vouchers
 from .logging import log_voucher
+from django.dispatch import receiver
+from .balance_utils import calculate_base_balance
 
 User = get_user_model()
 
 # ============================================================
 # Participant Signals
 # ============================================================
+
+@receiver(post_save, sender=Participant)
+def update_base_balance_on_change(sender, instance, created, **kwargs):
+    """
+    Update AccountBalance.base_balance whenever relevant fields change.
+    New participants are ignored (handled by a different signal).
+    """
+    if created:
+        return  # skip new participants
+
+    # Always recalc base balance
+    from .models import AccountBalance
+    from .balance_utils import calculate_base_balance
+
+    account_balance, _ = AccountBalance.objects.get_or_create(participant=instance)
+    account_balance.base_balance = calculate_base_balance(instance)
+    account_balance.save()
+
+
 def setup_account_and_vouchers(participant) -> None:
     """
     Ensure a participant has an account balance with calculated base balance

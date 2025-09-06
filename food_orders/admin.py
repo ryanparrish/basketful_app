@@ -9,7 +9,7 @@ from .models import (
 from .forms import CustomUserCreationForm,ParticipantAdminForm
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from .models import CombinedOrder
+from .models import CombinedOrder,AccountBalance
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
@@ -21,7 +21,9 @@ from django.http import HttpResponseRedirect
 from .tasks import create_weekly_combined_orders
 from .user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
-
+from .models import Participant
+from .balance_utils import calculate_base_balance  # wherever your function lives
+from decimal import Decimal
 User = get_user_model()
 try:
     admin.site.unregister(User)
@@ -164,12 +166,15 @@ class ParticipantAdmin(admin.ModelAdmin):
         'full_balance_display',
         'available_balance_display',
         'hygiene_balance_display',
+        'get_base_balance',
     )
     readonly_fields = (
         'full_balance_display',
         'available_balance_display',
         'hygiene_balance_display',
+        'get_base_balance',
     )
+    actions = ['calculate_base_balance_action']
 
     def full_balance_display(self, obj):
         balance = obj.balances().get('full_balance', 0)
@@ -186,6 +191,24 @@ class ParticipantAdmin(admin.ModelAdmin):
         return f"${balance:.2f}" if balance else "No Balance"
     hygiene_balance_display.short_description = "Hygiene Balance"
 
+
+    def get_base_balance(self, obj):
+        if hasattr(obj, 'accountbalance'):
+            return f"${obj.accountbalance.base_balance:,.2f}"
+        return Decimal(0)
+    get_base_balance.short_description = "Base Balance"
+
+    def calculate_base_balance_action(self, request, queryset):
+        updated_count = 0
+        for participant in queryset:
+            base = calculate_base_balance(participant)
+            # Ensure AccountBalance exists
+            account_balance, created = AccountBalance.objects.get_or_create(participant=participant)
+            account_balance.base_balance = base
+            account_balance.save()
+            updated_count += 1
+        self.message_user(request, f"Base balance calculated and saved for {updated_count} participants.")
+    calculate_base_balance_action.short_description = "Calculate and save base balance for selected participants"
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
