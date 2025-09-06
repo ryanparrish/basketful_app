@@ -215,16 +215,23 @@ def get_order_print_context(order) -> Dict[str, Any]:
         "created_at": order.created_at,
     }
 
-
 def calculate_total_price(order) -> Decimal:
     """
     Calculate the total price of the order.
-    In tests, if the order has `_test_price`, return that instead.
+
+    - If the order has a `_test_price` attribute (used in tests), return that.
+    - Otherwise, sum the price_at_order * quantity for all items in the order.
+    - Handles None values by treating them as 0.
     """
     if hasattr(order, "_test_price"):
         return Decimal(order._test_price)
 
-    return sum(
-        item.price_at_order * item.quantity
-        for item in OrderItem().objects.filter(order=order)
-    )
+    total = Decimal(0)
+    items = order.items.all()  # assuming a related_name='items' on OrderItem.order
+
+    for item in items:
+        price = item.price_at_order or Decimal(0)
+        quantity = item.quantity or 0
+        total += price * quantity
+
+    return total
