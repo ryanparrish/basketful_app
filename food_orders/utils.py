@@ -1,72 +1,50 @@
-import random
-from django.contrib.auth import get_user_model
-import json
-from django.shortcuts import get_object_or_404
-from .models import Product, Order
+# utils.py
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
-User = get_user_model()
+# ============================================================
+# PDF Generation Utility
+# ============================================================
 
-
-def get_product_prices_json():
-    """Return product prices as JSON for inline admin scripts."""
-    products = Product.objects.all().values('id', 'price')
-    return json.dumps({str(p['id']): float(p['price']) for p in products})
-
-def get_order_or_404(order_id):
-    """Return Order object or 404."""
-    return get_object_or_404(Order, pk=order_id)
-
-def get_order_print_context(order):
+def generate_combined_order_pdf(combined_order) -> BytesIO:
     """
-    Return context dict for rendering the print page.
-    Assumes Participant is only accessible through AccountBalance reverse relationship.
+    Generate a PDF for a combined order and return a BytesIO buffer.
     """
-    # Access participant through account → accountbalance → participant
-    # Adjust the related_name if yours is different
-    account_balance = getattr(order, 'account', None)
-    participant = None
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
 
-    if account_balance:
-        # Assuming AccountBalance has a OneToOneField or ForeignKey to Participant
-        # If multiple balances per account, pick the first
-        balance_qs = getattr(account_balance, 'accountbalance_set', None)
-        if balance_qs:
-            first_balance = balance_qs.first()
-            if first_balance:
-                participant = getattr(first_balance, 'participant', None)
+    # Start drawing
+    y = height - 50
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, y, f"Combined Order #{combined_order.id}")
+    y -= 20
 
-    return {
-        "order": order,
-        "items": order.items.select_related("product").all(),
-        "total": order.total_price(),
-        "customer": participant,
-        "created_at": order.created_at,
-    }
+    p.setFont("Helvetica", 12)
+    p.drawString(50, y, f"Packed By: {combined_order.packed_by}")
+    y -= 20
+    p.drawString(50, y, f"Created At: {combined_order.created_at.strftime('%Y-%m-%d %H:%M')}")
+    y -= 30
 
-def generate_unique_username(full_name):
-    base_username = full_name.lower().replace(" ", "_")
-    username = base_username
-    counter = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{base_username}_{counter}"
-        counter += 1
-    return username
+    summary = combined_order.summarized_items_by_category()
 
-def generate_memorable_password():
-    adjectives = ['sunny', 'brave', 'gentle', 'fuzzy', 'bright']
-    nouns = ['apple', 'river', 'tiger', 'sky', 'love', 'forest']
-    return f"{random.choice(adjectives)}-{random.choice(nouns)}-{random.randint(100, 999)}"
+    for category, products in summary.items():
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, f"{category}")
+        y -= 20
 
-def set_random_password_for_user(user):
-    """
-    Sets a memorable random password for the given unsaved User object.
-    Returns the generated password.
-    """
-    password = generate_memorable_password()
-    user.set_password(password)
-    user.must_change_password = True
-    return password
-def generate_username_if_missing(user):
-    if not user.username:
-        full_name = f"{user.first_name} {user.last_name}".strip()
-        user.username = generate_unique_username(full_name)
+        p.setFont("Helvetica", 12)
+        for product, qty in products.items():
+            p.drawString(70, y, f"{product}: {qty}")
+            y -= 15
+            if y < 100:
+                p.showPage()
+                y = height - 50
+
+        y -= 10
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer

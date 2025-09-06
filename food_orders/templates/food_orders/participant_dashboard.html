@@ -42,7 +42,7 @@
   {% if program %}
   <div class="card mb-4">
     <div class="card-body">
-      <h5 class="card-title">Your Program & Coach</h5>
+      <h5 class="card-title">Your Program</h5>
       <p><strong>Program:</strong> {{ program.name }}</p>
       <p><strong>Meeting Day:</strong> {{ program.get_MeetingDay_display }}</p>
       <p><strong>Time:</strong> {{ program.meeting_time|time:"g:i A" }}</p>
@@ -54,7 +54,7 @@
 {% if participant.assigned_coach %}
   <div class="card mb-4">
     <div class="card-body">
-      <h5 class="card-title">Your Coach</h5>
+      <h5 class="card-title">Your Life Skills Leader</h5>
       {% load static %}
       <div style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; background-color: #e9ecef; display: flex; align-items: center; justify-content: center;">
         {% if participant.assigned_coach.image %}

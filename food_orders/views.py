@@ -1,20 +1,26 @@
-from django.contrib.auth.decorators import login_required
-from .models import AccountBalance, Order, Product, OrderItem, Participant,Voucher
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-import json
-from .validators import validate_order_items
-from django.core.exceptions import ValidationError
+# Django core
 from django.db import transaction
-from django.contrib import messages
-from django.shortcuts import get_object_or_404,render,redirect
-from django.contrib.auth.forms import PasswordChangeForm
-from django.contrib.auth import update_session_auth_hash,login
-from .forms import ParticipantUpdateForm, CustomLoginForm
-from django.utils.safestring import mark_safe
-from django.contrib.auth.views import PasswordChangeView
-from django.urls import reverse_lazy
 from django.db.models import Q
+from django.core.exceptions import ValidationError
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render, redirect
+from django.urls import reverse_lazy
+from django.utils.safestring import mark_safe
+from django.views.decorators.http import require_POST
+
+# Django auth
+from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash, login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.views import PasswordChangeView
+
+# Local app
+from .models import AccountBalance, Order, Product, Participant, Voucher
+from .forms import ParticipantUpdateForm, CustomLoginForm
+
+# Standard library
+import json
 
 class CustomPasswordChangeView(PasswordChangeView):
     success_url = reverse_lazy('home')  # or wherever you want
@@ -196,7 +202,6 @@ def review_order(request):
         'total': total
     })
 
-@require_POST
 @login_required
 @transaction.atomic
 def submit_order(request):
@@ -207,48 +212,46 @@ def submit_order(request):
     participant = request.user.participant
     account = AccountBalance.objects.select_for_update().get(participant=participant)
 
-    # Build form-like objects for validation
     product_ids = [int(pid) for pid in cart.keys()]
     products = Product.objects.in_bulk(product_ids)
 
-    form_like_objects = []
-    for product_id_str, quantity in cart.items():
-        product = products.get(int(product_id_str))
-        if not product:
-            continue
-        form_like_objects.append(type("FakeForm", (), {
-            "cleaned_data": {
-                "product": product,
-                "quantity": quantity,
-                "DELETE": False
-            }
-        })())
+    order_items = [
+        OrderItemData(product=products[int(pid)], quantity=qty)
+        for pid, qty in cart.items()
+        if products.get(int(pid))
+    ]
 
+    # Create, validate, and confirm order in one call
     try:
-        validate_order_items(form_like_objects, participant, account)
+        order = create_order(account, order_items)
     except ValidationError as e:
         messages.error(request, str(e))
         return redirect('review_order')
 
-    # Transaction block to ensure atomicity
-    with transaction.atomic():
-        order = Order.objects.create(account=account)
-
-        for product_id_str, qty in cart.items():
-            product = products.get(int(product_id_str))
-            if not product:
-                continue
-            OrderItem.objects.create(
-                order=order,
-                product=product,
-                quantity=qty,
-                price_at_order=product.price
-            )
-
-        order.used_voucher()  # Must be inside transaction
-
-    # Clear cart only after successful commit
+    # Clear session cart
     request.session['cart'] = {}
     request.session.modified = True
 
     return render(request, 'food_orders/order_success.html', {'order': order})
+
+
+@login_required
+@transaction.atomic
+def edit_order(request, order_id):
+    # Fetch the order for the current participant
+    order = get_object_or_404(Order, pk=order_id, account__participant=request.user.participant)
+
+    try:
+        # Call the model wrapper method (delegates to OrderUtils)
+        new_order = order.edit()
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('order_history')  # Redirect if order cannot be edited
+
+    # Pre-fill the session cart with the cloned order items
+    request.session['cart'] = {item.product_id: item.quantity for item in new_order.items.all()}
+    request.session.modified = True
+
+    return redirect('food_orders/review_order.html')  # or wherever your order edit form is
+
+

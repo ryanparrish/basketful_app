@@ -1,17 +1,23 @@
-from django.db import models
-from django.utils.timezone import now
+# Standard library
+from collections import defaultdict
 from decimal import Decimal
-from django.core.validators import MinValueValidator
 from datetime import timedelta
-from django.core.exceptions import ValidationError
-from collections import defaultdict
-from django.contrib.auth.models import User
-from collections import defaultdict
-from django.db import models
-from django.db.models.functions import ExtractWeek, ExtractYear
-from django.db.models import F
-from django.db.models.constraints import UniqueConstraint  
 
+# Django imports
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
+from django.db import models
+from django.db.models import (
+    F, UniqueConstraint
+)
+from django.db.models.functions import ExtractWeek, ExtractYear
+
+# Local app imports
+from . import balance_utils, voucher_utils
+from .order_utils import calculate_total_price, OrderUtils
+from .queryset import program_pause_annotations
 
 
 class UserProfile(models.Model):
@@ -112,6 +118,17 @@ class ProductManager(models.Model):
         return self.name
     
 #Class to represent a calender of when there is no class 
+
+
+
+class ProgramPauseQuerySet(models.QuerySet):
+    def with_annotations(self):
+        return program_pause_annotations(self)
+
+    def active(self):
+        return self.with_annotations().filter(is_active_gate=True)
+
+
 class ProgramPause(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
@@ -119,31 +136,38 @@ class ProgramPause(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f" {self.reason or 'No Reason Provided'}"
-    @classmethod
-    def date_logic(cls):
-        today = now().date()
-        pause= cls.objects.first()
-        if not pause:
-            return 1
-        if pause.start_date <= today + timedelta(days=14)<= pause.end_date:
-            return 3    
-        elif pause.start_date <= today + timedelta(days=7) <= pause.start_date + timedelta(days=5):
-            return 2
-        return 1 #Default value if no pause is active
+    objects = ProgramPauseQuerySet.as_manager()
+
+    # -------------------------------
+    # Validation
+    # -------------------------------
     def clean(self):
         super().clean()
+
         if self.end_date < self.start_date:
             raise ValidationError("End date cannot be earlier than start date.")
-        if self.end_date and self.start_date:
-            delta = self.end_date - self.start_date
-            if delta > timedelta(days=14):
-                raise ValidationError("Program pause cannot be longer than 14 days.")
+
+        delta = self.end_date - self.start_date
+        if delta > timedelta(days=14):
+            raise ValidationError("Program pause cannot be longer than 14 days.")
+
+        overlap_exists = ProgramPause.objects.exclude(pk=self.pk).filter(
+            start_date__lte=self.end_date,
+            end_date__gte=self.start_date,
+        ).exists()
+        if overlap_exists:
+            raise ValidationError("Another program pause already exists in this period.")
 
     def save(self, *args, **kwargs):
-        self.full_clean()  # Ensures validation is run on save
+        self.full_clean()
         super().save(*args, **kwargs)
+   
+    @property
+    def is_active_gate(self):
+        """Pause is active if the multiplier is greater than 1."""
+        return getattr(self, "multiplier", None) and self.multiplier > 1
+
+
 # Class to represent a Life Skills coach
 class LifeSkillsCoach (models.Model):
     name = models.CharField(max_length=100)
@@ -167,7 +191,6 @@ class Program(models.Model):
             ('thursday', 'Thursday'),
             ('friday', 'Friday'),
         ]      
-    ,max_length=10
     )
     meeting_address= models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -177,137 +200,182 @@ class Program(models.Model):
 # Class to represent a participant in the program
 class Participant(models.Model):
     name = models.CharField(max_length=100)
-    email = models.EmailField()
+    email = models.EmailField(blank=False)  # required
     adults = models.PositiveIntegerField(default=1)
     children = models.PositiveIntegerField(default=0)
-    diaper_count= models.PositiveIntegerField(default=0, help_text="Count of Children in Diapers of Pull-Ups")
+    diaper_count = models.PositiveIntegerField(
+        default=0, help_text="Count of Children in Diapers or Pull-Ups"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
-    program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True)
-    assigned_coach = models.ForeignKey(LifeSkillsCoach, on_delete=models.CASCADE, related_name='customers', null=True, blank=True)
-    create_user = models.BooleanField(default=False, null=True,help_text="If checked this will create a user account.")
+    updated_at = models.DateTimeField(auto_now=True)
+    program = models.ForeignKey(
+        Program, on_delete=models.CASCADE, null=True, blank=True
+    )
+    assigned_coach = models.ForeignKey(
+        LifeSkillsCoach, on_delete=models.CASCADE, related_name='customers', null=True, blank=True
+    )
+    create_user = models.BooleanField(
+        default=False, help_text="If checked this will create a user account."
+    )
     user = models.OneToOneField(User, null=True, blank=True, on_delete=models.CASCADE)
+    active = models.BooleanField(default=True)
+    allergy = models.CharField(max_length=100, default="None", blank=True, null=True)
 
     def __str__(self):
         return self.name
-    def setup_account_and_vouchers(self):
-        from .models import AccountBalance, Voucher
-        # Avoid duplicate account creation
-        try:
-            self.accountbalance
-            return
-        except AccountBalance.DoesNotExist:
-            pass
 
-        account = AccountBalance.objects.create(participant=self)
-        Voucher.objects.create(account=account, voucher_type="Grocery")
-        Voucher.objects.create(account=account, voucher_type="Grocery")
     def save(self, *args, **kwargs):
-        is_new = self.pk is None  # Check if this is a new instance
-        self.full_clean()  # Ensures validation is run on save
+        # Optional: full_clean for validation on every save
+        self.full_clean()
         super().save(*args, **kwargs)
-        if is_new:
-            self.setup_account_and_vouchers()
+
+
+    def balances(self):
+        """
+        Return all balances related to this participant as a dict.
+        Safe against missing AccountBalance.
+        """
+        try:
+            account = self.accountbalance
+        except AccountBalance.DoesNotExist:
+            return {
+                "full_balance": 0,
+                "available_balance": 0,
+                "hygiene_balance": 0,
+            }
+        return {
+            "full_balance": account.full_balance,
+            "available_balance": account.available_balance,
+            "hygiene_balance": account.hygiene_balance,
+        }
+ 
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()  # Optional if you want validation on every save
+        super().save(*args, **kwargs)
     def household_size(self):
         return self.adults + self.children 
 # Class to represent account balance
 class AccountBalance(models.Model):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True)
-#sum of all vouchers for the participant
+    base_balance = models.DecimalField(max_digits=3,decimal_places=1,default=0, validators=[MinValueValidator(0)])
+
+   # Assuming this is inside your AccountBalance model
+
     @property
-    def voucher_balance(self):
-        multiplier = ProgramPause.date_logic()
-        vouchers = self.vouchers.filter(active=True).order_by('id')[:2]
-        return sum(v.voucher_amnt() for v in vouchers) * multiplier
+    def full_balance(self) -> Decimal:
+        """Total balance of all active grocery vouchers."""
+        return balance_utils.calculate_full_balance(self)
+
     @property
-    def hygiene_balance(self):
-        return self.voucher_balance / Decimal(3)
-    def __str__(self):
-        return f"{self.participant.name} Balance "
-# Class to represent an order
+    def available_balance(self) -> Decimal:
+        """Available balance using recent vouchers (pause logic handled at voucher level)."""
+        return balance_utils.calculate_available_balance(self)
+
+    @property
+    def hygiene_balance(self) -> Decimal:
+        """Hygiene-specific balance (1/3 of full balance)."""
+        return balance_utils.calculate_hygiene_balance(self)
+
+    def __str__(self) -> str:
+        return getattr(self.participant, "name", str(self.pk))
+
+# Class to represent an Order
 class Order(models.Model):
+    user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
     account = models.ForeignKey(AccountBalance, on_delete=models.PROTECT, related_name='orders')   
     order_date = models.DateTimeField(auto_now_add=True)
     status_type = models.CharField(
-        max_length=20,
-        choices=[
-            ('pending', 'Pending'),
-            ('confirmed', 'Confirmed'),
-            ('packing', 'Packing'),
-            ('completed', 'Completed'),
-            ('cancelled', 'Cancelled'),
-        ],
-        default='pending',
-        null=False,
-    )
+    max_length=20,
+    choices=[
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('packing', 'Packing'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ],
+    default='pending',
+    null=False,
+    help_text="The current status of the order. Options are: Pending New-Unpaid, Confirmed Paid , Packing, Complete Packed, or Cancelled."
+)
+
     paid = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # -------------------------------
+    # Validation
+    # -------------------------------
     
-    def __str__(self):
-        return f"Order {self.pk} by {self.account.participant.name}"
-    # Method to calculate the total price of the order
+    @property
+    def _order_utils(self):
+     return OrderUtils(self)
+
+    @staticmethod
+    def validate_items_static(items, participant, account):
+        """
+        Validate a list of OrderItemData for a given participant and account.
+        This is static so it can be used before the Order exists.
+        """
+        validate_order_items(items, participant, account)
+
+    def validate_items(self, items):
+        """
+        Instance-level wrapper to validate items for this order.
+        """
+        participant = getattr(self.account, "participant", None)
+        if not participant:
+            return
+        self.validate_items_static(items, participant, self.account)
+
+    def confirm(self):
+        return self._order_utils.confirm()
+
+    def cancel(self):
+        return self._order_utils.cancel()
+
+    def clone(self, status="pending"):
+        return self._order_utils.clone(status=status)
+
+    def edit(self):
+        return self._order_utils.edit()
+    @property
     def total_price(self):
-        if self.status_type == "cancelled":
-            return 0
-        items = self.items.all()
-        return sum((item.total_price() or 0) for item in items)
-    def used_voucher(self):
-        print(f"Applying vouchers for order {self.id}")
-        vouchers = list(Voucher.objects.filter(account=self.account, active=True).order_by('id')[:2])
-        print(f"Found {len(vouchers)} active vouchers for order {self.id}")
-        amount_needed = self.total_price()
-        print(f"Total price for order {self.id} is ${amount_needed:.2f}, applying vouchers...")
-
-        if not vouchers or amount_needed <= 0:
-            print("No active vouchers found or no amount needed.")
-            return False
-
-        used_any = False
-        for voucher in vouchers:
-            value = voucher.voucher_amnt()
-            if amount_needed <= 0:
-                break
-
-            applied_amount = min(value, amount_needed)
-            amount_needed -= applied_amount
-
-            voucher.active = False
-            note_type = "Fully" if applied_amount == value else "Partially"
-            voucher.notes = (voucher.notes or "") + f"{note_type} used on order {self.id} for ${applied_amount:.2f}; "
-            print(f"Marking voucher {voucher.id} as inactive, applied amount: ${applied_amount:.2f}, remaining amount needed: ${amount_needed:.2f}")
-            voucher.save()
-            used_any = True
-
-        return used_any
-
-    def calculate_hygiene_total(self, item_data_list):
+        return calculate_total_price(self)
+    
+    def use_voucher(self, max_vouchers: int = 2) -> bool:
         """
-        Accepts a list of dicts with 'product' and 'quantity',
-        like form.cleaned_data, to calculate hygiene subtotal.
+        Apply eligible grocery vouchers to this order and mark it as paid.
+        Delegates the logic to `voucher_utils.apply_vouchers`.
+
+        Args:
+            max_vouchers (int): Maximum number of vouchers to apply (default 2).
+
+        Returns:
+            bool: True if any voucher was applied, False otherwise.
         """
-        total = Decimal(0)
-        for data in item_data_list:
-            product = data.get("product")
-            quantity = data.get("quantity", 0)
-            if product and product.is_hygiene:
-                total += (product.price or Decimal(0)) * quantity
-        return total
-  
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-        used = False
-        if self.status_type == "Confirmed":
-            active_vouchers = Voucher.objects.filter(account=self.account, active=True)
-            if not active_vouchers.exists():
-                raise ValidationError("Cannot confirm order: no active vouchers available.")
-        if not self.paid and self.total_price() > 0:
-            used = self.used_voucher()
-        if used:
-            self.paid = True
-            super().save(update_fields=["paid"])
+        from . import voucher_utils  # lazy import to prevent circular import
+        return voucher_utils.apply_vouchers(self, max_vouchers=max_vouchers)
+
+    # -------------------------------
+    # Voucher / balance application
+    # -------------------------------
+    def apply_vouchers(self):
+        """
+        Apply vouchers and adjust account balances as needed.
+        """
+        # Example logic, adjust according to your existing `used_voucher` implementation
+        if hasattr(self, "used_voucher"):
+            self.used_voucher()  # existing method that handles voucher logic
+
+    # -------------------------------
+    # Print / context utilities
+    # -------------------------------
+    def print_context(self):
+        from .order_utils import get_order_print_context
+        return get_order_print_context(self)
 
 class OrderItem(models.Model):
     order = models.ForeignKey(
@@ -339,12 +407,6 @@ class OrderItem(models.Model):
             self.price = self.product.price
         super().save(*args, **kwargs)
 
-from collections import defaultdict
-from django.db import models
-from django.db.models import F
-from django.db.models.functions import ExtractYear, ExtractWeek
-from django.db.models.constraints import UniqueConstraint
-
 class CombinedOrder(models.Model):
     program = models.ForeignKey(
         'Program',
@@ -366,6 +428,7 @@ class CombinedOrder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     summarized_data = models.JSONField(default=dict, blank=True)
+    is_parent = models.BooleanField(default=False)
 
     def summarized_items_by_category(self):
         summary = defaultdict(lambda: defaultdict(int))
@@ -408,9 +471,9 @@ class OrderPacker(models.Model):
 
 #Class to represent voucher settings
 class VoucherSetting(models.Model):
-    adult_amount = models.PositiveIntegerField(default=40)
-    child_amount = models.PositiveIntegerField(default=25)
-    infant_modifier = models.DecimalField(max_digits=2, decimal_places=2)
+    adult_amount = models.DecimalField(max_digits=3, decimal_places=1, default=20, validators=[MinValueValidator(0)])
+    child_amount = models.DecimalField(max_digits=3, decimal_places=1, default=12.5,validators=[MinValueValidator(0)])
+    infant_modifier = models.DecimalField(max_digits=3, decimal_places=1, validators=[MinValueValidator(0)])
     active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -440,30 +503,71 @@ class Voucher(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     notes = models.TextField(blank=True, default=" ")
-   
+
+  # Inside your Voucher model
+
+    @property
+    def voucher_amnt(self) -> Decimal:
+        """
+        Compute the redeemable amount for this voucher.
+        Uses the refactored logic in voucher_utils.
+        """
+        return voucher_utils.calculate_voucher_amount(self)
+
     def __str__(self):
         return f"Voucher ({self.pk})"
-    # Calculate the voucher amount based on the number of adults and children
-    # If the participant has an infant, add the infant modifier to the total
-    @property
-    def adult_count(self):
-        return self.account.participant.adults
-    @property
-    def child_count(self):
-        return self.account.participant.children
-    @property
-    def diaper_modifier(self):
-        return self.account.participant.diaper_count
-    def voucher_amnt(self):
-        setting = VoucherSetting.objects.filter(active=True).first()
-        # Get the active voucher setting, if it exists
-        # If no active setting is found, return 0
-        if not setting:
-            return 0
-        if self.voucher_type == "Life":
-            return 0
-        elif self.diaper_modifier >= 0 and self.voucher_type == "Grocery":
-            return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount) + (setting.infant_modifier*self.diaper_modifier)
-        else: 
-            return (self.adult_count * setting.adult_amount) + (self.child_count * setting.child_amount)
   
+User = get_user_model()
+
+class EmailLog(models.Model):
+    EMAIL_TYPE_CHOICES = [
+        ("onboarding", "Onboarding"),
+        ("password_reset", "Password Reset"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    email_type = models.CharField(max_length=50, choices=EMAIL_TYPE_CHOICES)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    message_id = models.CharField(max_length=255, blank=True, null=True)  # optional Mailgun ID
+    status = models.CharField(max_length=50, default="sent")  # sent, delivered, failed, opened
+
+    class Meta:
+        unique_together = ("user", "email_type")  # prevents duplicate entries per type
+
+class VoucherLog(models.Model):
+    INFO = 'INFO'
+    WARNING = 'WARNING'
+    ERROR = 'ERROR'
+
+    LOG_TYPE_CHOICES = [
+        (INFO, 'Info'),
+        (WARNING, 'Warning'),
+        (ERROR, 'Error'),
+    ]
+
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, null=True, blank=True, related_name='voucher_logs')
+    voucher = models.ForeignKey('Voucher', on_delete=models.CASCADE, null=True, blank=True, related_name='logs')
+    participant = models.ForeignKey('Participant', on_delete=models.CASCADE, null=True, blank=True, related_name='voucher_logs')
+    message = models.TextField()
+    log_type = models.CharField(max_length=10, choices=LOG_TYPE_CHOICES, default=INFO)
+    balance_before = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        target = f"Voucher {self.voucher.id}" if self.voucher else f"Order {self.order.id}" if self.order else "General"
+        return f"{target} [{self.log_type}]: {self.message[:50]}"
+
+class OrderValidationLog(models.Model):
+    participant = models.ForeignKey("Participant", on_delete=models.CASCADE)
+    product = models.ForeignKey("Product", null=True, blank=True, on_delete=models.SET_NULL)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
+
+    def __str__(self):
+        return f"{self.created_at} — {self.participant}: {self.message}"
+

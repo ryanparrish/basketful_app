@@ -1,41 +1,33 @@
 # admin.py
-from django.contrib import admin
+from django.contrib import admin,messages
 from django.utils.safestring import mark_safe
 from .models import (
-    Product, Order, OrderItem, OrderPacker, Program, Participant,
-    LifeSkillsCoach, CombinedOrder, Voucher, AccountBalance,
-    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, UserProfile
+    Product, Order, OrderPacker, Program, Participant,
+    LifeSkillsCoach, CombinedOrder, Voucher,
+    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, EmailLog,UserProfile
 )
-import json
-from .forms import OrderItemInlineForm, OrderItemInlineFormSet,CustomUserCreationForm,ParticipantAdminForm
+from .forms import CustomUserCreationForm,ParticipantAdminForm
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from .models import CombinedOrder
 from django.contrib.auth.models import User
-from .validators import validate_order_items
-from .utils import set_random_password_for_user,generate_username_if_missing
 from django.contrib.auth import get_user_model
-from django.conf import settings
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
-from food_orders.tasks import send_new_user_onboarding_email
 from django.urls import path
 from django.shortcuts import render
-from .models import Order, Product, Voucher
 from .inlines import OrderItemInline
-import json
-from django.urls import path
-from .models import Order, Voucher
 from . import utils
 from django.http import HttpResponseRedirect
 from .tasks import create_weekly_combined_orders
+from .user_utils import _generate_admin_username
+from .inlines import VoucherLogInline
 
 User = get_user_model()
 try:
     admin.site.unregister(User)
 except admin.sites.NotRegistered:
     pass  # If not registered yet, ignore 
+
 @admin.register(User)
 class CustomUserAdmin(DefaultUserAdmin):
     add_form = CustomUserCreationForm
@@ -64,31 +56,35 @@ class CustomUserAdmin(DefaultUserAdmin):
         Show additional fields if the user is staff.
         """
         if obj is None:
-            # Add form
             return self.add_fieldsets
 
-        # Edit form
         fieldsets = list(self.base_fieldsets)
-
         if obj.is_staff:
             fieldsets += list(self.staff_extra_fieldsets)
-
         return fieldsets
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
             kwargs['form'] = self.add_form
         return super().get_form(request, obj, **kwargs)
-
     def save_model(self, request, obj, form, change):
         is_new = obj.pk is None
+
         if is_new:
-            generate_username_if_missing(obj)
-            set_random_password_for_user(obj)
+            # Generate a username based on first+last name
+            base_name = f"{obj.first_name}_{obj.last_name}".strip() or "user"
+            for candidate in _generate_admin_username(base_name):
+                if not User.objects.filter(username=candidate).exists():
+                    obj.username = candidate
+                    break
+
         super().save_model(request, obj, form, change)
+
         if is_new:
-            UserProfile.objects.get_or_create(user=obj)
-            send_new_user_onboarding_email.delay(user_id=obj.id)
+            # Ensure profile exists and set must_change_password
+            profile, _ = UserProfile.objects.get_or_create(user=obj)
+            profile.must_change_password = True
+            profile.save(update_fields=["must_change_password"])
 
 class SubcategoryInline(admin.StackedInline):
     model = Subcategory
@@ -98,36 +94,13 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ('name',)
     inlines = [SubcategoryInline]
 
-# --- Inline Admin ---
-
-class OrderItemInline(admin.TabularInline):
-    model = OrderItem
-    form = OrderItemInlineForm
-    formset = OrderItemInlineFormSet
-    extra = 1
-    fields = ('product', 'quantity', 'price')
-    readonly_fields = ('price',)
-
-    class Media:
-        js = ('food_orders/js/orderitem_inline.js',)
-    def get_formset(self, request, obj=None, **kwargs):
-        formset = super().get_formset(request, obj, **kwargs)
-        products = Product.objects.all().values('id', 'price')
-        product_json = json.dumps({str(p['id']): float(p['price']) for p in products})
-        formset.product_json = product_json  # no mark_safe
-        return formset
-    def clean(self):
-        super().clean()
-        participant = getattr(self.instance.account, 'participant', None)
-        account_balance = self.instance.account
-        validate_order_items(self.forms, participant, account_balance)
-
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'updated_at', 'total_price', 'paid')
     readonly_fields = ('paid',)
     inlines = [OrderItemInline]
     change_form_template = "admin/food_orders/order/change_form.html"
+    exclude = ('user',)
 
     class Media:
         js = ('food_orders/js/orderitem_inline.js',)
@@ -186,53 +159,60 @@ class ProductAdmin(admin.ModelAdmin):
 @admin.register(Participant)
 class ParticipantAdmin(admin.ModelAdmin):
     form = ParticipantAdminForm
-    list_display = ('name', 'voucher_balance_display', 'hygiene_balance_display')
-    readonly_fields = ('voucher_balance_display', 'hygiene_balance_display')
+    list_display = (
+        'name',
+        'full_balance_display',
+        'available_balance_display',
+        'hygiene_balance_display',
+    )
+    readonly_fields = (
+        'full_balance_display',
+        'available_balance_display',
+        'hygiene_balance_display',
+    )
 
-    def get_balance_display(self, obj, attr):
-        try:
-            balance = getattr(obj.accountbalance, attr)
-            if balance and balance != 0:
-                return f"${balance:.2f}"
-            return "No Balance"
-        except AccountBalance.DoesNotExist:
-            return "No Balance"
+    def full_balance_display(self, obj):
+        balance = obj.balances().get('full_balance', 0)
+        return f"${balance:.2f}" if balance else "No Balance"
+    full_balance_display.short_description = "Full Balance"
 
-    def voucher_balance_display(self, obj):
-        return self.get_balance_display(obj, 'voucher_balance')
-    voucher_balance_display.short_description = "Voucher Balance"
+    def available_balance_display(self, obj):
+        balance = obj.balances().get('available_balance', 0)
+        return f"${balance:.2f}" if balance else "No Balance"
+    available_balance_display.short_description = "Available Balance"
 
     def hygiene_balance_display(self, obj):
-        return self.get_balance_display(obj, 'hygiene_balance')
+        balance = obj.balances().get('hygiene_balance', 0)
+        return f"${balance:.2f}" if balance else "No Balance"
     hygiene_balance_display.short_description = "Hygiene Balance"
 
-    def save_model(self, request, obj, form, change):
-        is_new = obj.pk is None
-        create_user = form.cleaned_data.get("create_user", False)
-
-        if is_new and create_user:
-            # Only create a User if one doesn't exist
-            if not obj.user:
-                username = generate_username_if_missing(obj)
-                password = set_random_password_for_user(obj)
-
-                user = User.objects.create_user(username=username, password=password, email=obj.email)
-                obj.user = user
-
-        super().save_model(request, obj, form, change)
-
-
-        if is_new and obj.user:
-             # Send onboarding email via Celery
-            send_new_user_onboarding_email.delay(user_id=obj.user.id)
-
-        # Ensure UserProfile exists
-        UserProfile.objects.get_or_create(user=obj.user)
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
     list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'active')
     readonly_fields = ('voucher_amnt', 'notes')  # or just 'amount' if you're using that as the field name
+    inlines= [VoucherLogInline]
+
+@admin.register(EmailLog)
+class EmailLogAdmin(admin.ModelAdmin):
+    # Fields to display in the list view
+    list_display = ('id', 'user', 'status', 'sent_at','email_type')
+
+    # Fields that are read-only in the change form
+    readonly_fields = ('user', 'email_type', 'status', 'sent_at')
+
+    # Make searchable by these fields
+    search_fields = ('user','email_type','sent_at')
+
+    # Add filters in the right-hand sidebar
+    list_filter = ('status', 'user','email_type')
+
+    # Disable add and delete
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(CombinedOrder)
 class CombinedOrderAdmin(admin.ModelAdmin):
@@ -256,59 +236,35 @@ class CombinedOrderAdmin(admin.ModelAdmin):
         create_weekly_combined_orders.delay()  # run asynchronously
         self.message_user(request, "Weekly combined orders task has been triggered!")
         return HttpResponseRedirect("../")
-
+    
     def download_combined_order_pdf(self, request, queryset):
         if queryset.count() != 1:
             self.message_user(request, "Please select exactly one combined order to download.", level='error')
             return
-
         combined_order = queryset.first()
-
-        # Create the HttpResponse object with PDF headers.
-        response = HttpResponse(content_type='application/pdf')
+        pdf_buffer = utils.generate_combined_order_pdf(combined_order)
+        response = HttpResponse(pdf_buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="combined_order_{combined_order.id}.pdf"'
-
-        # Create the PDF object, using the response as its "file."
-        p = canvas.Canvas(response, pagesize=letter)
-        width, height = letter
-
-        # Start drawing
-        y = height - 50
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(50, y, f"Combined Order #{combined_order.id}")
-        y -= 20
-
-        p.setFont("Helvetica", 12)
-        p.drawString(50, y, f"Packed By: {combined_order.packed_by}")
-        y -= 20
-        p.drawString(50, y, f"Created At: {combined_order.created_at.strftime('%Y-%m-%d %H:%M')}")
-        y -= 30
-
-        summary = combined_order.summarized_items_by_category()
-
-        for category, products in summary.items():
-            p.setFont("Helvetica-Bold", 14)
-            p.drawString(50, y, f"{category}")
-            y -= 20
-
-            p.setFont("Helvetica", 12)
-            for product, qty in products.items():
-                p.drawString(70, y, f"{product}: {qty}")
-                y -= 15
-
-                if y < 100:
-                    p.showPage()
-                    y = height - 50
-
-            y -= 10
-
-        p.showPage()
-        p.save()
         return response
 
-    download_combined_order_pdf.short_description = "Download selected Combined Order as PDF"
+@admin.register(ProgramPause)
+class ProgramPauseAdmin(admin.ModelAdmin):
+    list_display = ("reason", "start_date", "end_date", "is_active_gate")
 
-admin.site.register(ProgramPause)
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context)
+
+        all_pauses = ProgramPause.objects.all()
+        active_pauses = [p for p in all_pauses if p.is_active_gate]
+        if active_pauses:
+            self.message_user(
+                request,
+                f"{active_pauses[0].reason} — This Pause Is Active",
+                level=messages.INFO
+            )
+
+        return response
+
 admin.site.register(VoucherSetting)
 admin.site.register(OrderPacker)
 admin.site.register(Program)
