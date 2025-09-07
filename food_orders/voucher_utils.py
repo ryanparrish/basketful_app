@@ -67,3 +67,64 @@ def calculate_voucher_amount(voucher, limit: int = 2) -> Decimal:
 
     # Standard base_balance for vouchers beyond the first `limit`
     return base_balance
+import logging
+from decimal import Decimal
+
+logger = logging.getLogger(__name__)
+
+def apply_vouchers(order, max_vouchers: int = 2) -> bool:
+    """
+    Apply eligible grocery vouchers to the given order according to business rules:
+      - No partial usage of vouchers.
+      - If order total <= first voucher, mark the first voucher inactive.
+      - If order total >= sum of first two active vouchers, mark both first two inactive.
+      - If order total > first voucher and < sum of first two vouchers, mark both first two inactive.
+    Returns True if any voucher was marked inactive (i.e., applied).
+    """
+    # Get first `max_vouchers` active grocery vouchers for this account
+    vouchers = list(
+        order.account.vouchers.filter(voucher_type__iexact="grocery", active=True)
+        .order_by("id")[:max_vouchers]
+    )
+
+    if not vouchers:
+        return False  # No vouchers available
+
+    applied = False
+    total_price = order.total_price
+
+    if len(vouchers) == 1:
+        # Only one voucher available
+        if total_price <= vouchers[0].voucher_amnt:
+            vouchers[0].active = False
+            vouchers[0].save(update_fields=["active"])
+            applied = True
+    elif len(vouchers) >= 2:
+        first, second = vouchers[0], vouchers[1]
+        first_amount = first.voucher_amnt
+        second_amount = second.voucher_amnt
+        combined = first_amount + second_amount
+
+        if total_price <= first_amount:
+            first.active = False
+            first.save(update_fields=["active"])
+            applied = True
+        elif total_price >= combined:
+            first.active = False
+            second.active = False
+            first.save(update_fields=["active"])
+            second.save(update_fields=["active"])
+            applied = True
+        elif first_amount < total_price < combined:
+            first.active = False
+            second.active = False
+            first.save(update_fields=["active"])
+            second.save(update_fields=["active"])
+            applied = True
+
+    if applied:
+        order.paid = True
+        # Avoid recursion if `save` triggers voucher logic
+        order.save(update_fields=["paid"], skip_voucher=True)
+
+    return applied

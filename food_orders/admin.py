@@ -4,7 +4,7 @@ from django.utils.safestring import mark_safe
 from .models import (
     Product, Order, OrderPacker, Program, Participant,
     LifeSkillsCoach, CombinedOrder, Voucher,
-    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, EmailLog,UserProfile
+    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, EmailLog,UserProfile, OrderValidationLog
 )
 from .forms import CustomUserCreationForm,ParticipantAdminForm
 from django.core.exceptions import ValidationError
@@ -293,3 +293,5 @@ admin.site.register(OrderPacker)
 admin.site.register(Program)
 admin.site.register(LifeSkillsCoach)
 admin.site.register(ProductManager)
+admin.site.register(OrderValidationLog)
+

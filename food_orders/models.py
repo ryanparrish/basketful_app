@@ -18,6 +18,8 @@ from django.db.models.functions import ExtractWeek, ExtractYear
 from . import balance_utils, voucher_utils
 from .order_utils import calculate_total_price, OrderUtils
 from .queryset import program_pause_annotations
+from .voucher_utils import apply_vouchers
+from .order_utils import OrderUtils, get_order_print_context
 
 
 class UserProfile(models.Model):
@@ -258,7 +260,7 @@ class Participant(models.Model):
 class AccountBalance(models.Model):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True)
-    base_balance = models.DecimalField(max_digits=3,decimal_places=1,default=0, validators=[MinValueValidator(0)])
+    base_balance = models.DecimalField(max_digits=4,decimal_places=1,default=0, validators=[MinValueValidator(0)])
 
    # Assuming this is inside your AccountBalance model
 
@@ -280,53 +282,56 @@ class AccountBalance(models.Model):
     def __str__(self) -> str:
         return getattr(self.participant, "name", str(self.pk))
 
-# Class to represent an Order
+
 class Order(models.Model):
     user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
-    account = models.ForeignKey(AccountBalance, on_delete=models.PROTECT, related_name='orders')   
+    account = models.ForeignKey("AccountBalance", on_delete=models.PROTECT, related_name='orders')
     order_date = models.DateTimeField(auto_now_add=True)
     status_type = models.CharField(
-    max_length=20,
-    choices=[
-        ('pending', 'Pending'),
-        ('confirmed', 'Confirmed'),
-        ('packing', 'Packing'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
-    ],
-    default='pending',
-    null=False,
-    help_text="The current status of the order. Options are: Pending New-Unpaid, Confirmed Paid , Packing, Complete Packed, or Cancelled."
-)
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('confirmed', 'Confirmed'),
+            ('packing', 'Packing'),
+            ('completed', 'Completed'),
+            ('cancelled', 'Cancelled'),
+        ],
+        default='pending',
+        null=False,
+        help_text="The current status of the order. Options are: Pending New-Unpaid, Confirmed Paid, Packing, Complete Packed, or Cancelled."
+    )
 
     paid = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # -------------------------------
+    # Utility properties
+    # -------------------------------
+    @property
+    def _order_utils(self):
+        return OrderUtils(self)
+
+    @property
+    def total_price(self) -> Decimal:
+        return calculate_total_price(self)
+
     # -------------------------------
     # Validation
     # -------------------------------
-    
-    @property
-    def _order_utils(self):
-     return OrderUtils(self)
-
     @staticmethod
     def validate_items_static(items, participant, account):
-        """
-        Validate a list of OrderItemData for a given participant and account.
-        This is static so it can be used before the Order exists.
-        """
+        """Validate a list of OrderItemData for a participant and account."""
         validate_order_items(items, participant, account)
 
     def validate_items(self, items):
-        """
-        Instance-level wrapper to validate items for this order.
-        """
         participant = getattr(self.account, "participant", None)
-        if not participant:
-            return
-        self.validate_items_static(items, participant, self.account)
+        if participant:
+            self.validate_items_static(items, participant, self.account)
 
+    # -------------------------------
+    # Order actions
+    # -------------------------------
     def confirm(self):
         return self._order_utils.confirm()
 
@@ -338,41 +343,55 @@ class Order(models.Model):
 
     def edit(self):
         return self._order_utils.edit()
-    @property
-    def total_price(self):
-        return calculate_total_price(self)
-    
+
+    # -------------------------------
+    # Voucher logic
+    # -------------------------------
     def use_voucher(self, max_vouchers: int = 2) -> bool:
         """
-        Apply eligible grocery vouchers to this order and mark it as paid.
-        Delegates the logic to `voucher_utils.apply_vouchers`.
-
-        Args:
-            max_vouchers (int): Maximum number of vouchers to apply (default 2).
-
-        Returns:
-            bool: True if any voucher was applied, False otherwise.
+        Apply eligible grocery vouchers to this order and mark as paid.
+        Returns True if any voucher was applied, False otherwise.
         """
-        from . import voucher_utils  # lazy import to prevent circular import
+        from . import voucher_utils
         return voucher_utils.apply_vouchers(self, max_vouchers=max_vouchers)
 
     # -------------------------------
-    # Voucher / balance application
+    # Override save to apply vouchers when confirmed
     # -------------------------------
-    def apply_vouchers(self):
-        """
-        Apply vouchers and adjust account balances as needed.
-        """
-        # Example logic, adjust according to your existing `used_voucher` implementation
-        if hasattr(self, "used_voucher"):
-            self.used_voucher()  # existing method that handles voucher logic
+    def save(self, *args, **kwargs):
+        # Custom kwarg to prevent recursion when apply_vouchers calls save()
+        skip_voucher = kwargs.pop("skip_voucher", False)
+
+        is_new = self.pk is None
+        prev_status = None
+
+        if not is_new:
+            prev_status = (
+                Order.objects.filter(pk=self.pk)
+                .values_list("status_type", flat=True)
+                .first()
+            )
+
+        super().save(*args, **kwargs)  # normal save
+
+        # Only apply vouchers if:
+        # - not skipping
+        # - status is confirmed
+        # - this is a new order OR status just changed to confirmed
+        if not skip_voucher:
+            if self.status_type == "confirmed" and (is_new or prev_status != "confirmed"):
+                applied = self.use_voucher()
+                if applied and not self.paid:
+                    # Ensure paid is persisted
+                    self.paid = True
+                    super().save(update_fields=["paid"])
 
     # -------------------------------
     # Print / context utilities
     # -------------------------------
     def print_context(self):
-        from .order_utils import get_order_print_context
         return get_order_print_context(self)
+
 
 class OrderItem(models.Model):
     order = models.ForeignKey(

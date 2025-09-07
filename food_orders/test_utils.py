@@ -23,9 +23,10 @@ if not test_logger.handlers:
 # ============================================================
 _logged_once = False  # module-level flag
 
-def log_vouchers_for_account(account, context: str = ""):
+def log_vouchers_for_account(account, context: str = "", order=None):
     """
     Logs all vouchers for a given account, including active/inactive state and totals.
+    If an order is provided, logs order totals (including _test_price override).
     Can be reused across multiple test classes.
     """
     global _logged_once
@@ -37,7 +38,22 @@ def log_vouchers_for_account(account, context: str = ""):
     active_vouchers = [v for v in vouchers if v.active]
     inactive_vouchers = [v for v in vouchers if not v.active]
 
-    test_logger.info(f"\n--- Voucher log: {context} ---\n")
+    test_logger.info(f"\n--- Voucher log: {context} ---")
+
+    # Add order details if provided
+    if order is not None:
+        total_price = getattr(order, "_test_price", None)
+        if total_price is None:
+            try:
+                total_price = order.total_price
+            except Exception:
+                total_price = "N/A"
+        test_logger.info(
+            f"Order ID: {getattr(order, 'id', 'unsaved')}, "
+            f"Total Price={total_price}"
+        )
+
+    # Log each voucher
     for v in vouchers:
         test_logger.info(
             f"Voucher ID: {v.id}, Type: {v.voucher_type}, "
@@ -46,9 +62,9 @@ def log_vouchers_for_account(account, context: str = ""):
 
     total_balance = sum(v.voucher_amnt for v in active_vouchers)
     test_logger.info(
-        f"\nSummary: Active={len(active_vouchers)}, "
+        f"Summary: Active={len(active_vouchers)}, "
         f"Inactive={len(inactive_vouchers)}, "
-        f"Total Active Balance={total_balance}"
+        f"Total Active Balance={total_balance}\n"
     )
 
     # Return for assertions if needed
@@ -57,6 +73,7 @@ def log_vouchers_for_account(account, context: str = ""):
         "inactive": inactive_vouchers,
         "total_balance": total_balance,
     }
+
 
 # ============================================================
 # Base Test Data Mixin
