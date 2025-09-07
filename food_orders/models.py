@@ -13,6 +13,7 @@ from django.db.models import (
     F, UniqueConstraint
 )
 from django.db.models.functions import ExtractWeek, ExtractYear
+from django.utils.timezone import now
 
 # Local app imports
 from . import balance_utils, voucher_utils
@@ -20,6 +21,7 @@ from .order_utils import calculate_total_price, OrderUtils
 from .queryset import program_pause_annotations
 from .voucher_utils import apply_vouchers
 from .order_utils import OrderUtils, get_order_print_context
+
 
 
 class UserProfile(models.Model):
@@ -134,12 +136,41 @@ class ProgramPause(models.Model):
     reason = models.CharField(max_length=45, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     objects = ProgramPauseQuerySet.as_manager()
+    
+    # -------------------------------
+    # Core pause calculation
+    # -------------------------------
+    def _calculate_pause_status(self) -> tuple[int, str]:
+        """
+        Determine pause multiplier and message based on start date and duration.
 
-    # -------------------------------
-    # Validation
-    # -------------------------------
+        Rules:
+            - Only orders placed 14–11 days before pause start are affected
+            - Short pause (<14 days) → multiplier 2
+            - Extended pause (>=14 days) → multiplier 3
+            - Orders outside this window → multiplier 1
+        """
+        today = now().date()
+        days_until_start = (self.start_date - today).days
+        duration = (self.end_date - self.start_date).days + 1
+
+        if 11 <= days_until_start <= 14:
+            if duration >= 14:
+                return 3, f"{self.reason or 'Unnamed'} Extended pause affecting this order (duration {duration} days)"
+            elif duration >= 1:
+                return 2, f"{self.reason or 'Unnamed'} Short pause affecting this order (duration {duration} days)"
+
+        return 1, f"{self.reason or 'Unnamed'} not affecting this order"
+    @property
+    def multiplier(self) -> int:
+        multiplier, _ = self._calculate_pause_status()
+        return multiplier
+
+    @property
+    def is_active_gate(self) -> bool:
+        """Pause is active if the modifier is greater than 1."""
+        return self.multiplier > 1
     def clean(self):
         super().clean()
 

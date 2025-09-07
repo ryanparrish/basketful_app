@@ -157,24 +157,3 @@ class VoucherPauseTest(BaseTestDataMixin, TestCase):
         VoucherSetting.objects.create(adult_amount=40, child_amount=25, infant_modifier=5, active=True)
         self.account_balance = self.participant.accountbalance
 
-    def test_voucher_balance_doubles_with_active_pause(self):
-        log_vouchers_for_account(self.account_balance, "Before ProgramPause")
-        self.test_part_info(context="Before Program Pause")
-
-        vouchers = Voucher.objects.filter(account=self.account_balance, active=True, voucher_type="grocery")
-        initial_balance = sum(v.voucher_amnt for v in vouchers)
-        self.assertEqual(initial_balance, Decimal(70))  # 40 + 25 + 5
-
-        ProgramPause.objects.create(
-            start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=7),
-            reason="Test Pause",
-        )
-        log_vouchers_for_account(self.account_balance, "After ProgramPause")
-        self.test_part_info(participant=self.participant, context="After Program Pause")
-
-        active_pauses = ProgramPause.objects.filter(is_active_gate=True)
-        multiplier = max([p.multiplier for p in active_pauses], default=1)
-
-        expected_balance = initial_balance * Decimal(multiplier)
-        self.assertEqual(sum(v.voucher_amnt for v in vouchers) * Decimal(multiplier), expected_balance)

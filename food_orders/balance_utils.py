@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 
+
 def calculate_base_balance(participant) -> Decimal:
     """
     Calculate the base balance for a participant based on the active VoucherSetting.
@@ -26,25 +27,50 @@ def calculate_base_balance(participant) -> Decimal:
     )
 
 
+from decimal import Decimal
+from django.utils.timezone import now
+
 def calculate_available_balance(account_balance, limit: int = 2) -> Decimal:
     """
-    Compute the available voucher balance for an account.
+    Compute the available grocery voucher balance for an account.
     - Sums up to `limit` active grocery vouchers.
-    - Uses the Voucher model's `voucher_amnt` property.
+    - Each voucher's amount is multiplied by the applicable ProgramPause multiplier.
     """
     if not account_balance:
         return Decimal(0)
 
-    # Lazy import to avoid circular dependency
-    from .models import Voucher
+    # Lazy imports to avoid circular dependencies
+    from .models import Voucher, ProgramPause
 
+    # Get up to `limit` active grocery vouchers
     vouchers = account_balance.vouchers.filter(
         active=True,
         voucher_type="grocery"
     ).order_by("created_at")[:limit]
 
-    return sum(v.voucher_amnt for v in vouchers)
+    total_balance = Decimal(0)
+    today = now().date()
 
+    # Get all active program pauses
+    active_pauses = ProgramPause.objects.active()
+
+    for voucher in vouchers:
+        # Determine multiplier for this voucher
+        multiplier = 1
+        for pause in active_pauses:
+            # Check if voucher creation date falls into the pause's relevant window
+            days_until_start = (pause.start_date - voucher.created_at.date()).days
+            duration = (pause.end_date - pause.start_date).days + 1
+
+            if 11 <= days_until_start <= 14:
+                if duration >= 14:
+                    multiplier = max(multiplier, 3)  # extended pause
+                elif duration >= 1:
+                    multiplier = max(multiplier, 2)  # short pause
+
+        total_balance += voucher.voucher_amnt * multiplier
+
+    return total_balance
 
 def calculate_full_balance(account_balance) -> Decimal:
     """
