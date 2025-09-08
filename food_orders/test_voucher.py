@@ -100,10 +100,53 @@ class VoucherAmountTest(BaseTestDataMixin, TestCase):
         self.assertFalse(grocery_vouchers[1].active, "Second grocery voucher should be inactive")
         self.assertTrue(order.paid)
     
-    def test_use_only_one_voucher(self):
+    def test_use_only_one_voucher_order_less_than_one_voucher(self):
+
+        log_vouchers_for_account(
+            self.account,
+            context="test_use_only_one_voucher_order_less_than_one_voucher: Before order confirmation",
+           
+        )
         order = self.create_order(self.account, status_type="confirmed")
-        order._test_price = 50
+        order._test_price = 100
         order.save()
+
+        log_vouchers_for_account(
+            self.account,
+            context="test_use_only_one_voucher_order_less_than_one_voucher: After order confirmation",
+            order=order,
+        )
+
+        grocery_vouchers = list(
+            Voucher.objects.filter(account=self.account, voucher_type__iexact="grocery")
+        )
+        self.assertGreaterEqual(len(grocery_vouchers), 2, "Need at least 2 grocery vouchers")
+
+        for v in grocery_vouchers:
+            v.refresh_from_db()
+
+        inactive = [v for v in grocery_vouchers if not v.active]
+        active = [v for v in grocery_vouchers if v.active]
+
+        self.assertEqual(len(inactive), 1, "Expected exactly one voucher to be used")
+        self.assertGreaterEqual(len(active), 1, "Expected at least one voucher to remain active")
+    
+    def test_use_only_one_voucher_order_same_as_one_voucher(self):
+
+        log_vouchers_for_account(
+            self.account,
+            context="test_use_only_one_voucher_order_same_as_one_voucher: Before order confirmation",
+           
+        )
+        order = self.create_order(self.account, status_type="confirmed")
+        order._test_price = 155
+        order.save()
+
+        log_vouchers_for_account(
+            self.account,
+            context="test_use_only_one_voucher_order_same_as_one_voucher: After order confirmation",
+            order=order,
+        )
 
         grocery_vouchers = list(
             Voucher.objects.filter(account=self.account, voucher_type__iexact="grocery")

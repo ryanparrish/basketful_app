@@ -560,7 +560,11 @@ class Voucher(models.Model):
         Uses the refactored logic in voucher_utils.
         """
         return voucher_utils.calculate_voucher_amount(self)
-
+    
+    @property
+    def pause_is_active(self) ->bool:
+        return False
+    
     def __str__(self):
         return f"Voucher ({self.pk})"
   

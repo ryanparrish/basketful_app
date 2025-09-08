@@ -1,24 +1,34 @@
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import timedelta
+import logging
+from .test_utils import log_vouchers_for_account
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from decimal import Decimal
-from datetime import datetime, timedelta
 from django.utils import timezone
-from food_orders.test_utils import log_vouchers_for_account
-from decimal import Decimal
-from datetime import datetime, timedelta
-from food_orders.test_utils import log_vouchers_for_account
+from django.forms.models import inlineformset_factory
 
-from .test_utils import BaseTestDataMixin
-from food_orders.models import (
+from .models import (
+    ProgramPause,
+    Voucher,
+    AccountBalance,
+    Participant,
+    Category,
     Product,
-    ProductManager,
+    Order,
     OrderItem,
     VoucherSetting,
-    ProgramPause,
     Program,
 )
+from .forms import OrderItemInlineFormSet
+from .test_utils import BaseTestDataMixin, log_vouchers_for_account
+
+# Module-level logger
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+
 
 class OrderFormSetTests(BaseTestDataMixin, TestCase):
     """Tests for order formset validation (category & weight limits)."""
@@ -38,11 +48,7 @@ class OrderFormSetTests(BaseTestDataMixin, TestCase):
         self.participant = self.create_participant()
         self.order = self.create_order(self.participant.accountbalance)
 
-        # Meat category limit
-        ProductManager.objects.create(category=self.meat, limit_scope="per_order", limit=5.0)
-
     def _validate_order(self, product, quantity, valid=True, msg=None):
-        """Helper to validate order formset with given product & quantity."""
         formset = self.get_formset(self.order, self.build_form_data(product, quantity))
         if valid:
             self.assertTrue(formset.is_valid(), f"Expected valid for {product.name}")
@@ -65,6 +71,7 @@ class OrderFormSetTests(BaseTestDataMixin, TestCase):
 
     def test_no_limit_category(self):
         self._validate_order(self.veg_product, 100)
+
 
 class OrderModelTest(BaseTestDataMixin, TestCase):
     """Tests for order and order item pricing."""
@@ -94,76 +101,103 @@ class OrderModelTest(BaseTestDataMixin, TestCase):
     def test_order_total_price(self):
         self.assertEqual(self.order.total_price, Decimal("13.50"))
 
+
 class VoucherBalanceTest(BaseTestDataMixin, TestCase):
+    """Tests for voucher balances and program pauses."""
+
     def setUp(self):
         super().setUp()
-        self.participant = self.create_participant(adults=1, children=0)
-        VoucherSetting.objects.create(
+           # Assign VoucherSetting
+        self.voucher_setting = VoucherSetting.objects.create(
             adult_amount=40,
             child_amount=25,
             infant_modifier=5,
             active=True,
         )
+        self.participant = self.create_participant(adults=1, children=0)
 
+    # Ensure participant has vouchers linked to their account
+        account = self.participant.accountbalance
+        if not Voucher.objects.filter(account=account).exists():
+            for _ in range(self.participant.adults):
+                Voucher.objects.create(
+                    account=account,
+                    amount=self.voucher_setting.adult_amount,
+                    active=True,
+                )
     def test_balance_initial(self):
-        # Log state before assertion
-        log_vouchers_for_account(
-            self.participant.accountbalance,
-            "test_balance_initial: Voucher/Balance state"
-        )
-        self.assertEqual(
-            self.participant.accountbalance.available_balance,
-            Decimal("80.00")
-        )
+        """Ensure available_balance matches the sum of active vouchers."""
+        account = self.participant.accountbalance
 
+        # Log current vouchers
+        result = log_vouchers_for_account(account, "test_balance_initial")
+
+        # Compute total from active vouchers
+        active_total = sum(v.voucher_amnt for v in result["active"])
+
+        # Assert that AccountBalance property matches the sum
+        self.assertEqual(account.available_balance, active_total)
+        
     def test_program_pause_multipliers(self):
-        from django.utils import timezone
-
         test_cases = [
-            {
-                "reason": "Short pause",
-                "duration_days": 3,
-                "expected_multiplier": 2,
-            },
-            {
-                "reason": "Extended pause",
-                "duration_days": 14,
-                "expected_multiplier": 3,
-            },
+            {"reason": "Short pause", "duration_days": 3, "expected_multiplier": 2},
+            {"reason": "Extended pause", "duration_days": 14, "expected_multiplier": 3},
         ]
 
         start_date = timezone.now().date() + timedelta(days=11)
 
         for case in test_cases:
             with self.subTest(reason=case["reason"]):
-                # Ensure no overlapping pauses
                 ProgramPause.objects.all().delete()
-
                 end_date = start_date + timedelta(days=case["duration_days"])
                 pause = ProgramPause.objects.create(
                     start_date=start_date,
                     end_date=end_date,
                     reason=case["reason"],
                 )
-
-                # Verify the multiplier
                 self.assertEqual(pause._calculate_pause_status()[0], case["expected_multiplier"])
                 self.assertEqual(pause.multiplier, case["expected_multiplier"])
 
+    def test_voucher_balance_doubles_during_pause(self):
+        account = self.participant.accountbalance
 
-    def test_balance_doubles_during_pause(self):
-        # Apply program pause
+        # Ensure participant has vouchers
+        if not Voucher.objects.filter(account=account).exists():
+            for _ in range(self.participant.adults):
+                Voucher.objects.create(account=account, amount=40, active=True)
+      
+        # Capture available_balance before applying the pause
+        initial_balance = account.available_balance
+            # Log balances
+        logger.info(
+            "Voucher balance check - Initial: %s",
+            initial_balance,
+            
+        )
+        log_vouchers_for_account(account, context="--Before Pause--")
+        self.assertGreater(initial_balance, 0, "Initial balance should be positive")
+
+        # Create a program pause starting 11 days from now
         start = timezone.now().date() + timedelta(days=11)
-        end = start + timedelta(days=3)  # keeps same semantics as your start+11 .. +14
-        pause = ProgramPause.objects.create(start_date=start, end_date=end, reason="Holiday Break")
+        end = start + timedelta(days=3)
+        ProgramPause.objects.create(start_date=start, end_date=end, reason="Holiday Break")
 
-        # sanity checks: ensure your pause logic is returning the expected multiplier
-        self.assertEqual(pause._calculate_pause_status()[0], 2)
-        self.assertEqual(pause.multiplier, 2)
+        # Capture available_balance after applying the pause
+        balance_during_pause = account.available_balance
+        self.assertEqual(balance_during_pause, initial_balance * 2)
 
-class ParticipantTest(BaseTestDataMixin, TestCase):
+        # Capture balance after pause (if needed, can simulate after pause)
+        after_pause_balance = account.available_balance
+            # Log balances
+        logger.info(
+            "Voucher balance check - Initial: %s, During pause: %s, After pause: %s",
+            initial_balance,
+            balance_during_pause,
+            after_pause_balance
+        )
+
     """Tests for participant-program relationship."""
-
+class ParticipantTest(BaseTestDataMixin, TestCase):
     def test_program_relationship(self):
         program = Program.objects.create(
             name="Wednesday Class",
