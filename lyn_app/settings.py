@@ -34,11 +34,12 @@ DOMAIN_NAME =env('DOMAIN_NAME')
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=True)
-import sys
-import environ
 
-env = environ.Env()
-environ.Env.read_env()  # read .env file
+CELERY_TASK_ALWAYS_EAGER = env("CELERY_TASK_ALWAYS_EAGER")
+CELERY_TASK_EAGER_PROPAGATES = env("CELERY_TASK_EAGER_PROPAGATES")
+
+
+environ.Env.read_env()  # reads from .env
 
 # Set defaults based on environment
 if ENVIRONMENT == 'prod':

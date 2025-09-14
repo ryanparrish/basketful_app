@@ -23,22 +23,58 @@ def calculate_base_balance(participant) -> Decimal:
         Decimal(children) * Decimal(setting.child_amount) +
         Decimal(diaper_count) * Decimal(setting.infant_modifier)
     )
+from decimal import Decimal
+from django.utils import timezone
 
-def calculate_available_balance(account_balance, limit: int = 2) -> Decimal:
+def calculate_available_balance(account_balance, limit=2):
     """
     Compute the available grocery voucher balance for an account.
-    - Sums up to `limit` active grocery vouchers.
+
+    Rules:
+      - Sums up to `limit` active grocery vouchers.
+      - Uses each voucher's multiplier.
+      - If a ProgramPause is currently active, only include vouchers with program_pause_flag=True.
     """
     if not account_balance:
         return Decimal(0)
 
-    vouchers = account_balance.vouchers.filter(
+    from . import models
+
+    now = timezone.now()
+
+    # Global active ProgramPauses
+    active_pauses = models.ProgramPause.objects.filter(
+        pause_start__lte=now,
+        pause_end__gte=now
+    )
+
+    # Dynamic gate check
+    gate_active = any(getattr(pp, "is_active_gate", False) for pp in active_pauses)
+
+    # Base queryset: active grocery vouchers
+    vouchers_qs = account_balance.vouchers.filter(
         active=True,
         voucher_type="grocery"
-    ).order_by("created_at")[:limit]
+    ).order_by("created_at")
 
-    return sum(v.voucher_amnt for v in vouchers)
+    # Convert to list for Python-level filtering
+    vouchers = list(vouchers_qs)
 
+    # Only include vouchers flagged for pause if gate is active
+    if gate_active:
+        vouchers = [v for v in vouchers if getattr(v, "program_pause_flag", False)]
+
+    # Apply limit **after filtering**
+    vouchers = vouchers[:limit]
+
+    # Compute total balance using voucher amount * multiplier
+    total_balance = sum(
+        (getattr(v, "voucher_amnt", Decimal(0)) or Decimal(0)) *
+        (getattr(v, "multiplier", Decimal(1)) or Decimal(1))
+        for v in vouchers
+    )
+
+    return total_balance
 
 
 def calculate_full_balance(account_balance) -> Decimal:

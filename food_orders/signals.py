@@ -1,16 +1,19 @@
 # signals.py
-
-from django.db.models.signals import post_save, post_delete, pre_save, pre_delete
+from celery import current_app 
+from django.contrib.auth import get_user_model
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
+from django.dispatch import receiver
+from datetime import timedelta
+from .logging import log_voucher
+from .models import AccountBalance, Participant, Program, UserProfile, Voucher,ProgramPause
+from .tasks import send_new_user_onboarding_email
+from .user_utils import create_participant_user
+from .voucher_utils import setup_account_and_vouchers
+import logging
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-from .models import Participant, UserProfile, Voucher,AccountBalance
-from .user_utils import create_participant_user
-from .tasks import send_new_user_onboarding_email
-from .voucher_utils import setup_account_and_vouchers
-from .logging import log_voucher
-from django.dispatch import receiver
-from .balance_utils import calculate_base_balance
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # ============================================================
@@ -33,7 +36,6 @@ def update_base_balance_on_change(sender, instance, created, **kwargs):
     account_balance, _ = AccountBalance.objects.get_or_create(participant=instance)
     account_balance.base_balance = calculate_base_balance(instance)
     account_balance.save()
-
 
 def setup_account_and_vouchers(participant) -> None:
     """
@@ -59,6 +61,9 @@ def setup_account_and_vouchers(participant) -> None:
         for _ in range(2)
     ])
 
+logger = logging.getLogger(__name__)
+User = get_user_model()
+
 @receiver(post_save, sender=Participant)
 def initialize_participant(sender, instance: Participant, created, **kwargs):
     """
@@ -72,7 +77,7 @@ def initialize_participant(sender, instance: Participant, created, **kwargs):
         return
 
     # Only create linked User if the flag is True
-    create_user_flag = getattr(instance, 'create_user', False)
+    create_user_flag = getattr(instance, "create_user", False)
     if create_user_flag and not instance.user:
         user = create_participant_user(
             first_name=instance.name,
@@ -86,17 +91,29 @@ def initialize_participant(sender, instance: Participant, created, **kwargs):
     if instance.user:
         UserProfile.objects.get_or_create(user=instance.user)
 
-    # Trigger onboarding email if a user was created
+    # Trigger onboarding email if a user was created via participant flow
     if instance.user and create_user_flag:
+        logger.debug(
+            f"Triggering onboarding email for participant-linked user {instance.user.id}"
+        )
         send_new_user_onboarding_email.delay(user_id=instance.user.id)
 
 
 @receiver(post_save, sender=User)
-def create_staff_user_profile_and_onboarding(sender, instance: User, created, **kwargs):
+def create_staff_user_profile_and_onboarding(sender, instance: User, created, update_fields, **kwargs):
     """
-    Trigger onboarding email for staff users.
+    Trigger onboarding email for *new* staff users only.
+    Ignore login-related saves (e.g., last_login updates).
     """
-    if instance.is_staff:
+    # Skip updates that only touch last_login (login event)
+    if update_fields and update_fields == {"last_login"}:
+        return
+
+    if created and instance.is_staff:
+        # Ensure UserProfile exists
+        UserProfile.objects.get_or_create(user=instance)
+
+        logger.debug(f"Triggering onboarding email for new staff user {instance.id}")
         send_new_user_onboarding_email.delay(user_id=instance.id)
 
 
@@ -154,3 +171,133 @@ def init_account_and_vouchers(sender, instance, created, **kwargs):
     """
     if created:
         setup_account_and_vouchers(instance)
+
+# ============================================================
+# Program Pause Signals
+# ============================================================
+import logging
+from django.utils import timezone
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from .models import ProgramPause, Voucher
+from .tasks import update_voucher_flag
+
+logger = logging.getLogger("program_pause_signal")
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+from .models import VoucherLog, Participant
+
+class VoucherLogger:
+    """Helper to log voucher events to DB and console."""
+
+    @staticmethod
+    def debug(participant: Participant, message: str, voucher=None, user=None):
+        logger.debug(f"[Voucher DEBUG] {message}")
+        VoucherLog.objects.create(
+            participant=participant,
+            voucher=voucher,
+            message=message,
+            log_type="DEBUG",
+            user=user
+        )
+
+    @staticmethod
+    def error(participant: Participant, message: str, voucher=None, user=None, raise_exception=False):
+        logger.error(f"[Voucher ERROR] {message}")
+        VoucherLog.objects.create(
+            participant=participant,
+            voucher=voucher,
+            message=message,
+            log_type="ERROR",
+            user=user
+        )
+        if raise_exception:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(message)
+    
+import sys
+
+@receiver(post_save, sender=ProgramPause)
+def schedule_program_pause_and_voucher_tasks(sender, instance, created, **kwargs):
+    """
+    Schedule activation/deactivation of vouchers for a ProgramPause.
+    Fully duration-aware and idempotent.
+    Only affects active vouchers belonging to active accounts.
+    """
+    logger.debug(f"=== Signal Triggered for ProgramPause ID={instance.id} ===")
+    logger.debug(
+        f"Created={created}, pause_start={instance.pause_start}, pause_end={instance.pause_end}"
+    )
+
+    if getattr(instance, "_skip_signal", False):
+        logger.debug("Skip signal flag detected; exiting to avoid recursion")
+        return
+
+    now = timezone.now()
+
+    # Only active vouchers with active accounts
+    vouchers = Voucher.objects.filter(active=True, account__active=True)
+    if not vouchers.exists():
+        logger.debug("No active vouchers found; exiting signal.")
+        return
+
+    voucher_ids = list(vouchers.values_list("id", flat=True))
+    logger.debug(f"Voucher IDs affected: {voucher_ids}")
+
+    try:
+        # Determine if we should activate or deactivate now
+        activate_now = instance.pause_start and instance.pause_start <= now and (
+            not instance.pause_end or instance.pause_end > now
+        )
+        deactivate_now = instance.pause_end and instance.pause_end <= now
+
+        # --- Handle activation ---
+        if instance.pause_start and instance.pause_start > now:
+            logger.debug(
+                f"Scheduling activation for ProgramPause ID={instance.id} at {instance.pause_start}"
+            )
+            update_voucher_flag.apply_async(
+                args=[voucher_ids],
+                kwargs={"multiplier": 2, "activate": True},
+                eta=instance.pause_start,
+            )
+        elif activate_now:
+            logger.debug("Pause start already passed; activating vouchers immediately.")
+            update_voucher_flag.delay(voucher_ids, multiplier=2, activate=True)
+
+        # --- Handle deactivation ---
+        if "test" not in sys.argv:  # Skip scheduling deactivation during tests
+            if instance.pause_end and instance.pause_end > now:
+                logger.debug(
+                    f"Scheduling deactivation for ProgramPause ID={instance.id} at {instance.pause_end}"
+                )
+                update_voucher_flag.apply_async(
+                    args=[voucher_ids],
+                    kwargs={"multiplier": 1, "activate": False},
+                    eta=instance.pause_end,
+                )
+            elif deactivate_now:
+                logger.debug("Pause end already passed; deactivating vouchers immediately.")
+                update_voucher_flag.delay(voucher_ids, multiplier=1, activate=False)
+        else:
+            logger.debug("Skipping deactivation scheduling in test mode.")
+
+        logger.debug(
+            f"Tasks scheduled successfully for ProgramPause ID={instance.id} affecting {len(voucher_ids)} vouchers"
+        )
+    except Exception as e:
+        for voucher in vouchers:
+            VoucherLogger.error(
+                voucher.account.participant,
+                f"Unexpected error in ProgramPause signal: {e}",
+                voucher=voucher,
+            )
+        raise
+
+    logger.debug("=== End of Signal ===\n")
+

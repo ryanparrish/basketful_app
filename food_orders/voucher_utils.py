@@ -1,6 +1,6 @@
+# voucher_utils.py
 from decimal import Decimal
-from django.db.models import Count
-from decimal import Decimal
+import logging
 
 # ============================================================
 # Account + Voucher Setup
@@ -24,26 +24,19 @@ def setup_account_and_vouchers(participant) -> None:
         for _ in range(2)
     ])
 
-
 # ============================================================
 # Voucher Utilities
 # ============================================================
 
-from decimal import Decimal
-from django.db.models import Count
-from django.utils.timezone import now
-
-def calculate_voucher_amount(voucher, limit: int = 2) -> Decimal:
+def calculate_voucher_amount(voucher) -> Decimal:
     """
     Compute the redeemable amount for a voucher based on its account's base_balance.
 
     Rules:
         - Only grocery vouchers are assigned a balance.
-        - Only the first `limit` active vouchers receive any active ProgramPause multiplier.
-        - Subsequent vouchers receive the standard base_balance.
+        - If `voucher.program_pause_flag` is True, apply `voucher.multiplier`.
+        - Otherwise, return the standard base_balance.
     """
-    from .models import ProgramPause
-
     # Only grocery vouchers have a balance
     if getattr(voucher, "voucher_type", None) != "grocery":
         return Decimal(0)
@@ -54,23 +47,13 @@ def calculate_voucher_amount(voucher, limit: int = 2) -> Decimal:
 
     base_balance = account.base_balance
 
-    # Count the number of active vouchers created before this one
-    redeemed_count = (
-        account.vouchers.filter(active=True, created_at__lt=voucher.created_at)
-        .aggregate(count=Count('id'))['count']
-    )
-
-    # Apply ProgramPause multiplier only if within the first `limit` vouchers
-    if redeemed_count < limit:
-        active_pause = ProgramPause.objects.with_annotations().filter(is_active_gate=True).first()
-        multiplier = Decimal(active_pause.multiplier) if active_pause else Decimal(1)
+    # Apply voucher multiplier if program_pause_flag is True
+    if getattr(voucher, "program_pause_flag", False):
+        multiplier = Decimal(getattr(voucher, "multiplier", 1))
         return base_balance * multiplier
 
-    # Standard base_balance for vouchers beyond the first `limit`
+    # Standard base_balance if no multiplier
     return base_balance
-
-import logging
-
 
 logger = logging.getLogger(__name__)
 

@@ -22,8 +22,6 @@ from .queryset import program_pause_annotations
 from .voucher_utils import apply_vouchers
 from .order_utils import OrderUtils, get_order_print_context
 
-
-
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     must_change_password = models.BooleanField(default=True)
@@ -130,17 +128,30 @@ class ProgramPauseQuerySet(models.QuerySet):
     def active(self):
         return self.with_annotations().filter(is_active_gate=True)
 
+from django.db import models
+from django.core.exceptions import ValidationError
+
+from django.db import models
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import timedelta
+from datetime import timedelta
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils.timezone import now
+
 class ProgramPause(models.Model):
-    start_date = models.DateField()
-    end_date = models.DateField()
-    reason = models.CharField(max_length=45, blank=True, null=True)
+    pause_start = models.DateTimeField()
+    pause_end = models.DateTimeField()
+    reason = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    objects = ProgramPauseQuerySet.as_manager()
-    
+
     # -------------------------------
-    # Core pause calculation
+    # Core pause calculation (dynamic)
     # -------------------------------
+    from django.utils.timezone import now
+
     def _calculate_pause_status(self) -> tuple[int, str]:
         """
         Determine pause multiplier and message based on start date and duration.
@@ -151,9 +162,12 @@ class ProgramPause(models.Model):
             - Extended pause (>=14 days) → multiplier 3
             - Orders outside this window → multiplier 1
         """
-        today = now().date()
-        days_until_start = (self.start_date - today).days
-        duration = (self.end_date - self.start_date).days + 1
+        if not self.pause_start or not self.pause_end:
+            return 1, f"{self.reason or 'Unnamed'} not affecting this order"
+
+        today = now()  # datetime.datetime
+        days_until_start = (self.pause_start - today).days  # now both are datetime
+        duration = (self.pause_end - self.pause_start).days + 1
 
         if 11 <= days_until_start <= 14:
             if duration >= 14:
@@ -162,6 +176,7 @@ class ProgramPause(models.Model):
                 return 2, f"{self.reason or 'Unnamed'} Short pause affecting this order (duration {duration} days)"
 
         return 1, f"{self.reason or 'Unnamed'} not affecting this order"
+
     @property
     def multiplier(self) -> int:
         multiplier, _ = self._calculate_pause_status()
@@ -169,33 +184,43 @@ class ProgramPause(models.Model):
 
     @property
     def is_active_gate(self) -> bool:
-        """Pause is active if the modifier is greater than 1."""
+        """Pause is active if the multiplier is greater than 1."""
         return self.multiplier > 1
-    def clean(self):
-        super().clean()
 
-        if self.end_date < self.start_date:
-            raise ValidationError("End date cannot be earlier than start date.")
+    # -------------------------------
+    # Validations
+    # -------------------------------
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import timedelta
 
-        delta = self.end_date - self.start_date
-        if delta > timedelta(days=14):
+def clean(self):
+    """Prevent overlapping pauses and invalid dates."""
+    super().clean()  # call first for base validation
+
+    now_dt = timezone.now()  # current datetime
+
+    if self.pause_start and self.pause_end:
+        if self.pause_end < self.pause_start:
+            raise ValidationError("End datetime cannot be earlier than start datetime.")
+
+        # Minimum 11 days out (using datetime)
+        min_start_dt = now_dt + timedelta(days=11)
+        if self.pause_start < min_start_dt:
+            raise ValidationError("Pause start must be at least 11 days from now.")
+
+        # Maximum 14-day pause
+        if (self.pause_end - self.pause_start) > timedelta(days=14):
             raise ValidationError("Program pause cannot be longer than 14 days.")
 
+        # Prevent overlapping pauses
         overlap_exists = ProgramPause.objects.exclude(pk=self.pk).filter(
-            start_date__lte=self.end_date,
-            end_date__gte=self.start_date,
+            pause_start__lt=self.pause_end,
+            pause_end__gt=self.pause_start,
         ).exists()
         if overlap_exists:
             raise ValidationError("Another program pause already exists in this period.")
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-   
-    @property
-    def is_active_gate(self):
-        """Pause is active if the multiplier is greater than 1."""
-        return getattr(self, "multiplier", None) and self.multiplier > 1
 
 
 # Class to represent a Life Skills coach
@@ -292,7 +317,9 @@ class AccountBalance(models.Model):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True)
     base_balance = models.DecimalField(max_digits=4,decimal_places=1,default=0, validators=[MinValueValidator(0)])
-
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
    # Assuming this is inside your AccountBalance model
 
     @property
@@ -423,7 +450,6 @@ class Order(models.Model):
     def print_context(self):
         return get_order_print_context(self)
 
-
 class OrderItem(models.Model):
     order = models.ForeignKey(
         'Order',
@@ -550,9 +576,8 @@ class Voucher(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     notes = models.TextField(blank=True, default=" ")
-
-  # Inside your Voucher model
-
+    program_pause_flag = models.BooleanField(default=False)
+    multiplier = models.IntegerField(default=1)
     @property
     def voucher_amnt(self) -> Decimal:
         """
@@ -560,10 +585,6 @@ class Voucher(models.Model):
         Uses the refactored logic in voucher_utils.
         """
         return voucher_utils.calculate_voucher_amount(self)
-    
-    @property
-    def pause_is_active(self) ->bool:
-        return False
     
     def __str__(self):
         return f"Voucher ({self.pk})"

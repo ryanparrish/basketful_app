@@ -191,7 +191,6 @@ class ParticipantAdmin(admin.ModelAdmin):
         return f"${balance:.2f}" if balance else "No Balance"
     hygiene_balance_display.short_description = "Hygiene Balance"
 
-
     def get_base_balance(self, obj):
         if hasattr(obj, 'accountbalance'):
             return f"${obj.accountbalance.base_balance:,.2f}"
@@ -272,7 +271,7 @@ class CombinedOrderAdmin(admin.ModelAdmin):
 
 @admin.register(ProgramPause)
 class ProgramPauseAdmin(admin.ModelAdmin):
-    list_display = ("reason", "start_date", "end_date", "is_active_gate")
+    list_display = ("reason", "pause_start", "pause_end", "is_active_gate")
 
     def changelist_view(self, request, extra_context=None):
         response = super().changelist_view(request, extra_context)

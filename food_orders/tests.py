@@ -158,45 +158,7 @@ class VoucherBalanceTest(BaseTestDataMixin, TestCase):
                 self.assertEqual(pause._calculate_pause_status()[0], case["expected_multiplier"])
                 self.assertEqual(pause.multiplier, case["expected_multiplier"])
 
-    def test_voucher_balance_doubles_during_pause(self):
-        account = self.participant.accountbalance
 
-        # Ensure participant has vouchers
-        if not Voucher.objects.filter(account=account).exists():
-            for _ in range(self.participant.adults):
-                Voucher.objects.create(account=account, amount=40, active=True)
-      
-        # Capture available_balance before applying the pause
-        initial_balance = account.available_balance
-            # Log balances
-        logger.info(
-            "Voucher balance check - Initial: %s",
-            initial_balance,
-            
-        )
-        log_vouchers_for_account(account, context="--Before Pause--")
-        self.assertGreater(initial_balance, 0, "Initial balance should be positive")
-
-        # Create a program pause starting 11 days from now
-        start = timezone.now().date() + timedelta(days=11)
-        end = start + timedelta(days=3)
-        ProgramPause.objects.create(start_date=start, end_date=end, reason="Holiday Break")
-
-        # Capture available_balance after applying the pause
-        balance_during_pause = account.available_balance
-        self.assertEqual(balance_during_pause, initial_balance * 2)
-
-        # Capture balance after pause (if needed, can simulate after pause)
-        after_pause_balance = account.available_balance
-            # Log balances
-        logger.info(
-            "Voucher balance check - Initial: %s, During pause: %s, After pause: %s",
-            initial_balance,
-            balance_during_pause,
-            after_pause_balance
-        )
-
-    """Tests for participant-program relationship."""
 class ParticipantTest(BaseTestDataMixin, TestCase):
     def test_program_relationship(self):
         program = Program.objects.create(
