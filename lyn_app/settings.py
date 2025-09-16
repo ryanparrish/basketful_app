@@ -234,5 +234,5 @@ CELERY_BEAT_SCHEDULE = {
         'options': {'queue': 'default'},
     },
 }
-
+SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']
 

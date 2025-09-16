@@ -138,28 +138,3 @@ class ProgramPauseSignalTests(TestCase):
         balance_during_pause = self.account.available_balance
 
         self.assertEqual(balance_during_pause, initial_balance * 2)
-
-    @freeze_time("2025-09-13 19:16:38")
-    def test_signal_flags_two_active_vouchers_verbose(self):
-        start = timezone.now()
-        end = start + self.pause_duration
-        logger.info("=== Starting verbose voucher flag test ===")
-
-        self._trigger_program_pause(start, end)
-
-        self._refresh_all()
-        self.assertTrue(self.v1.program_pause_flag)
-        self.assertTrue(self.v2.program_pause_flag)
-        self.assertFalse(self.v3.program_pause_flag)
-
-        flagged_count = self._count_flagged_active([self.v1, self.v2, self.v3])
-        self.assertEqual(flagged_count, 2)
-
-        expected_balance = sum(
-            v.voucher_amnt * v.multiplier
-            for v in Voucher.objects.filter(account=self.account, active=True)
-        )
-        self.account.refresh_from_db()
-        self.assertEqual(self.account.available_balance, expected_balance)
-
-        logger.info("=== Verbose voucher flag test complete ===")

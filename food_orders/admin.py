@@ -22,8 +22,9 @@ from .tasks import create_weekly_combined_orders
 from .user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
 from .models import Participant
-from .balance_utils import calculate_base_balance  # wherever your function lives
+from .balance_utils import calculate_base_balance  
 from decimal import Decimal
+from food_orders import order_utils  
 User = get_user_model()
 try:
     admin.site.unregister(User)
@@ -119,15 +120,16 @@ class OrderAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def print_order(self, request, order_id):
-        order = utils.get_order_or_404(order_id)
-        context = utils.get_order_print_context(order)
+        order = order_utils.get_order_or_404(order_id)
+        context = order_utils.get_order_print_context(order)
         return render(request, "admin/food_orders/order/print_order.html", context)
 
     def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
-        product_json = utils.get_product_prices_json()
+        product_json = order_utils.get_product_prices_json()
         script_tag = f'<script>window.productPrices = {product_json};</script>'
         context['additional_inline_script'] = script_tag
         return super().render_change_form(request, context, add, change, form_url, obj)
+
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)

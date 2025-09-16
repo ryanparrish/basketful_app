@@ -95,8 +95,8 @@ class OrderModelTest(BaseTestDataMixin, TestCase):
         )
 
     def test_order_item_total_price(self):
-        self.assertEqual(self.i1.total_price, Decimal("7.50"))
-        self.assertEqual(self.i2.total_price, Decimal("6.00"))
+        self.assertEqual(self.i1.total_price(), Decimal("7.50"))
+        self.assertEqual(self.i2.total_price(), Decimal("6.00"))
 
     def test_order_total_price(self):
         self.assertEqual(self.order.total_price, Decimal("13.50"))
