@@ -19,7 +19,8 @@
             <div class="card text-white bg-primary mb-3">
               <div class="card-body">
                 <h5 class="card-title">Food Voucher Balance</h5>
-                <p class="card-text fs-4">${{ account.available_balance|floatformat:2 }}</p>
+                <p class="card-text fs-4">${{ account.available_balance|floatformat:2|default:"NO BALANCE" }}
+</p>
 
 
               </div>
@@ -102,7 +103,7 @@
     <div class="d-md-block p-3 text-center">
         <form action="{% url 'create_order' %}">
         {% if has_vouchers %}
-         <button type="submit" class="btn btn-success me-2">Place a New Order</button>>
+         <button type="submit" class="btn btn-success me-2">Place a New Order</button>
         {% else %}
     
         <button type="submit" class="btn btn-success me-2" disabled>Place a New Order</button>

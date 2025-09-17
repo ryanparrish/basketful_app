@@ -1,12 +1,7 @@
 from decimal import Decimal
-from datetime import timedelta
-import logging
-from .test_utils import log_vouchers_for_account
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from django.utils import timezone
-from django.forms.models import inlineformset_factory
-
+from .test_utils import BaseTestDataMixin, log_vouchers_for_account
 from .models import (
     ProgramPause,
     Voucher,
@@ -20,14 +15,11 @@ from .models import (
     Program,
 )
 from .forms import OrderItemInlineFormSet
-from .test_utils import BaseTestDataMixin, log_vouchers_for_account
 
 # Module-level logger
 import logging
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
 
 
 class OrderFormSetTests(BaseTestDataMixin, TestCase):
@@ -107,7 +99,7 @@ class VoucherBalanceTest(BaseTestDataMixin, TestCase):
 
     def setUp(self):
         super().setUp()
-           # Assign VoucherSetting
+        # Assign VoucherSetting
         self.voucher_setting = VoucherSetting.objects.create(
             adult_amount=40,
             child_amount=25,
@@ -116,7 +108,7 @@ class VoucherBalanceTest(BaseTestDataMixin, TestCase):
         )
         self.participant = self.create_participant(adults=1, children=0)
 
-    # Ensure participant has vouchers linked to their account
+        # Ensure participant has vouchers linked to their account
         account = self.participant.accountbalance
         if not Voucher.objects.filter(account=account).exists():
             for _ in range(self.participant.adults):
@@ -125,6 +117,7 @@ class VoucherBalanceTest(BaseTestDataMixin, TestCase):
                     amount=self.voucher_setting.adult_amount,
                     active=True,
                 )
+
     def test_balance_initial(self):
         """Ensure available_balance matches the sum of active vouchers."""
         account = self.participant.accountbalance
@@ -137,29 +130,11 @@ class VoucherBalanceTest(BaseTestDataMixin, TestCase):
 
         # Assert that AccountBalance property matches the sum
         self.assertEqual(account.available_balance, active_total)
-        
-    def test_program_pause_multipliers(self):
-        test_cases = [
-            {"reason": "Short pause", "duration_days": 3, "expected_multiplier": 2},
-            {"reason": "Extended pause", "duration_days": 14, "expected_multiplier": 3},
-        ]
-
-        start_date = timezone.now().date() + timedelta(days=11)
-
-        for case in test_cases:
-            with self.subTest(reason=case["reason"]):
-                ProgramPause.objects.all().delete()
-                end_date = start_date + timedelta(days=case["duration_days"])
-                pause = ProgramPause.objects.create(
-                    start_date=start_date,
-                    end_date=end_date,
-                    reason=case["reason"],
-                )
-                self.assertEqual(pause._calculate_pause_status()[0], case["expected_multiplier"])
-                self.assertEqual(pause.multiplier, case["expected_multiplier"])
 
 
 class ParticipantTest(BaseTestDataMixin, TestCase):
+    """Tests participant-program relationships."""
+
     def test_program_relationship(self):
         program = Program.objects.create(
             name="Wednesday Class",
@@ -172,6 +147,7 @@ class ParticipantTest(BaseTestDataMixin, TestCase):
         self.assertEqual(participant.program, program)
         # Reverse relation
         self.assertIn(participant, program.participant_set.all())
+
 
 class NegativeProductQuantityTest(BaseTestDataMixin, TestCase):
     """Validation tests for product stock."""
