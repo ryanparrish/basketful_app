@@ -97,6 +97,7 @@ class OrderUtils:
         category_totals = {}  # category.id -> total value (weight or count)
         category_units = {}   # category.id -> 'lbs' or 'items'
         category_products = {}  # category.id -> list of products (for logging)
+        category_objects = {}  # category.id -> category object
 
         for item in items:
             product = item.product
@@ -114,10 +115,12 @@ class OrderUtils:
             category_totals[category_id] += value
 
             category_products.setdefault(category_id, []).append(product)
+            category_objects.setdefault(category_id, product.category)
 
         # Step 2: Enforce category-level limits
         for category_id, total_value in category_totals.items():
-            category = Product().objects.get(category_id=category_id).category
+            category = category_objects[category_id]
+
             pm = getattr(category, "product_manager", None)
             if not pm or not pm.limit_scope or not pm.limit:
                 continue
