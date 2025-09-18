@@ -73,6 +73,116 @@ class OrderUtils:
         return participant
 
     # ----------------------------
+    # Order items validation
+    # ----------------------------
+    def validate_order_items(
+        self,
+        items: List[OrderItemData],
+        participant,
+        account_balance,
+        user=None,
+    ):
+        """
+        Validate order items at the category level.
+        Enforces limits per category (weighted or count-based),
+        hygiene balance, and voucher balance.
+        """
+        if not participant:
+            logger.debug("[Validator] No participant found — skipping validation.")
+            return
+
+        logger.debug(f"[Validator] Validating for Participant: {participant}")
+
+        # Step 1: Aggregate totals per category
+        category_totals = {}  # category.id -> total value (weight or count)
+        category_units = {}   # category.id -> 'lbs' or 'items'
+        category_products = {}  # category.id -> list of products (for logging)
+
+        for item in items:
+            product = item.product
+            quantity = item.quantity
+
+            if not product or not product.category:
+                continue
+
+            use_weight = getattr(product, "weight_lbs", 0) > 0
+            value = quantity * getattr(product, "weight_lbs", 0) if use_weight else quantity
+            category_id = product.category.id
+
+            category_totals.setdefault(category_id, 0)
+            category_units[category_id] = "lbs" if use_weight else "items"
+            category_totals[category_id] += value
+
+            category_products.setdefault(category_id, []).append(product)
+
+        # Step 2: Enforce category-level limits
+        for category_id, total_value in category_totals.items():
+            category = Product().objects.get(category_id=category_id).category
+            pm = getattr(category, "product_manager", None)
+            if not pm or not pm.limit_scope or not pm.limit:
+                continue
+
+            allowed = pm.limit
+            scope = pm.limit_scope
+            unit = category_units[category_id]
+
+            # Apply scope multiplier
+            try:
+                if scope == "per_adult":
+                    allowed *= participant.adults
+                elif scope == "per_child":
+                    allowed *= participant.children
+                elif scope == "per_infant":
+                    if participant.diaper_count == 0:
+                        self.log_and_raise(
+                            participant,
+                            f"Limit is per infant, but participant has none in category {category.name}.",
+                            user=user
+                        )
+                    allowed *= participant.diaper_count
+                elif scope == "per_household":
+                    allowed *= participant.household_size()
+                elif scope == "per_order":
+                    pass  # use allowed as-is
+            except Exception as e:
+                logger.error(f"[Validator] Error computing allowed quantity: {e}")
+                raise
+
+            if total_value > allowed:
+                product_names = ", ".join(p.name for p in category_products[category_id])
+                msg = (
+                    f"Category limit exceeded for {category.name} ({unit}, scope: {scope}): "
+                    f"{total_value} > allowed {allowed}. Products: {product_names}"
+                )
+                self.log_and_raise(participant, msg, user=user)
+
+        # Step 3: Compute line totals for hygiene and voucher checks
+        hygiene_total = sum(
+            item.product.price * item.quantity
+            for item in items
+            if item.product.category.name.lower() == "hygiene"
+        )
+        order_total = sum(item.product.price * item.quantity for item in items)
+
+        # Step 4: Hygiene balance check
+        if hygiene_total > getattr(account_balance, "hygiene_balance", 0):
+            msg = (
+                f"Hygiene items total ${hygiene_total:.2f}, exceeds hygiene balance "
+                f"${getattr(account_balance, 'hygiene_balance', 0):.2f}."
+            )
+            self.log_and_raise(participant, msg, user=user)
+
+        # Step 5: Voucher balance check
+        if order_total > getattr(account_balance, "voucher_balance", 0):
+            msg = (
+                f"Order total ${order_total:.2f} exceeds available voucher balance "
+                f"${getattr(account_balance, 'voucher_balance', 0):.2f}."
+            )
+            self.log_and_raise(participant, msg, user=user)
+
+        logger.debug("[Validator] Category-level validation completed successfully.")
+
+    # ----------------------------
     # Voucher validation
     # ----------------------------
     def validate_order_vouchers(self):
@@ -94,10 +204,15 @@ class OrderUtils:
     def confirm(self):
         if not self.order:
             raise ValueError("Order must be set before calling confirm()")
+        self.validate_order_items(
+            [OrderItemData(item.product, item.quantity) for item in self.order.items.all()],
+            getattr(self.order.account, "participant", None),
+            getattr(self.order.account, "balance", None),
+            user=getattr(self.order.account.participant, "user", None)
+        )
         self.order.status_type = "confirmed"
         self.order.save(update_fields=["status_type", "updated_at"])
         self.validate_order_vouchers()
-        # self.apply_voucher_and_mark_paid()  # implement as needed
         logger.info(f"Order {self.order.id} confirmed.")
 
     @transaction.atomic
@@ -113,7 +228,7 @@ class OrderUtils:
         if not self.order:
             raise ValueError("Order must be set before calling clone()")
         new_order = Order().objects.create(account=self.order.account, status_type=status)
-        self.order = new_order  # set the new order as current order
+        self.order = new_order
 
         items_to_clone = [
             OrderItem()(
@@ -136,18 +251,14 @@ class OrderUtils:
     def create_order(self, account, order_items_data: List[OrderItemData]):
         participant = self.validate_participant(account)
         user_for_logging = getattr(participant, "user", None)
-
         if not order_items_data:
             self.log_and_raise(participant, "Cannot create an order with no items.", user=user_for_logging)
 
-        # Validate items here if needed
-        # self.validate_order_items(order_items_data, participant, account)
+        self.validate_order_items(order_items_data, participant, getattr(account, "balance", None), user_for_logging)
 
-        # Create order
         order = Order().objects.create(account=account, status_type="pending")
-        self.order = order  # IMPORTANT: set self.order
+        self.order = order
 
-        # Create order items
         items_bulk = [
             OrderItem()(
                 order=order,
@@ -163,8 +274,6 @@ class OrderUtils:
             self.log_and_raise(participant, "Order must have at least one valid item.", user=user_for_logging)
 
         OrderItem().objects.bulk_create(items_bulk)
-
-        # Confirm the order
         self.confirm()
         return order
 

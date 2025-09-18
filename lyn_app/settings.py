@@ -153,6 +153,7 @@ INSTALLED_APPS = [
     'django_bootstrap5',
     'django_recaptcha',
     'storages',  
+    'django_extensions',
 ]
 
 # Middleware configuration
