@@ -85,7 +85,7 @@ class OrderUtils:
         """
         Validate order items at the category level.
         Enforces limits per category (weighted or count-based),
-        hygiene balance, and voucher balance.
+        hygiene balance, and voucher balance (via Voucher.voucher_amnt).
         """
         if not participant:
             logger.debug("[Validator] No participant found — skipping validation.")
@@ -94,9 +94,9 @@ class OrderUtils:
         logger.debug(f"[Validator] Validating for Participant: {participant}")
 
         # Step 1: Aggregate totals per category
-        category_totals = {}  # category.id -> total value (weight or count)
-        category_units = {}   # category.id -> 'lbs' or 'items'
-        category_products = {}  # category.id -> list of products (for logging)
+        category_totals = {}   # category.id -> total value (weight or count)
+        category_units = {}    # category.id -> 'lbs' or 'items'
+        category_products = {} # category.id -> list of products (for logging)
         category_objects = {}  # category.id -> category object
 
         for item in items:
@@ -129,7 +129,6 @@ class OrderUtils:
             scope = pm.limit_scope
             unit = category_units[category_id]
 
-            # Apply scope multiplier
             try:
                 if scope == "per_adult":
                     allowed *= participant.adults
@@ -146,7 +145,7 @@ class OrderUtils:
                 elif scope == "per_household":
                     allowed *= participant.household_size()
                 elif scope == "per_order":
-                    pass  # use allowed as-is
+                    pass
             except Exception as e:
                 logger.error(f"[Validator] Error computing allowed quantity: {e}")
                 raise
@@ -175,11 +174,15 @@ class OrderUtils:
             )
             self.log_and_raise(participant, msg, user=user)
 
-        # Step 5: Voucher balance check
-        if order_total > getattr(account_balance, "voucher_balance", 0):
+        # Step 5: Voucher balance check (dynamic via vouchers)
+        total_voucher_balance = sum(
+            v.voucher_amnt for v in account_balance.vouchers.filter(active=True)
+        )
+
+        if order_total > total_voucher_balance:
             msg = (
                 f"Order total ${order_total:.2f} exceeds available voucher balance "
-                f"${getattr(account_balance, 'voucher_balance', 0):.2f}."
+                f"${total_voucher_balance:.2f}."
             )
             self.log_and_raise(participant, msg, user=user)
 

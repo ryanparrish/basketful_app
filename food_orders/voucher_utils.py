@@ -1,6 +1,7 @@
 # voucher_utils.py
 from decimal import Decimal
 import logging
+from django.db.models import Q
 
 # ============================================================
 # Account + Voucher Setup
@@ -85,9 +86,11 @@ def apply_vouchers(order, max_vouchers: int = 2) -> bool:
 
     # Fetch up to max_vouchers active grocery vouchers
     vouchers = list(
-        account.vouchers.filter(voucher_type__iexact="grocery", active=True)
-        .order_by("id")[:max_vouchers]
-    )
+        account.vouchers.filter(
+            Q(voucher_type__iexact="grocery") | Q(voucher_type__iexact="Grocery"),
+            active=True
+        ).order_by("id")[:max_vouchers]
+        )
 
     if not vouchers:
         # No vouchers: log to OrderValidationLog
