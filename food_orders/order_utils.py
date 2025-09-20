@@ -211,11 +211,11 @@ class OrderUtils:
         if not self.order:
             raise ValueError("Order must be set before calling confirm()")
         self.validate_order_items(
-            [OrderItemData(item.product, item.quantity) for item in self.order.items.all()],
-            getattr(self.order.account, "participant", None),
-            getattr(self.order.account, "balance", None),
-            user=getattr(self.order.account.participant, "user", None)
-        )
+        [OrderItemData(item.product, item.quantity) for item in self.order.items.all()],
+        getattr(self.order.account, "participant", None),
+        self.order.account, # Pass the entire account object here
+        user=getattr(self.order.account.participant, "user", None)
+)
         self.order.status_type = "confirmed"
         self.order.save(update_fields=["status_type", "updated_at"])
         self.validate_order_vouchers()
@@ -260,8 +260,7 @@ class OrderUtils:
         if not order_items_data:
             self.log_and_raise(participant, "Cannot create an order with no items.", user=user_for_logging)
 
-        self.validate_order_items(order_items_data, participant, getattr(account, "balance", None), user_for_logging)
-
+        self.validate_order_items(order_items_data, participant, account, user_for_logging)
         order = Order().objects.create(account=account, status_type="pending")
         self.order = order
 

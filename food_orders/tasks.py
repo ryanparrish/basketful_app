@@ -16,6 +16,10 @@ from django.utils.http import urlsafe_base64_encode
 from celery import shared_task
 from .models import CombinedOrder, EmailLog, Order, Program, ProgramPause, Participant, Voucher
 import logging
+from celery import shared_task
+from django.utils import timezone
+import logging
+from .models import Voucher, ProgramPause
 
 # Create a logger for this module
 logger = logging.getLogger(__name__)
@@ -156,7 +160,7 @@ def send_new_user_onboarding_email(user_id):
         html_template="registration/new_user_onboarding.html",
         text_template="registration/new_user_onboarding.txt",
         email_type="onboarding",
-        reply_to="support@loveyourneighbor.org"
+        reply_to="elizabethp@lovewm.org"
     )
 
 
@@ -173,13 +177,8 @@ def send_password_reset_email(user_id):
         html_template="registration/password_reset_email.html",
         text_template="registration/password_reset_email.txt",
         email_type="password_reset",
-        reply_to="it@loveyourneighbor.org"
+        reply_to="elizabethp@lovewm.org"
     )
-
-from celery import shared_task
-from django.utils import timezone
-import logging
-from .models import Voucher, ProgramPause
 
 logger = logging.getLogger(__name__)
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
