@@ -220,7 +220,7 @@ class VoucherAdmin(admin.ModelAdmin):
     readonly_fields = ('voucher_amnt', 'notes')
     
     # Fields to hide from the admin form entirely
-    exclude = ('program_pause_flag', 'active','multiplier')
+    exclude = ('program_pause_flag','multiplier')
     
     # Add filters in the right sidebar
     list_filter = ('voucher_type', 'account', 'active', 'created_at')
