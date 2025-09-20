@@ -1,7 +1,8 @@
 # Django core
+from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError,ObjectDoesNotExist
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse_lazy
@@ -92,16 +93,18 @@ def order_detail(request, order_id):
         {"order": order, "order_items": order.items.all()},
     )
 
-
 @login_required
 def participant_dashboard(request):
     """Participant dashboard with account info, orders, and vouchers."""
-    participant = request.user.participant
+    try:
+        participant = request.user.participant
+    except ObjectDoesNotExist:
+        messages.error(request, "No participant profile found for this account.")
+        return redirect("home")  # or some other fallback page
+
     account = AccountBalance.objects.filter(participant=participant).first()
-    orders = Order.objects.filter(account__participant=participant).order_by(
-        "-created_at"
-    )
-    program = participant.program
+    orders = Order.objects.filter(account__participant=participant).order_by("-created_at")
+    program = participant.program if participant.program else None
     has_vouchers = get_active_vouchers(participant).exists()
 
     return render(
@@ -115,7 +118,6 @@ def participant_dashboard(request):
             "has_vouchers": has_vouchers,
         },
     )
-
 
 @login_required
 def create_order(request):
