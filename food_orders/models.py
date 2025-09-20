@@ -34,6 +34,9 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+    class Meta:
+        verbose_name_plural = "Categories"
+
 
 class Subcategory(models.Model):
     name = models.CharField(max_length=100)
@@ -221,8 +224,6 @@ def clean(self):
         if overlap_exists:
             raise ValidationError("Another program pause already exists in this period.")
 
-
-
 # Class to represent a Life Skills coach
 class LifeSkillsCoach (models.Model):
     name = models.CharField(max_length=100)
@@ -283,7 +284,6 @@ class Participant(models.Model):
         # Optional: full_clean for validation on every save
         self.full_clean()
         super().save(*args, **kwargs)
-
 
     def balances(self):
         """

@@ -213,9 +213,22 @@ class ParticipantAdmin(admin.ModelAdmin):
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
+    # Fields to show in the list view
     list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'active')
-    readonly_fields = ('voucher_amnt', 'notes')  # or just 'amount' if you're using that as the field name
-    inlines= [VoucherLogInline]
+    
+    # Make some fields read-only
+    readonly_fields = ('voucher_amnt', 'notes')
+    
+    # Fields to hide from the admin form entirely
+    exclude = ('program_pause_flag', 'active','multiplier')
+    
+    # Add filters in the right sidebar
+    list_filter = ('voucher_type', 'account', 'active', 'created_at')
+    
+    # Add search functionality
+    search_fields = ('voucher_type__name', 'account__name', 'notes')  # adjust according to your field names
+    
+    inlines = [VoucherLogInline]
 
 @admin.register(EmailLog)
 class EmailLogAdmin(admin.ModelAdmin):

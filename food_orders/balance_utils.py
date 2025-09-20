@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.utils import timezone
 
 def calculate_base_balance(participant) -> Decimal:
     """
@@ -23,8 +24,6 @@ def calculate_base_balance(participant) -> Decimal:
         Decimal(children) * Decimal(setting.child_amount) +
         Decimal(diaper_count) * Decimal(setting.infant_modifier)
     )
-from decimal import Decimal
-from django.utils import timezone
 
 def calculate_available_balance(account_balance, limit=2):
     """
@@ -76,7 +75,6 @@ def calculate_available_balance(account_balance, limit=2):
 
     return total_balance
 
-
 def calculate_full_balance(account_balance) -> Decimal:
     """
     Compute the total balance for an account using all active grocery vouchers.
@@ -94,7 +92,6 @@ def calculate_full_balance(account_balance) -> Decimal:
 
     return sum(v.voucher_amnt for v in vouchers)
 
-
 def calculate_hygiene_balance(account_balance) -> Decimal:
     """
     Compute the hygiene-specific balance for an account.
@@ -103,4 +100,4 @@ def calculate_hygiene_balance(account_balance) -> Decimal:
     if not account_balance:
         return Decimal(0)
 
-    return account_balance.full_balance / Decimal(3)
+    return account_balance.available_balance / Decimal(3)

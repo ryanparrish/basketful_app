@@ -100,7 +100,7 @@ def participant_dashboard(request):
         participant = request.user.participant
     except ObjectDoesNotExist:
         messages.error(request, "No participant profile found for this account.")
-        return redirect("home")  # or some other fallback page
+        return redirect("index")  # or some other fallback page
 
     account = AccountBalance.objects.filter(participant=participant).first()
     orders = Order.objects.filter(account__participant=participant).order_by("-created_at")
