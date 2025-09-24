@@ -139,7 +139,7 @@ class OrderAdmin(admin.ModelAdmin):
         if order.status_type == "Confirmed" and not Voucher.objects.filter(account=order.account, active=True).exists():
             raise ValidationError("Cannot confirm order: no active vouchers available.")
 
-        if not order.paid and order.total_price() > 0:
+        if not order.paid and order.total_price > 0:
             used = order.used_voucher()
 
         if used:

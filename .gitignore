@@ -31,6 +31,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.ini
 
 # PyInstaller
 *.manifest
@@ -81,7 +82,7 @@ docker-compose.override.yml
 docker-compose*.yml
 #Dockerfile
 .docker/
-#.dockerignore
+.dockerignore
 
 # Docker volumes (Postgres/Redis/etc.)
 pgdata/

@@ -7,6 +7,10 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.apps import apps
+from django.core.exceptions import ValidationError
+import logging
+
+logger = logging.getLogger("django.request")
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,7 @@ class OrderUtils:
     def validate_participant(self, account, user=None):
         participant = getattr(account, "participant", None)
         if not participant:
-            self.log_and_raise(None, "Account has no participant.", user=user)
+            raise ValidationError(None, "Account has no participant.")
         return participant
 
     # ----------------------------
@@ -136,10 +140,8 @@ class OrderUtils:
                     allowed *= participant.children
                 elif scope == "per_infant":
                     if participant.diaper_count == 0:
-                        self.log_and_raise(
-                            participant,
-                            f"Limit is per infant, but participant has none in category {category.name}.",
-                            user=user
+                        raise ValidationError(
+                        participant, f"Limit is per infant, but participant has none in category {category.name}.",
                         )
                     allowed *= participant.diaper_count
                 elif scope == "per_household":
@@ -156,7 +158,7 @@ class OrderUtils:
                     f"Category limit exceeded for {category.name} ({unit}, scope: {scope}): "
                     f"{total_value} > allowed {allowed}. Products: {product_names}"
                 )
-                self.log_and_raise(participant, msg, user=user)
+                raise ValidationError (participant, msg)
 
         # Step 3: Compute line totals for hygiene and voucher checks
         hygiene_total = sum(
@@ -172,7 +174,7 @@ class OrderUtils:
                 f"Hygiene items total ${hygiene_total:.2f}, exceeds hygiene balance "
                 f"${getattr(account_balance, 'hygiene_balance', 0):.2f}."
             )
-            self.log_and_raise(participant, msg, user=user)
+            raise ValidationError (participant, msg)
 
         # Step 5: Voucher balance check (dynamic via vouchers)
         total_voucher_balance = sum(
@@ -184,24 +186,31 @@ class OrderUtils:
                 f"Order total ${order_total:.2f} exceeds available voucher balance "
                 f"${total_voucher_balance:.2f}."
             )
-            self.log_and_raise(participant, msg, user=user)
+            raise ValidationError(participant, msg)
 
         logger.debug("[Validator] Category-level validation completed successfully.")
 
     # ----------------------------
     # Voucher validation
     # ----------------------------
-    def validate_order_vouchers(self):
-        if not self.order:
-            raise ValueError("Order must be set before validating vouchers.")
-        if getattr(self.order, "status_type", "").lower() == "confirmed":
-            active_vouchers = Voucher().objects.filter(account=self.order.account, active=True)
-            if not active_vouchers.exists():
-                self.log_and_raise(
-                    getattr(self.order.account, "participant", None),
-                    "Cannot confirm order: no active vouchers available.",
-                    user=getattr(self.order.account.participant, "user", None)
-                )
+
+    def validate_order_vouchers(self, order=None):
+        order = order or getattr(self, "order", None)
+        if not order:
+            raise ValidationError("Order must be provided or set on self.")
+
+        status = str(getattr(order, "status_type", "")).lower()
+        if status != "confirmed":
+            return  # No validation needed
+
+        account = getattr(order, "account", None)
+        if not account:
+            raise ValidationError("Order must have an associated account.")
+
+        if not Voucher.objects.filter(account=account, active=True).exists():
+            
+        # Raise ValidationError for enforcement
+            raise ValidationError("Cannot confirm order: no active vouchers available")
 
     # ----------------------------
     # Confirm, cancel, clone
@@ -258,7 +267,7 @@ class OrderUtils:
         participant = self.validate_participant(account)
         user_for_logging = getattr(participant, "user", None)
         if not order_items_data:
-            self.log_and_raise(participant, "Cannot create an order with no items.", user=user_for_logging)
+            raise ValidationError(participant, "Cannot create an order with no items")
 
         self.validate_order_items(order_items_data, participant, account, user_for_logging)
         order = Order().objects.create(account=account, status_type="pending")
@@ -276,7 +285,7 @@ class OrderUtils:
         ]
 
         if not items_bulk:
-            self.log_and_raise(participant, "Order must have at least one valid item.", user=user_for_logging)
+            raise ValidationError(participant, "Order must have at least one valid item.", )
 
         OrderItem().objects.bulk_create(items_bulk)
         self.confirm()

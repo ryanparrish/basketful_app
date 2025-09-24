@@ -22,6 +22,9 @@ from .queryset import program_pause_annotations
 from .voucher_utils import apply_vouchers
 from .order_utils import OrderUtils, get_order_print_context
 
+from django.conf import settings
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     must_change_password = models.BooleanField(default=True)
@@ -606,7 +609,10 @@ class EmailLog(models.Model):
     class Meta:
         unique_together = ("user", "email_type")  # prevents duplicate entries per type
 
-class VoucherLog(models.Model):
+# -----------------------
+# Abstract base class
+# -----------------------
+class BaseLog(models.Model):
     INFO = 'INFO'
     WARNING = 'WARNING'
     ERROR = 'ERROR'
@@ -617,29 +623,63 @@ class VoucherLog(models.Model):
         (ERROR, 'Error'),
     ]
 
-    order = models.ForeignKey('Order', on_delete=models.CASCADE, null=True, blank=True, related_name='voucher_logs')
-    voucher = models.ForeignKey('Voucher', on_delete=models.CASCADE, null=True, blank=True, related_name='logs')
-    participant = models.ForeignKey('Participant', on_delete=models.CASCADE, null=True, blank=True, related_name='voucher_logs')
+    participant = models.ForeignKey(
+        "Participant",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    order = models.ForeignKey(
+        "Order",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE
+    )
     message = models.TextField()
     log_type = models.CharField(max_length=10, choices=LOG_TYPE_CHOICES, default=INFO)
-    balance_before = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    balance_after = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        abstract = True
+        ordering = ["-created_at"]
 
     def __str__(self):
-        target = f"Voucher {self.voucher.id}" if self.voucher else f"Order {self.order.id}" if self.order else "General"
+        target = f"Order {self.order.id}" if self.order else "General"
         return f"{target} [{self.log_type}]: {self.message[:50]}"
 
-class OrderValidationLog(models.Model):
-    participant = models.ForeignKey("Participant", on_delete=models.CASCADE)
-    product = models.ForeignKey("Product", null=True, blank=True, on_delete=models.SET_NULL)
-    message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
+# -----------------------
+# Concrete log models
+# -----------------------
+class VoucherLog(BaseLog):
+    voucher = models.ForeignKey(
+        "Voucher",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="logs"
+    )
+    balance_before = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    validated_at = models.DateTimeField(auto_now_add=True)  # when voucher was validated/consumed
 
     def __str__(self):
-        return f"{self.created_at} — {self.participant}: {self.message}"
+        target = f"Voucher {self.voucher.id}" if self.voucher else super().__str__()
+        return f"{target} [{self.log_type}]: {self.message[:50]}"
 
+class OrderValidationLog(BaseLog):
+    product = models.ForeignKey(
+        "Product",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    validated_at = models.DateTimeField(auto_now_add=True)  # when validation occurred
+
+    def __str__(self):
+        return f"{self.validated_at} — {self.participant or 'Unknown'}: {self.message}"
