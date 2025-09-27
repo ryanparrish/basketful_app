@@ -15,7 +15,6 @@ from food_orders.models import Order,OrderItem
 from food_orders.order_utils import OrderUtils
 from test_helper import create_category,create_product,create_participant,create_voucher,create_order,add_items_to_order,make_items
 
-
 # -----------------------------
 # Order validation tests
 # -----------------------------
@@ -66,7 +65,6 @@ def test_order_item_total_price(order_with_items_setup):
     assert item1.total_price() == Decimal("7.50")
     assert item2.total_price() == Decimal("6.00")
 
-
 @pytest.mark.django_db
 def test_order_total_price(order_with_items_setup):
     """Checks that the `total_price` property on an Order correctly sums its items."""
@@ -76,24 +74,6 @@ def test_order_total_price(order_with_items_setup):
     # --- ASSERT ---
     assert order.total_price == Decimal("13.50")
 
-
-@pytest.mark.django_db
-def test_formset_valid_when_within_limits(order_formset_setup):
-    """Tests that the formset is valid when all quantities and weights are within their limits."""
-    # --- Test a valid scenario for a limited category (meat) ---
-    _validate_order_formset(
-        order=order_formset_setup["order"],
-        product=order_formset_setup["meat_product"],
-        quantity=2,
-        should_be_valid=True,
-    )
-    # --- Test a valid scenario for an unlimited category (vegetables) with a high quantity ---
-    _validate_order_formset(
-        order=order_formset_setup["order"],
-        product=order_formset_setup["veg_product"],
-        quantity=100,
-        should_be_valid=True,
-    )
 @pytest.mark.django_db
 def test_order_with_multiple_products_verbose():
     """

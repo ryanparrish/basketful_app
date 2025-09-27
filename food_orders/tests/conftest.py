@@ -19,8 +19,16 @@ and focused on the behavior being tested. This approach mirrors Django's
 import pytest
 from decimal import Decimal
 from django.contrib.auth.models import User
+from datetime import timedelta
+from unittest import mock
 
-from food_orders.models import VoucherSetting, Order
+from food_orders.models import (
+    VoucherSetting,
+      Order,
+      AccountBalance,
+      Voucher,
+      Participant
+      )
 from food_orders.tests.factories import (
     ParticipantFactory,
     CategoryFactory,
@@ -28,6 +36,11 @@ from food_orders.tests.factories import (
     OrderFactory,
     OrderItemFactory,
 )
+import pytest
+from decimal import Decimal
+
+from food_orders.models import Product
+from factories import CategoryFactory, ProductManagerFactory
 
 # ============================================================
 # Voucher and Participant Fixtures
@@ -116,6 +129,7 @@ def order_formset_setup():
     return {
         "hygiene_product": hygiene_product,
         "meat_product": meat_product,
+        "alt_meat_product": alt_meat_product, 
         "veg_product": veg_product,
         "order": order,
     }
@@ -139,3 +153,73 @@ def order_with_items_setup():
         quantity=2,
     )
     return {"order": order, "item1": item1, "item2": item2}
+
+@pytest.fixture
+def meat_product_with_manager(db):
+    """
+    Creates a Meat category, attaches a ProductManager with a strict limit,
+    and a Product (meat_product) assigned to that category.
+    """
+    # Meat category
+    meat_category = CategoryFactory(name="Meat")
+
+    # ProductManager with a low limit to trigger validation
+    product_manager = ProductManagerFactory(
+        category=meat_category,
+        limit=10,
+        limit_scope="per_household"
+    )
+
+    # A product belonging to the meat category
+    meat_product = Product.objects.create(
+        name="Ground Beef",
+        category=meat_category,
+        weight=Decimal("5.0"),  # per unit weight
+    )
+
+    return {
+        "meat_category": meat_category,
+        "product_manager": product_manager,
+        "meat_product": meat_product,
+    }
+@pytest.fixture
+def participant_with_vouchers(db):
+    """
+    Sets up a participant, account balance, voucher settings, and vouchers.
+    """
+    participant = Participant.objects.create(
+        name="Test Participant",
+        email="test@testway.com",
+        active=True
+    )
+    account = AccountBalance.objects.get_or_create(participant=participant)[0]
+
+    vs = VoucherSetting.objects.create(
+        adult_amount=40,
+        child_amount=25,
+        infant_modifier=5,
+        active=True
+    )
+
+    # Patch voucher calculation to always return 40
+    with mock.patch(
+        'food_orders.models.voucher_utils.calculate_voucher_amount',
+        return_value=Decimal(40)
+    ):
+        # Create vouchers
+        v1 = Voucher.objects.create(account=account, voucher_type="grocery", active=True)
+        v2 = Voucher.objects.create(account=account, voucher_type="grocery", active=True)
+        v3 = Voucher.objects.create(account=account, voucher_type="grocery", active=False)
+
+        yield {
+            "participant": participant,
+            "account": account,
+            "vouchers": [v1, v2, v3],
+            "voucher_setting": vs
+        }
+
+
+@pytest.fixture
+def pause_duration():
+    return timedelta(days=14)
+

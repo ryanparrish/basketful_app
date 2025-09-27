@@ -117,7 +117,7 @@ def build_email_context(user):
         "protocol": protocol,
     }
 
-
+@shared_task
 def send_email(user, subject, html_template, text_template, email_type, reply_to=None):
     """
     Sends an email if it hasn't already been sent and logs it in EmailLog.

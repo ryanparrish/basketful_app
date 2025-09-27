@@ -21,8 +21,21 @@ from .order_utils import calculate_total_price, OrderUtils
 from .queryset import program_pause_annotations
 from .voucher_utils import apply_vouchers
 from .order_utils import OrderUtils, get_order_print_context
-
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import timedelta
 from django.conf import settings
+from django.db import models
+from django.core.exceptions import ValidationError
+
+from django.db import models
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import timedelta
+from datetime import timedelta
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils.timezone import now
 
 
 class UserProfile(models.Model):
@@ -134,17 +147,7 @@ class ProgramPauseQuerySet(models.QuerySet):
     def active(self):
         return self.with_annotations().filter(is_active_gate=True)
 
-from django.db import models
-from django.core.exceptions import ValidationError
 
-from django.db import models
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from datetime import timedelta
-from datetime import timedelta
-from django.core.exceptions import ValidationError
-from django.db import models
-from django.utils.timezone import now
 
 class ProgramPause(models.Model):
     pause_start = models.DateTimeField()
@@ -196,9 +199,7 @@ class ProgramPause(models.Model):
     # -------------------------------
     # Validations
     # -------------------------------
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from datetime import timedelta
+
 
 def clean(self):
     """Prevent overlapping pauses and invalid dates."""

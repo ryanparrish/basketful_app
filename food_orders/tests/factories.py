@@ -44,11 +44,12 @@ from food_orders.models import (
     Order,
     OrderItem,
     AccountBalance,
-    Program
+    Program,
+    ProductManager,
+    Subcategory
 )
 # Import the custom formset used in the application to replicate its behavior in tests.
 from food_orders.forms import OrderItemInlineFormSet
-
 
 # ============================================================
 # Factory Boy Factories
@@ -75,7 +76,6 @@ class CategoryFactory(factory.django.DjangoModelFactory):
     # The lambda function `lambda n: ...` takes the sequence number `n`
     # and generates a string like "Category 0", "Category 1", etc.
     name = factory.Sequence(lambda n: f"Category {n}")
-
 
 # --- Factory for the Product Model ---
 class ProductFactory(factory.django.DjangoModelFactory):
@@ -149,6 +149,7 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
 
 # --- Factory for the Voucher Model ---
 
+
 class VoucherFactory(factory.django.DjangoModelFactory):
     """
     Factory for creating Voucher instances.
@@ -184,7 +185,6 @@ class VoucherFactory(factory.django.DjangoModelFactory):
             self.account.base_balance = base_balance
             self.account.save()
 
-
 # --- Factory for the Order Model ---
 class OrderFactory(factory.django.DjangoModelFactory):
     """
@@ -199,7 +199,6 @@ class OrderFactory(factory.django.DjangoModelFactory):
 
     # --- Set a default status for newly created orders ---
     status_type = "pending"
-
 
 # --- Factory for the OrderItem Model ---
 class OrderItemFactory(factory.django.DjangoModelFactory):
@@ -227,3 +226,27 @@ class ProgramFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Program {n}")
     MeetingDay = "Wednesday"
     meeting_time = "10:00:00"
+
+class CategoryFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Category
+
+    name = factory.Sequence(lambda n: f"Category {n}")
+
+class SubcategoryFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Subcategory
+
+    name = factory.Sequence(lambda n: f"Subcategory {n}")
+    category = factory.SubFactory(CategoryFactory)
+
+class ProductManagerFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ProductManager
+
+    name = factory.Sequence(lambda n: f"Product Manager {n}")
+    category = factory.SubFactory(CategoryFactory)
+    subcategory = None  # you can override in tests if needed
+    notes = factory.Faker("sentence")
+    limit = 2
+    limit_scope = "per_household"

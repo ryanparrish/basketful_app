@@ -79,6 +79,7 @@ class OrderUtils:
     # ----------------------------
     # Order items validation
     # ----------------------------
+class OrderUtils:
     def validate_order_items(
         self,
         items: List[OrderItemData],
@@ -87,9 +88,10 @@ class OrderUtils:
         user=None,
     ):
         """
-        Validate order items at the category level.
-        Enforces limits per category (weighted or count-based),
-        hygiene balance, and voucher balance (via Voucher.voucher_amnt).
+        Validate order items in the correct sequence:
+        1. Category-level limits
+        2. Hygiene balance
+        3. Voucher balance
         """
         if not participant:
             logger.debug("[Validator] No participant found — skipping validation.")
@@ -139,11 +141,8 @@ class OrderUtils:
                 elif scope == "per_child":
                     allowed *= participant.children
                 elif scope == "per_infant":
-                    if participant.diaper_count == 0:
-                        raise ValidationError(
-                        participant, f"Limit is per infant, but participant has none in category {category.name}.",
-                        )
-                    allowed *= participant.diaper_count
+                    # If no infants, allowed stays at 0 (no exception raised)
+                    allowed *= participant.diaper_count or 0
                 elif scope == "per_household":
                     allowed *= participant.household_size()
                 elif scope == "per_order":
@@ -158,25 +157,22 @@ class OrderUtils:
                     f"Category limit exceeded for {category.name} ({unit}, scope: {scope}): "
                     f"{total_value} > allowed {allowed}. Products: {product_names}"
                 )
-                raise ValidationError (participant, msg)
+                raise ValidationError(f"[{participant}] {msg}")
 
-        # Step 3: Compute line totals for hygiene and voucher checks
-        hygiene_total = sum(
-            item.product.price * item.quantity
-            for item in items
-            if item.product.category.name.lower() == "hygiene"
-        )
-        order_total = sum(item.product.price * item.quantity for item in items)
+        # Step 3: Hygiene balance check
+        OrderUtils.enforce_hygiene_balance(items, participant, account_balance)
 
-        # Step 4: Hygiene balance check
-        if hygiene_total > getattr(account_balance, "hygiene_balance", 0):
-            msg = (
-                f"Hygiene items total ${hygiene_total:.2f}, exceeds hygiene balance "
-                f"${getattr(account_balance, 'hygiene_balance', 0):.2f}."
-            )
-            raise ValidationError (participant, msg)
+        # Step 4: Voucher balance check (last)
+        OrderUtils.enforce_voucher_balance(items, participant, account_balance)
 
-        # Step 5: Voucher balance check (dynamic via vouchers)
+    # --------------------
+    # Static helpers
+    # --------------------
+
+    @staticmethod
+    def enforce_voucher_balance(items, participant, account_balance):
+        """Ensure order total does not exceed active voucher balances."""
+        order_total = OrderUtils.calculate_order_total(items)
         total_voucher_balance = sum(
             v.voucher_amnt for v in account_balance.vouchers.filter(active=True)
         )
@@ -186,9 +182,34 @@ class OrderUtils:
                 f"Order total ${order_total:.2f} exceeds available voucher balance "
                 f"${total_voucher_balance:.2f}."
             )
-            raise ValidationError(participant, msg)
+            raise ValidationError(f"[{participant}] {msg}")
 
-        logger.debug("[Validator] Category-level validation completed successfully.")
+    @staticmethod
+    def calculate_order_total(items):
+        """Calculate total cost of all items in the order."""
+        return sum(item.product.price * item.quantity for item in items)
+
+    @staticmethod
+    def calculate_hygiene_total(items):
+        """Calculate the total cost of hygiene items in the order."""
+        return sum(
+            item.product.price * item.quantity
+            for item in items
+            if item.product.category.name.lower() == "hygiene"
+        )
+
+    @staticmethod
+    def enforce_hygiene_balance(items, participant, account_balance):
+        """Ensure hygiene items do not exceed the participant’s hygiene balance."""
+        hygiene_total = OrderUtils.calculate_hygiene_total(items)
+        hygiene_balance = getattr(account_balance, "hygiene_balance", 0)
+
+        if hygiene_total > hygiene_balance:
+            msg = (
+                f"Hygiene items total ${hygiene_total:.2f}, "
+                f"exceeds hygiene balance ${hygiene_balance:.2f}."
+            )
+            raise ValidationError(f"[{participant}] {msg}")
 
     # ----------------------------
     # Voucher validation
@@ -267,8 +288,8 @@ class OrderUtils:
         participant = self.validate_participant(account)
         user_for_logging = getattr(participant, "user", None)
         if not order_items_data:
-            raise ValidationError(participant, "Cannot create an order with no items")
-
+            raise ValidationError(f"[{participant}] Cannot create an order with no items")
+            
         self.validate_order_items(order_items_data, participant, account, user_for_logging)
         order = Order().objects.create(account=account, status_type="pending")
         self.order = order
@@ -285,7 +306,7 @@ class OrderUtils:
         ]
 
         if not items_bulk:
-            raise ValidationError(participant, "Order must have at least one valid item.", )
+            raise ValidationError(f"[{participant}] Order must have at least one valid item.", )
 
         OrderItem().objects.bulk_create(items_bulk)
         self.confirm()

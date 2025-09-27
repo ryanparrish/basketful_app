@@ -56,44 +56,6 @@ User = get_user_model()
 
 
 # ============================================================
-# Pytest Fixtures
-# ============================================================
-"""
-These fixtures set up common objects needed across multiple tests. By defining
-them here, we avoid repeating the same setup code in every test function.
-For a larger project, these would typically be placed in a `conftest.py` file
-to be automatically available to all test files.
-"""
-
-@pytest.fixture
-def voucher_setting_fixture():
-    """
-    Creates a default, active `VoucherSetting` object in the database.
-    This is required for tests involving participant creation, as signals
-    rely on these settings to calculate initial balances.
-    """
-    # --- Create the setting and return it ---
-    return VoucherSetting.objects.create(
-        adult_amount=10,
-        child_amount=5,
-        infant_modifier=2,
-        active=True,
-    )
-
-@pytest.fixture
-def test_user_fixture():
-    """
-    Creates a standard Django User for use in email task tests.
-    """
-    # --- Use Django's `create_user` helper for a standard user ---
-    return User.objects.create_user(
-        username="testuser",
-        email="test@example.com",
-        password="password123",
-    )
-
-
-# ============================================================
 # Participant and Account Signal Tests
 # ============================================================
 

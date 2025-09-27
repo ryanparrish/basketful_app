@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.shortcuts import redirect
-from food_orders.models import OrderValidationLog  # concrete log model
+from food_orders.models import OrderValidationLog  
 
 logger = logging.getLogger("custom_validation")
 
