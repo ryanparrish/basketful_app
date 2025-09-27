@@ -214,22 +214,22 @@ class OrderUtils:
 # ----------------------------
 # Voucher validation
 # ----------------------------
-def validate_order_vouchers(self, order=None):
-    order = order or getattr(self, "order", None)
-    if not order:
-        raise ValidationError("Order must be provided or set on self.")
+    def validate_order_vouchers(self, order=None):
+        order = order or getattr(self, "order", None)
+        if not order:
+            raise ValidationError("Order must be provided or set on self.")
 
-    status = str(getattr(order, "status_type", "")).lower()
-    if status != "confirmed":
-        return  # No validation needed
+        status = str(getattr(order, "status_type", "")).lower()
+        if status != "confirmed":
+            return  # No validation needed
 
-    account = getattr(order, "account", None)
-    if not account:
-        raise ValidationError("Order must have an associated account.")
+        account = getattr(order, "account", None)
+        if not account:
+            raise ValidationError("Order must have an associated account.")
 
-    if not Voucher.objects.filter(account=account, active=True).exists():
-        # Raise ValidationError for enforcement
-        raise ValidationError("Cannot confirm order: no active vouchers available")
+        if not Voucher.objects.filter(account=account, active=True).exists():
+            # Raise ValidationError for enforcement
+            raise ValidationError("Cannot confirm order: no active vouchers available")
 
     # ----------------------------
     # Confirm, cancel, clone
@@ -301,7 +301,7 @@ def validate_order_vouchers(self, order=None):
                 price_at_order=item.product.price,
             )
             for item in order_items_data
-        ]
+            ]
 
         if not items_bulk:
             raise ValidationError(f"[{participant}] Order must have at least one valid item.", )
@@ -309,7 +309,6 @@ def validate_order_vouchers(self, order=None):
         OrderItem().objects.bulk_create(items_bulk)
         self.confirm()
         return order
-
 # ============================================================
 # Standalone Utilities
 # ============================================================
