@@ -79,7 +79,7 @@ class OrderUtils:
     # ----------------------------
     # Order items validation
     # ----------------------------
-class OrderUtils:
+
     def validate_order_items(
         self,
         items: List[OrderItemData],
@@ -243,7 +243,7 @@ class OrderUtils:
         self.validate_order_items(
         [OrderItemData(item.product, item.quantity) for item in self.order.items.all()],
         getattr(self.order.account, "participant", None),
-        self.order.account, # Pass the entire account object here
+        self.order.account, 
         user=getattr(self.order.account.participant, "user", None)
 )
         self.order.status_type = "confirmed"
