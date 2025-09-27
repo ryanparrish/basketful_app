@@ -7,7 +7,6 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.apps import apps
-from django.core.exceptions import ValidationError
 import logging
 
 logger = logging.getLogger("django.request")
@@ -32,9 +31,6 @@ def OrderItem():
 def OrderValidationLog():
     return get_model("OrderValidationLog")
 
-def Voucher():
-    return get_model("Voucher")
-
 def AccountBalance():
     return get_model("AccountBalance")
 
@@ -53,19 +49,6 @@ class OrderItemData:
 class OrderUtils:
     def __init__(self, order=None):
         self.order = order
-
-    # ----------------------------
-    # Logging and error handling
-    # ----------------------------
-    def log_and_raise(self, participant, message: str, product=None, user=None):
-        OrderValidationLog().objects.create(
-            participant=participant,
-            product=product,
-            message=message,
-            user=user
-        )
-        logger.warning(f"[Validator] {message}")
-        raise ValidationError(message)
 
     # ----------------------------
     # Participant validation
@@ -162,27 +145,9 @@ class OrderUtils:
         # Step 3: Hygiene balance check
         OrderUtils.enforce_hygiene_balance(items, participant, account_balance)
 
-        # Step 4: Voucher balance check (last)
-        OrderUtils.enforce_voucher_balance(items, participant, account_balance)
-
     # --------------------
     # Static helpers
     # --------------------
-
-    @staticmethod
-    def enforce_voucher_balance(items, participant, account_balance):
-        """Ensure order total does not exceed active voucher balances."""
-        order_total = OrderUtils.calculate_order_total(items)
-        total_voucher_balance = sum(
-            v.voucher_amnt for v in account_balance.vouchers.filter(active=True)
-        )
-
-        if order_total > total_voucher_balance:
-            msg = (
-                f"Order total ${order_total:.2f} exceeds available voucher balance "
-                f"${total_voucher_balance:.2f}."
-            )
-            raise ValidationError(f"[{participant}] {msg}")
 
     @staticmethod
     def calculate_order_total(items):
@@ -211,10 +176,15 @@ class OrderUtils:
             )
             raise ValidationError(f"[{participant}] {msg}")
 
-# ----------------------------
-# Voucher validation
-# ----------------------------
-    def validate_order_vouchers(self, order=None):
+    # ----------------------------
+    # Voucher validation
+    # ----------------------------
+    def validate_order_vouchers(self, order=None, items=None):
+        """
+        Ensure order can be confirmed:
+        1. Account has active vouchers
+        2. Order total does not exceed available voucher balance
+        """
         order = order or getattr(self, "order", None)
         if not order:
             raise ValidationError("Order must be provided or set on self.")
@@ -227,9 +197,21 @@ class OrderUtils:
         if not account:
             raise ValidationError("Order must have an associated account.")
 
-        if not Voucher.objects.filter(account=account, active=True).exists():
-            # Raise ValidationError for enforcement
+        active_vouchers = account.vouchers.filter(active=True)
+        if not active_vouchers.exists():
             raise ValidationError("Cannot confirm order: no active vouchers available")
+
+        # If items are provided, check that total does not exceed voucher balance
+        if items:
+            order_total = self.calculate_order_total(items)
+            total_voucher_balance = sum(v.voucher_amnt for v in active_vouchers)
+            if order_total > total_voucher_balance:
+                participant = getattr(account, "participant", None)
+                msg = (
+                    f"Order total ${order_total:.2f} exceeds available voucher balance "
+                    f"${total_voucher_balance:.2f}."
+                )
+                raise ValidationError(f"[{participant}] {msg}")
 
     # ----------------------------
     # Confirm, cancel, clone
