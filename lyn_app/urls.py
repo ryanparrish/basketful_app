@@ -38,7 +38,7 @@ urlpatterns = [
     path('login/', views.custom_login_view, name='participant_login'),
     path('accounts/logout/', auth_views.LogoutView.as_view(),name='logout'),
     path('dashboard/', participant_dashboard, name='participant_dashboard'),
-    path('orders/create/', views.create_order, name='create_order'),
+    path('orders/create/', views.product_view, name='create_order'),
     path('accounts/update/', views.account_update_view, name='account_update'),
     path('order/update_cart/', views.update_cart, name='update_cart'),
     path('order/review/',views.review_order, name='review_order'),
@@ -47,6 +47,8 @@ urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
     path('admin/logout/', LogoutView.as_view(next_page='/admin/login/'), name='admin_logout'),
     path('accounts/logout/', auth_views.LogoutView.as_view(template_name='registration/logged_out.html'),name='logout'),
+    path("order/success/", views.order_success, name="order_success"),
+
     path('password_reset/', 
          auth_views.PasswordResetView.as_view(template_name='registration/password_reset_form.html'), 
          name='password_reset'),

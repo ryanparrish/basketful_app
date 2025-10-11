@@ -2,6 +2,9 @@
 from decimal import Decimal
 import logging
 from django.db.models import Q
+# voucher_utils.py
+from django.db import transaction
+from django.core.exceptions import ValidationError
 
 # ============================================================
 # Account + Voucher Setup
@@ -29,6 +32,8 @@ def setup_account_and_vouchers(participant) -> None:
 # Voucher Utilities
 # ============================================================
 
+from decimal import Decimal
+
 def calculate_voucher_amount(voucher) -> Decimal:
     """
     Compute the redeemable amount for a voucher based on its account's base_balance.
@@ -38,15 +43,19 @@ def calculate_voucher_amount(voucher) -> Decimal:
         - If `voucher.program_pause_flag` is True, apply `voucher.multiplier`.
         - Otherwise, return the standard base_balance.
     """
-    # Only grocery vouchers have a balance
-    if getattr(voucher, "voucher_type", None) != "grocery":
-        return Decimal(0)
+    # Ignore non-grocery vouchers for now
+    if voucher.voucher_type != "grocery":
+        return Decimal("0.00")
 
-    account = getattr(voucher, "account", None)
-    if not account or account.base_balance is None:
-        return Decimal(0)
+    # Ignore vouchers that are spent
+    if voucher.state in ("consumed", "expired"):
+        return Decimal("0.00")
 
-    base_balance = account.base_balance
+    account = voucher.account
+    if not account:
+        return Decimal("0.00")
+
+    base_balance = account.base_balance or Decimal("0.00")
 
     # Apply voucher multiplier if program_pause_flag is True
     if getattr(voucher, "program_pause_flag", False):
@@ -56,103 +65,121 @@ def calculate_voucher_amount(voucher) -> Decimal:
     # Standard base_balance if no multiplier
     return base_balance
 
+
+from decimal import Decimal
+from django.db import transaction
+from django.core.exceptions import ValidationError
+import logging
+
 logger = logging.getLogger(__name__)
 
-def apply_vouchers(order, max_vouchers: int = 2) -> bool:
+def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
     """
-    Apply eligible grocery vouchers to the given order using voucher.voucher_amnt().
-    Handles:
-      - total_price <= first voucher amount (single voucher applied)
-      - total_price == first voucher amount (exact match)
-      - total_price > first voucher amount (multi-voucher application)
-    Safety check: ensures the account belongs to the correct participant.
-    Logs actions to VoucherLog, or OrderValidationLog if no vouchers exist.
-    Returns True if any voucher was applied.
+    Apply eligible grocery vouchers to the given order using the OrderVoucher join table.
+    - Only applies full vouchers (no partial usage)
+    - Logs actions asynchronously via Celery task
+    - Only applies vouchers if the order is confirmed
+    Returns True if any voucher was applied, False otherwise.
     """
-    # Lazy imports to avoid circular dependencies
-    from .models import VoucherLog, OrderValidationLog
+    from .models import OrderValidationLog, OrderVoucher
+    from .tasks import log_voucher_application_task
+
+    # --- Guard: only apply vouchers if order is confirmed ---
+    if order.status_type != "confirmed":
+        raise ValidationError(
+            f"Cannot apply vouchers to Order {order.id} because it is not confirmed "
+            f"(status={order.status_type})."
+        )
 
     account = order.account
-    participant = account.participant  # access participant via account
+    participant = account.participant
+    total_price = order.total_price
+    remaining = total_price
+    applied = False
 
-    # Safety check
+    logger.debug(
+        "[Voucher Apply] apply_vouchers_to_order() called for Order id=%s, participant=%s, status=%s",
+        order.id,
+        participant,
+        order.status_type,
+    )
+
+    # Safety check: ensure account belongs to participant
     if account.participant != participant:
         raise ValueError(
             f"Account {account.id} does not belong to participant {participant.id} for order {order.id}"
         )
 
-    total_price = order.total_price  # Decimal
-    applied = False
-
-    # Fetch up to max_vouchers active grocery vouchers
+    # Fetch active grocery vouchers (only applied and active)
     vouchers = list(
         account.vouchers.filter(
-            Q(voucher_type__iexact="grocery") | Q(voucher_type__iexact="Grocery"),
+            voucher_type__iexact="grocery",
+            state="applied",
             active=True
         ).order_by("id")[:max_vouchers]
-        )
+    )
 
     if not vouchers:
-        # No vouchers: log to OrderValidationLog
+        logger.debug(
+            "[Voucher Apply] No eligible vouchers found for Order id=%s, participant=%s",
+            order.id,
+            participant
+        )
         OrderValidationLog.objects.create(
             participant=participant,
-            message=f"No active grocery vouchers found for order {order.id}.",
+            message=f"No active grocery vouchers found for order {order.id}."
         )
         return False
 
-    first_voucher = vouchers[0]
-    first_amount = first_voucher.voucher_amnt
+    with transaction.atomic():
+        for voucher in vouchers:
+            if remaining <= 0:
+                break
 
-    # --- Handle total_price <= first voucher ---
-    if total_price <= first_amount:
-        first_voucher.active = False
-        note_type = "Fully" if total_price == first_amount else "Partially"
-        first_voucher.notes = (first_voucher.notes or "") + f"{note_type} used on order {order.id} for ${total_price:.2f}; "
-        first_voucher.save()
-        applied = True
+            # Only apply voucher if it fits entirely (no partial usage)
+            if voucher.voucher_amnt <= remaining:
+                applied_amount = voucher.voucher_amnt
 
-        VoucherLog.objects.create(
-            order=order,
-            voucher=first_voucher,
-            participant=participant,
-            message=f"{note_type} used voucher {first_voucher.id} for ${total_price:.2f}.",
-            log_type=VoucherLog.INFO,
-        )
+                # Deactivate voucher
+                voucher.state = "consumed"
+                voucher.notes = (voucher.notes or "") + f"Fully used on order {order.id} for ${applied_amount:.2f}; "
+                voucher.save()
 
-        order.paid = True
-        order.save(update_fields=["paid"], skip_voucher=True)
-        return True
+                # Create join table record
+                OrderVoucher.objects.create(
+                    order=order,
+                    voucher=voucher,
+                    applied_amount=applied_amount
+                )
 
-    # --- Multi-voucher application ---
-    amount_needed = total_price
-    for voucher in vouchers:
-        if amount_needed <= 0:
-            break
+                # Trigger async logging/task
+                log_voucher_application_task.delay(
+                    order_id=order.id,
+                    voucher_id=voucher.id,
+                    participant_id=participant.id,
+                    applied_amount=applied_amount,
+                    remaining=remaining - applied_amount
+                )
 
-        voucher_amount = voucher.voucher_amnt
-        applied_amount = min(amount_needed, voucher_amount)
-        if applied_amount <= 0:
-            continue
+                remaining -= applied_amount
+                applied = True
 
-        voucher.active = False
-        note_type = "Fully" if applied_amount == voucher_amount else "Partially"
-        voucher.notes = (voucher.notes or "") + f"{note_type} used on order {order.id} for ${applied_amount:.2f}; "
-        voucher.save()
-
-        amount_needed -= applied_amount
-        applied = True
-
-        VoucherLog.objects.create(
-            order=order,
-            voucher=voucher,
-            participant=participant,
-            message=f"{note_type} used voucher {voucher.id} for ${applied_amount:.2f}, "
-                    f"remaining amount needed: ${amount_needed:.2f}",
-            log_type=VoucherLog.INFO,
-        )
-
-    if applied:
-        order.paid = True
-        order.save(update_fields=["paid"], skip_voucher=True)
+        # Update order paid status if any vouchers were applied
+        if applied:
+            order.paid = remaining <= 0
+            logger.debug(
+                "[Voucher Apply] Applied %d voucher(s) to Order id=%s, remaining amount: %.2f, order paid: %s",
+                len(vouchers),
+                order.id,
+                remaining,
+                order.paid
+            )
+            order.save(update_fields=["paid"], skip_voucher=True)
+        else:
+            logger.debug(
+                "[Voucher Apply] No vouchers were applied to Order id=%s (remaining: %.2f)",
+                order.id,
+                remaining
+            )
 
     return applied

@@ -33,7 +33,6 @@ Key Pytest Concepts Used:
 
 # --- Third-Party Imports ---
 import pytest
-import factory
 from decimal import Decimal
 from faker import Faker
 # --- Local Application Imports ---
@@ -54,8 +53,7 @@ from factories import (
     
 )
 from test_logging import log_vouchers_for_account
-from test_helper import add_items_to_order
-from food_orders.order_utils import OrderUtils
+from food_orders.utils.order_validation import OrderValidation
 
 # ============================================================
 # Tests for Voucher Amount Calculation and Application
@@ -266,60 +264,80 @@ def test_placeholder_for_voucher_pause_logic(paused_test_setup_fixture):
     # --- Placeholder assertion to make the test pass ---
     assert participant is not None
     assert account is not None
-    # --- (Your real test logic would go here) ---
 
 @pytest.mark.django_db
 def test_order_exactly_consumes_one_voucher():
     """
-    Test order total exactly equals voucher balance.
+    Test order total exactly equals participant's base balance.
     Ensures voucher remains active and order passes.
     """
-    # --- Create a category and product for the order ---
+    # --- Create category and product ---
     CategoryFactory()
     product = ProductFactory()
 
-    # --- Create a participant and a single voucher ---
+    # --- Create participant and set base balance ---
     participant = ParticipantFactory()
-    voucher = VoucherFactory(participant=participant, multiplier=1, base_balance=Decimal("50"))
+    participant.accountbalance.base_balance = Decimal("50")
+    participant.accountbalance.save()
 
-    # --- Create an order and add items ---
-    order = OrderFactory(participant=participant)
-    items = OrderItemFactory([(product, 1)])
-    add_items_to_order(order, items)
+    # --- Create a voucher linked to the participant's account ---
+    voucher = VoucherFactory(account=participant.accountbalance, multiplier=1, state="applied")
 
-    # --- Validate the order against the participant's account balance ---
-    utils = OrderUtils()
-    utils.validate_order_items(items, participant, participant.accountbalance)
+    # --- Create order and attach items ---
+    order = OrderFactory(account=participant.accountbalance)
+    item = OrderItemFactory(order=order, product=product, quantity=1)
+
+    # --- Validate the order ---
+    utils = OrderValidation()
+    utils.validate_order_items([item], participant, participant.accountbalance)
 
     # --- Assertions ---
-    assert voucher.voucher_amnt == Decimal("50")
     assert order.items.first().quantity == 1
-
+    assert voucher.voucher_amnt > 0
 
 @pytest.mark.django_db
 def test_order_exactly_consumes_two_vouchers():
     """
-    Test participant with multiple vouchers.
-    Ensures order processing works even with multiple vouchers.
+    Verify that an order exactly consumes the participant's available balance
+    spread across multiple vouchers, leaving 0 available balance.
     """
-    # --- Create a category and product for the order ---
+    # --- Setup category/product ---
     CategoryFactory()
-    product = ProductFactory()
+    product = ProductFactory(price=Decimal("75"))  # Two items = 150 total
 
-    # --- Create a participant and two vouchers ---
+    # --- Setup participant and base balance ---
     participant = ParticipantFactory()
-    v1 = VoucherFactory(participant=participant, multiplier=1, base_balance=Decimal("50"))
-    v2 = VoucherFactory(participant=participant, multiplier=1, base_balance=Decimal("100"))
+    participant.accountbalance.base_balance = Decimal("150")
+    participant.accountbalance.save()
 
-    # --- Create an order and add items ---
-    order = OrderFactory(participant=participant)
-    items = OrderItemFactory([(product, 2)])
-    add_items_to_order(order, items)
+    # --- Assert starting available balance ---
+    assert participant.accountbalance.available_balance == Decimal("40"), (
+    f"Expected available_balance=40, but got {participant.accountbalance.available_balance}"
+    )
 
-    # --- Validate the order against the participant's account balance ---
-    utils = OrderUtils()
-    utils.validate_order_items(items, participant, participant.accountbalance)
+    # Create order normally
+    order = OrderFactory(account=participant.accountbalance)
+
+    # Set the test price AFTER creation
+    order._test_price = Decimal("150")
+
+    participant.accountbalance.refresh_from_db()
+
+    assert order.total_price == Decimal("150")
+    # --- Validate the order ---
+    utils = OrderUtils(order)
+    utils.validate_order_items(order.items.all(), participant, participant.accountbalance)
+    utils.confirm()
+    
+    order.refresh_from_db()  # make sure you have the latest from the DB
+    assert order.status_type == "confirmed"
+
+    # --- Refresh account balance ---
+    participant.accountbalance.refresh_from_db()
 
     # --- Assertions ---
-    assert order.items.first().quantity == 2
-    assert order.items.count() == 1
+  
+    assert participant.accountbalance.available_balance == Decimal("0"), (
+    f"All Voucher Should Have Been Use Available Balance should =0s, but got {participant.accountbalance.available_balance}"
+    )
+

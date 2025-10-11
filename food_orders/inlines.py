@@ -30,7 +30,7 @@ class OrderItemInline(admin.TabularInline):
         """
         instance = super().save_new(form, commit=False)
         # If you have logic in order_utils that sets prices or adjusts data:
-        from .order_utils import preprocess_order_item
+        from .utils.order_utils import preprocess_order_item
         preprocess_order_item(instance)
         if commit:
             instance.save()
@@ -43,7 +43,7 @@ class OrderItemInline(admin.TabularInline):
         super().clean()
         account = getattr(self.instance, 'account', None)
         participant = getattr(account, 'participant', None)
-        from .order_utils import validate_order_items
+        from .utils.order_utils import validate_order_items
         validate_order_items(self.forms, participant, account)
 
 

@@ -10,7 +10,6 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 # Django auth
-from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
@@ -19,11 +18,14 @@ from django.contrib.auth.views import PasswordChangeView
 # Local app
 from .models import AccountBalance, Order, Product, Participant, Voucher
 from .forms import ParticipantUpdateForm, CustomLoginForm
-from .order_utils import OrderItemData, OrderUtils
+from .utils.order_utils import OrderItemData, OrderOrchestration
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Standard library
 import json
-
 
 class CustomPasswordChangeView(PasswordChangeView):
     """Custom password change that resets the must_change_password flag."""
@@ -120,7 +122,7 @@ def participant_dashboard(request):
     )
 
 @login_required
-def create_order(request):
+def product_view(request):
     """Product selection page for creating a new order."""
     query = request.GET.get("q", "")
     products = Product.objects.all().order_by("category", "name")
@@ -206,29 +208,46 @@ def account_update_view(request):
 
 
 @login_required
+@transaction.atomic
 def review_order(request):
-    """Review the current cart before submitting."""
+    """Review or validate the current cart before submitting."""
     cart = request.session.get("cart", {})
     products = Product.objects.filter(id__in=cart.keys())
 
     cart_items = []
     total = 0
-
     for product in products:
         qty = cart.get(str(product.id), 0)
         subtotal = product.price * qty
         total += subtotal
-        cart_items.append(
-            {"product": product, "quantity": qty, "subtotal": subtotal}
-        )
+        cart_items.append({"product": product, "quantity": qty, "subtotal": subtotal})
+
+    if request.method == "POST":
+        participant = request.user.participant
+        account = AccountBalance.objects.select_for_update().get(participant=participant)
+
+        products_map = {p.id: p for p in products}
+        order_items = [
+            OrderItemData(product=products_map[int(pid)], quantity=qty)
+            for pid, qty in cart.items()
+            if products_map.get(int(pid))
+        ]
+
+        order_utils = OrderOrchestration()
+        try:
+            # Run validation-only mode
+            order_utils.create_order(account, order_items_data=order_items, validate_only=True)
+            # If successful, redirect to final submission
+            return redirect("submit_order")
+
+        except ValidationError as e:
+            messages.error(request, str(e))
 
     return render(
         request,
         "food_orders/review_order.html",
         {"cart_items": cart_items, "total": total},
     )
-
-
 @login_required
 @transaction.atomic
 def submit_order(request):
@@ -247,17 +266,50 @@ def submit_order(request):
         if products.get(int(pid))
     ]
 
+    order_utils = OrderOrchestration()
     try:
-        order = OrderUtils().create_order(account, order_items)
+        order = order_utils.create_order(account, order_items_data=order_items)
+        order.confirm()
+        logger.debug("=== ORDER DEBUG START ===")
+        logger.debug("Order type: %s", type(order))
+        logger.debug("Order module: %s", getattr(order.__class__, "__module__", None))
+        logger.debug("Has use_voucher: %s", hasattr(order, "use_voucher"))
+        logger.debug("Dir(order): %s", dir(order))
+        logger.debug("Order repr: %s", repr(order))
+        logger.debug("=== ORDER DEBUG END ===")
+
+        order.use_voucher()
+
     except ValidationError as e:
         messages.error(request, str(e))
         return redirect("review_order")
-
+    
+ # Clear cart
     request.session["cart"] = {}
+    request.session["last_order_id"] = str(order.id)
     request.session.modified = True
 
-    return render(request, "food_orders/order_success.html", {"order": order})
+    # Redirect to success page
+    return redirect("order_success")
 
+@login_required
+def order_success(request):
+    # Pop the order ID from the session
+    order_id = request.session.pop("last_order_id", None)
+    if not order_id:
+        messages.warning(request, "No recent order to display.")
+        return redirect("participant_dashboard")  # fallback page
+
+    try:
+        order = Order.objects.get(id=order_id, account__participant=request.user.participant)
+    except Order.DoesNotExist:
+        messages.error(request, "Order not found.")
+        return redirect("participant_dashboard")
+
+    order.success_viewed = True
+    order.save(update_fields=["success_viewed"])
+
+    return render(request, "food_orders/order_success.html", {"order": order})
 
 @login_required
 @transaction.atomic

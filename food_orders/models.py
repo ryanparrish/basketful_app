@@ -6,37 +6,26 @@ from datetime import timedelta
 # Django imports
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models,transaction
 from django.db.models import (
     F, UniqueConstraint
 )
 from django.db.models.functions import ExtractWeek, ExtractYear
 from django.utils.timezone import now
+from django.utils import timezone
 
 # Local app imports
 from . import balance_utils, voucher_utils
-from .order_utils import calculate_total_price, OrderUtils
 from .queryset import program_pause_annotations
-from .voucher_utils import apply_vouchers
-from .order_utils import OrderUtils, get_order_print_context
-from django.core.exceptions import ValidationError
-from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
-from django.db import models
 from django.core.exceptions import ValidationError
+from django_ulid.models import ULIDField,default
+from ulid import ULID
+import logging
 
-from django.db import models
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from datetime import timedelta
-from datetime import timedelta
-from django.core.exceptions import ValidationError
-from django.db import models
-from django.utils.timezone import now
-
+logger = logging.getLogger(__name__)
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -147,8 +136,6 @@ class ProgramPauseQuerySet(models.QuerySet):
     def active(self):
         return self.with_annotations().filter(is_active_gate=True)
 
-
-
 class ProgramPause(models.Model):
     pause_start = models.DateTimeField()
     pause_end = models.DateTimeField()
@@ -195,11 +182,6 @@ class ProgramPause(models.Model):
     def is_active_gate(self) -> bool:
         """Pause is active if the multiplier is greater than 1."""
         return self.multiplier > 1
-
-    # -------------------------------
-    # Validations
-    # -------------------------------
-
 
 def clean(self):
     """Prevent overlapping pauses and invalid dates."""
@@ -310,12 +292,14 @@ class Participant(models.Model):
  
     def __str__(self):
         return self.name
-    
+   
+    def household_size(self):
+        return self.adults + self.children 
+     
     def save(self, *args, **kwargs):
         self.full_clean()  # Optional if you want validation on every save
         super().save(*args, **kwargs)
-    def household_size(self):
-        return self.adults + self.children 
+
 # Class to represent account balance
 class AccountBalance(models.Model):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
@@ -344,86 +328,91 @@ class AccountBalance(models.Model):
     def __str__(self) -> str:
         return getattr(self.participant, "name", str(self.pk))
 
-
 class Order(models.Model):
+    id = ULIDField(primary_key=True, default=default, editable=False)
     user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
-    account = models.ForeignKey("AccountBalance", on_delete=models.PROTECT, related_name='orders')
+    account = models.ForeignKey("AccountBalance", on_delete=models.PROTECT, related_name="orders")
     order_date = models.DateTimeField(auto_now_add=True)
+    order_number = models.CharField(max_length=20, unique=True, editable=False)
+    success_viewed = models.BooleanField(default=False)
     status_type = models.CharField(
         max_length=20,
         choices=[
-            ('pending', 'Pending'),
-            ('confirmed', 'Confirmed'),
-            ('packing', 'Packing'),
-            ('completed', 'Completed'),
-            ('cancelled', 'Cancelled'),
+            ("pending", "Pending"),
+            ("confirmed", "Confirmed"),
+            ("packing", "Packing"),
+            ("completed", "Completed"),
+            ("cancelled", "Cancelled"),
         ],
-        default='pending',
-        null=False,
-        help_text="The current status of the order. Options are: Pending New-Unpaid, Confirmed Paid, Packing, Complete Packed, or Cancelled."
+        default="pending",
+        help_text="The current status of the order."
     )
-
     paid = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # -------------------------------
-    # Utility properties
-    # -------------------------------
     @property
-    def _order_utils(self):
-        return OrderUtils(self)
+    def _orchestration(self):
+        if not hasattr(self, "__orchestration"):
+            logger.debug(f"Initializing OrderOrchestration for Order ID: {self.id}")
+            from .utils.order_utils import OrderOrchestration
+            self.__orchestration = OrderOrchestration(order=self)
+        return self.__orchestration
 
     @property
     def total_price(self) -> Decimal:
-        return calculate_total_price(self)
+        from .utils.order_helper import OrderHelper
+        total = OrderHelper.calculate_total_price(self)
+        logger.debug(f"Total price calculated for Order ID {self.id}: {total}")
+        return total
 
-    # -------------------------------
-    # Validation
-    # -------------------------------
-    @staticmethod
-    def validate_items_static(items, participant, account):
-        """Validate a list of OrderItemData for a participant and account."""
-        validate_order_items(items, participant, account)
-
-    def validate_items(self, items):
-        participant = getattr(self.account, "participant", None)
-        if participant:
-            self.validate_items_static(items, participant, self.account)
-
-    # -------------------------------
-    # Order actions
-    # -------------------------------
-    def confirm(self):
-        return self._order_utils.confirm()
-
+    def use_voucher(self, max_vouchers: int = 2, allow_partial: bool = False) -> bool:
+        logger.debug(f"Applying vouchers for Order ID {self.id}")
+        from .voucher_utils import apply_vouchers_to_order
+        result = apply_vouchers_to_order(self, max_vouchers=max_vouchers)
+        logger.debug(f"Vouchers applied result for Order ID {self.id}: {result}")
+  
     def cancel(self):
-        return self._order_utils.cancel()
+        from .utils.order_utils import OrderOrchestration
+
+        return OrderOrchestration(self).cancel()
 
     def clone(self, status="pending"):
-        return self._order_utils.clone(status=status)
+        from .utils.order_utils import OrderOrchestration
+
+        return OrderOrchestration(self).clone(status=status)
+    
+    def confirm(self):
+        from .utils.order_utils import OrderOrchestration
+        return OrderOrchestration(self).confirm()
 
     def edit(self):
-        return self._order_utils.edit()
+        from .utils.order_utils import OrderOrchestration
 
-    # -------------------------------
-    # Voucher logic
-    # -------------------------------
-    def use_voucher(self, max_vouchers: int = 2) -> bool:
-        """
-        Apply eligible grocery vouchers to this order and mark as paid.
-        Returns True if any voucher was applied, False otherwise.
-        """
-        from . import voucher_utils
-        return voucher_utils.apply_vouchers(self, max_vouchers=max_vouchers)
+        return OrderOrchestration(self).edit()
+    @classmethod
+    def generate_order_number(cls):
+        today = now().strftime("%Y%m%d")  # YYYYMMDD
+        prefix = "ORD"
 
-    # -------------------------------
-    # Override save to apply vouchers when confirmed
-    # -------------------------------
+        # Atomic increment to avoid race conditions
+        with transaction.atomic():
+            last_order = cls.objects.select_for_update().filter(
+                order_number__startswith=f"{prefix}-{today}"
+            ).order_by("order_number").last()
+
+            if last_order:
+                last_sequence = int(last_order.order_number.split("-")[-1])
+                new_sequence = last_sequence + 1
+            else:
+                new_sequence = 1
+
+            return f"{prefix}-{today}-{new_sequence:06d}"
+
     def save(self, *args, **kwargs):
-        # Custom kwarg to prevent recursion when apply_vouchers calls save()
+        if not self.order_number:
+            self.order_number = self.generate_order_number()
         skip_voucher = kwargs.pop("skip_voucher", False)
-
         is_new = self.pk is None
         prev_status = None
 
@@ -433,26 +422,15 @@ class Order(models.Model):
                 .values_list("status_type", flat=True)
                 .first()
             )
+            logger.debug(f"Previous status for Order ID {self.pk}: {prev_status}")
 
-        super().save(*args, **kwargs)  # normal save
+        logger.debug(f"Saving Order ID {self.pk} (new={is_new}, skip_voucher={skip_voucher})")
+        super().save(*args, **kwargs)
+        logger.debug(f"Order ID {self.pk} saved successfully.")
 
-        # Only apply vouchers if:
-        # - not skipping
-        # - status is confirmed
-        # - this is a new order OR status just changed to confirmed
-        if not skip_voucher:
-            if self.status_type == "confirmed" and (is_new or prev_status != "confirmed"):
-                applied = self.use_voucher()
-                if applied and not self.paid:
-                    # Ensure paid is persisted
-                    self.paid = True
-                    super().save(update_fields=["paid"])
+    def __str__(self):
+        return f"Order #{self.id} (${self.total_price}) - Status: {self.status_type}"
 
-    # -------------------------------
-    # Print / context utilities
-    # -------------------------------
-    def print_context(self):
-        return get_order_print_context(self)
 
 class OrderItem(models.Model):
     order = models.ForeignKey(
@@ -580,8 +558,15 @@ class Voucher(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     notes = models.TextField(blank=True, default=" ")
+    state = models.CharField(
+        max_length=20,
+        choices=[("pending", "Pending"), ("applied", "Applied"), ("consumed", "Consumed")],
+        default="pending",
+        editable=False
+
+    )
     program_pause_flag = models.BooleanField(default=False)
-    multiplier = models.IntegerField(default=1)
+    multiplier = models.IntegerField(default=1,editable=False)
     @property
     def voucher_amnt(self) -> Decimal:
         """
@@ -594,6 +579,16 @@ class Voucher(models.Model):
         return f"Voucher ({self.pk})"
   
 User = get_user_model()
+
+#Class to represent voucher payments
+class OrderVoucher(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="applied_vouchers")
+    voucher = models.ForeignKey(Voucher, on_delete=models.CASCADE)
+    applied_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Order #{self.order.id} - Voucher {self.voucher.id} (${self.applied_amount})"
 
 class EmailLog(models.Model):
     EMAIL_TYPE_CHOICES = [

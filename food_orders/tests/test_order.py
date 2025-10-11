@@ -8,12 +8,53 @@ This module refactors the previous Django TestCase classes into pytest functions
 with extremely verbose comments for clarity.
 """
 
+# ----------------------
+# Standard library
+# ----------------------
+import logging
 from decimal import Decimal
-import pytest
 from types import SimpleNamespace
-from food_orders.models import Order,OrderItem
-from food_orders.order_utils import OrderUtils
-from test_helper import create_category,create_product,create_participant,create_voucher,create_order,add_items_to_order,make_items
+
+# ----------------------
+# Django imports
+# ----------------------
+from django.core.exceptions import ValidationError
+from django.contrib.messages import get_messages
+from django.urls import reverse
+
+# ----------------------
+# Third-party imports
+# ----------------------
+import pytest
+
+# ----------------------
+# Local app imports
+# ----------------------
+from food_orders.models import Order, OrderItem, OrderVoucher, Voucher
+from food_orders.utils.order_validation import OrderValidation
+from food_orders.tests.factories import (
+    UserFactory,
+    ParticipantFactory,
+    CategoryFactory,
+    ProductFactory,
+    VoucherFactory,
+    VoucherSettingFactory,
+)
+from test_helper import (
+    create_category,
+    create_product,
+    create_participant,
+    create_voucher,
+    create_order,
+    add_items_to_order,
+    make_items,
+)
+
+# Create a logger for this module
+logger = logging.getLogger(__name__)
+
+# Optional: set the logging level (DEBUG, INFO, WARNING, ERROR)
+logger.setLevel(logging.INFO)
 
 # -----------------------------
 # Order validation tests
@@ -39,7 +80,7 @@ def test_simple_order_creation_verbose():
     items = make_items([(product, 3)])
     add_items_to_order(order, items)
 
-    utils = OrderUtils()
+    utils = OrderValidation()
     utils.validate_order_items(items, participant, participant.accountbalance)
 
     # Assertions
@@ -93,7 +134,7 @@ def test_order_with_multiple_products_verbose():
     items = make_items([(p1, 2), (p2, 1)])
     add_items_to_order(order, items)
 
-    utils = OrderUtils()
+    utils = OrderValidation()
     utils.validate_order_items(items, participant, participant.accountbalance)
 
     # Assertions
@@ -123,7 +164,7 @@ def test_order_with_mixed_categories_under_balances():
     items = make_items([(p1, 2), (p2, 1)])
     add_items_to_order(order, items)
 
-    utils = OrderUtils()
+    utils = OrderValidation()
     utils.validate_order_items(items, participant, participant.accountbalance)
 
     # Assertions
@@ -145,6 +186,117 @@ def test_products_without_categories_verbose():
 
     items = [type("OrderItemData", (), {"product": product_no_cat, "quantity": 1})]
 
-    utils = OrderUtils()
+    utils = OrderValidation()
     # Should not raise any exception
     utils.validate_order_items(items, participant, participant.accountbalance)
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+@pytest.mark.django_db
+def test_submit_order_view(client):
+    """End-to-end test for submitting an order with vouchers applied."""
+    VoucherSettingFactory.create()
+
+    # --- Setup user, participant, and account ---
+    user = UserFactory(username="testuser", password="password123")
+    participant = ParticipantFactory(user=user)
+    account = participant.accountbalance
+    account.save()  # ensure enough for order
+    
+    logger.info("FoodOrdersConfig.ready() called — importing signals...")
+    import food_orders.signals
+    logger.info(" food_orders.signals successfully imported")
+
+    # --- Category & Products ---
+    grocery_category = CategoryFactory(name="Grocery")
+    product1 = ProductFactory(name="Apple", price=Decimal("10"), category=grocery_category)
+    product2 = ProductFactory(name="Banana", price=Decimal("20"), category=grocery_category)
+
+    vouchers = account.vouchers.all()
+    voucher_count = vouchers.count()
+    logger.debug(f"Participant {participant.id} has {voucher_count} vouchers.")
+
+    for voucher in vouchers:
+        logger.debug(f"Voucher {voucher.id} — active: {voucher.active}, state: {voucher.state}")
+    logger.debug(f"Participant {participant.id} base balance: {account.base_balance}")
+
+    # --- Sanity check for vouchers and balances ---
+    applied_vouchers = Voucher.objects.filter(account=account, state="applied")
+    total_applied = sum(v.voucher_amnt for v in applied_vouchers)
+    logger.debug("Initial total applied vouchers: %s", total_applied)
+    logger.debug("Account available balance: %s", account.available_balance)
+
+    # --- Login ---
+    client.force_login(user)
+
+    # --- Session cart setup ---
+    session = client.session
+    session["cart"] = {
+        str(product1.id): 2,  # 2 * 10 = 20
+        str(product2.id): 1,  # 1 * 20 = 20
+    }
+    session.save()
+    logger.debug("Cart session: %s", session["cart"])
+
+    # --- Define form payload ---
+    payload = {"confirm": True}
+
+    # --- POST to submit order ---
+    url = reverse("submit_order")
+    response = client.post(url, data=payload, follow=True)
+
+    # --- Logging POST response ---
+    logger.info("POST submit_order status: %s", response.status_code)
+    logger.info("Redirect chain: %s", response.redirect_chain)
+    logger.info("Templates used: %s", [t.name for t in response.templates])
+    logger.info("Response content snippet: %s", response.content.decode()[:200])
+
+    # Capture messages from POST
+    messages_list = list(get_messages(response.wsgi_request))
+    for m in messages_list:
+        logger.warning("Validation/message: %s", m)
+
+    # --- Assert response ---
+    assert response.status_code == 200
+    templates_rendered = [t.name for t in response.templates]
+
+    if "food_orders/order_success.html" in templates_rendered:
+        logger.info("Order success page rendered")
+        content = response.content.decode()
+        # Use a more flexible check for success
+        assert "Thank you" in content and "order" in content, (
+        "Order success message not found in page content"
+        )
+    elif "food_orders/participant_dashboard.html" in templates_rendered:
+        logger.info("Redirected to participant dashboard after order")
+    else:
+        pytest.fail(f"Unexpected template rendered: {templates_rendered}")
+
+    # --- Verify order created ---
+    order = Order.objects.first()
+    assert order is not None, "Order should be created"
+    assert order.total_price == Decimal("40"), f"Expected order total 40, got {order.total_price}"
+    logger.info("Order Total Price is %s", order.total_price)
+
+    # --- Verify cart cleared ---
+    session = client.session
+    assert session.get("cart") == {}, "Cart should be empty after submission"
+
+    # --- Verify account balance used ---
+    account.refresh_from_db()
+    assert account.available_balance == Decimal("0"), (
+        f"Expected available_balance to be 0.00 after purchase, available_balance = {account.available_balance}"
+    )
+
+    applied_vouchers = Voucher.objects.filter(ordervoucher__order=order, active=True, state='applied')
+
+    # Sum up their amounts (assuming you have a `voucher_amount` field or method)
+    total_applied = sum(v.voucher_amount for v in applied_vouchers)
+
+    # Assert against the expected total
+    expected_total = Decimal("0")  # adjust as needed
+    assert total_applied == expected_total, f"Expected total {expected_total}, got {total_applied}"
+
+    logger.info("Total vouchers applied: %s", total_applied)

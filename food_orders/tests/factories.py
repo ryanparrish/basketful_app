@@ -46,7 +46,8 @@ from food_orders.models import (
     AccountBalance,
     Program,
     ProductManager,
-    Subcategory
+    Subcategory,
+    VoucherSetting
 )
 # Import the custom formset used in the application to replicate its behavior in tests.
 from food_orders.forms import OrderItemInlineFormSet
@@ -149,6 +150,14 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
 
 # --- Factory for the Voucher Model ---
 
+class VoucherSettingFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = VoucherSetting
+
+    active = True
+    adult_amount = Decimal("20.00")
+    child_amount = Decimal("12.50")
+    infant_modifier = Decimal("2.50")  # e.g., multiplier for diapers
 
 class VoucherFactory(factory.django.DjangoModelFactory):
     """
@@ -250,3 +259,13 @@ class ProductManagerFactory(factory.django.DjangoModelFactory):
     notes = factory.Faker("sentence")
     limit = 2
     limit_scope = "per_household"
+
+from django.contrib.auth.models import User
+
+class UserFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = User
+
+    username = factory.Sequence(lambda n: f"user{n}")
+    password = factory.PostGenerationMethodCall("set_password", "password123")
+    email = factory.LazyAttribute(lambda o: f"{o.username}@example.com")

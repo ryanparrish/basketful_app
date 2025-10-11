@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.utils import timezone
 
+
 def calculate_base_balance(participant) -> Decimal:
     """
     Calculate the base balance for a participant based on the active VoucherSetting.
@@ -52,7 +53,7 @@ def calculate_available_balance(account_balance, limit=2):
 
     # Base queryset: active grocery vouchers
     vouchers_qs = account_balance.vouchers.filter(
-        active=True,
+        state="applied",
         voucher_type="grocery"
     ).order_by("created_at")
 

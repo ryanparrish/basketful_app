@@ -20,6 +20,8 @@ from celery import shared_task
 from django.utils import timezone
 import logging
 from .models import Voucher, ProgramPause
+from celery import shared_task
+from .models import VoucherLog, Order, Voucher, Participant
 
 # Create a logger for this module
 logger = logging.getLogger(__name__)
@@ -35,6 +37,22 @@ if not logger.hasHandlers():
     logger.addHandler(handler)
 
 User = get_user_model()
+
+@shared_task
+def log_voucher_application_task(order_id, voucher_id, participant_id, applied_amount, remaining):
+    order = Order.objects.get(id=order_id)
+    voucher = Voucher.objects.get(id=voucher_id)
+    participant = Participant.objects.get(id=participant_id)
+
+    note_type = "Fully" if applied_amount == voucher.voucher_amnt else "Partially"
+
+    VoucherLog.objects.create(
+        order=order,
+        voucher=voucher,
+        participant=participant,
+        message=f"{note_type} used voucher {voucher.id} for ${applied_amount:.2f}, remaining amount needed: ${remaining:.2f}",
+        log_type=VoucherLog.INFO,
+    )
 
 # ---------------------------
 # Combined Orders Task

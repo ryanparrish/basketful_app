@@ -24,7 +24,7 @@ from .inlines import VoucherLogInline
 from .models import Participant
 from .balance_utils import calculate_base_balance  
 from decimal import Decimal
-from food_orders import order_utils  
+from .utils.order_helper import OrderHelper
 User = get_user_model()
 try:
     admin.site.unregister(User)
@@ -99,11 +99,15 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'updated_at', 'total_price', 'paid')
+    list_display = ('id', 'updated_at', 'display_total_price', 'paid')
     readonly_fields = ('paid',)
     inlines = [OrderItemInline]
     change_form_template = "admin/food_orders/order/change_form.html"
     exclude = ('user',)
+
+    def display_total_price(self, obj):
+        return obj.total_price
+    display_total_price.short_description = "Total Price"
 
     class Media:
         js = ('food_orders/js/orderitem_inline.js',)
@@ -120,12 +124,12 @@ class OrderAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def print_order(self, request, order_id):
-        order = order_utils.get_order_or_404(order_id)
-        context = order_utils.get_order_print_context(order)
+        order = OrderHelper.get_order_or_404(order_id)
+        context = OrderHelper.get_order_print_context(order)
         return render(request, "admin/food_orders/order/print_order.html", context)
 
     def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
-        product_json = order_utils.get_product_prices_json()
+        product_json = OrderHelper.get_product_prices_json()
         script_tag = f'<script>window.productPrices = {product_json};</script>'
         context['additional_inline_script'] = script_tag
         return super().render_change_form(request, context, add, change, form_url, obj)

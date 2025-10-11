@@ -22,7 +22,7 @@ from food_orders.tests.test_helper import (
     add_items_to_order,
     make_items,
 )
-from food_orders.order_utils import OrderUtils
+from food_orders.utils.order_validation import OrderValidation
 from django.core.exceptions import ValidationError
 
 # ============================================================
@@ -36,7 +36,7 @@ class TestHygieneRules:
         Tests that an order is invalid if the total cost of hygiene items
         exceeds the participant's hygiene balance.
         """
-        validator = OrderUtils()
+        validator = OrderValidation()
         order = order_formset_setup["order"]
         account_balance = order.account  # account_balance is the ForeignKey target
         participant = account_balance.participant  # get participant via account
@@ -74,7 +74,7 @@ class TestHygieneRules:
         add_items_to_order(order, items)
 
         # --- Validate order using OrderUtils ---
-        utils = OrderUtils()
+        utils = OrderValidation()
         utils.validate_order_items(items, participant, participant.accountbalance)
 
         # --- Assertions ---
