@@ -2,15 +2,19 @@
 
 import django_ulid.models
 from django.db import migrations, models
+from django.utils.timezone import now
 
 def assign_order_numbers(apps, schema_editor):
-    # Use the historical model
     Order = apps.get_model('food_orders', 'Order')
-    for order in Order.objects.all():
-        # Call the class method
-        order.order_number = Order.generate_order_number()
-        order.save(update_fields=['order_number'])
+    today_str = now().strftime("%Y%m%d")
+    prefix = "ORD"
+    sequence = 1
 
+    for order in Order.objects.all():
+        order_number = f"{prefix}-{today_str}-{sequence:06d}"
+        order.order_number = order_number
+        order.save(update_fields=['order_number'])
+        sequence += 1
 
 class Migration(migrations.Migration):
 
