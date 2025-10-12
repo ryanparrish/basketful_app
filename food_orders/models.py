@@ -361,6 +361,10 @@ class Order(models.Model):
 
     @property
     def total_price(self) -> Decimal:
+        if not self.pk:  # Order not saved yet
+            logger.debug("Order not saved yet, returning 0 total_price")
+            return Decimal("0.00")
+
         from .utils.order_helper import OrderHelper
         total = OrderHelper.calculate_total_price(self)
         logger.debug(f"Total price calculated for Order ID {self.id}: {total}")
@@ -429,8 +433,8 @@ class Order(models.Model):
         logger.debug(f"Order ID {self.pk} saved successfully.")
 
     def __str__(self):
-        return f"Order #{self.id} (${self.total_price}) - Status: {self.status_type}"
-
+        order_id = self.id or "(unsaved)"
+        return f"Order #{order_id} - Status: {self.status_type}"
 
 class OrderItem(models.Model):
     order = models.ForeignKey(
