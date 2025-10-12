@@ -2,13 +2,15 @@
 
 import django_ulid.models
 from django.db import migrations, models
-from food_orders.models import Order
 
 def assign_order_numbers(apps, schema_editor):
-    order = apps.get_model('food_orders', 'Order')
+    # Use the historical model
+    Order = apps.get_model('food_orders', 'Order')
     for order in Order.objects.all():
-        order.order_number = Order.generate_order_number
+        # Call the class method
+        order.order_number = Order.generate_order_number()
         order.save(update_fields=['order_number'])
+
 
 class Migration(migrations.Migration):
 
@@ -17,32 +19,65 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Add order_number field temporarily allowing null
         migrations.AddField(
             model_name='order',
             name='order_number',
-            field=models.CharField( editable=False, max_length=20, null=True),
+            field=models.CharField(editable=False, max_length=20, null=True),
         ),
-                
+
+        # Populate existing rows
         migrations.RunPython(assign_order_numbers),
 
+        # Make order_number unique and non-null
         migrations.AlterField(
             model_name='order',
             name='order_number',
-            field=models.CharField( editable=False, max_length=20, null=False,unique=True),
+            field=models.CharField(editable=False, max_length=20, unique=True, null=False),
         ),
+
+        # Add success_viewed boolean field
         migrations.AddField(
             model_name='order',
             name='success_viewed',
             field=models.BooleanField(default=False),
         ),
+
+        # Add ULIDField as temporary primary key
         migrations.AddField(
             model_name='order',
             name='new_id',
-            field=django_ulid.models.ULIDField(serialize=False),
+            field=django_ulid.models.ULIDField(serialize=False, primary_key=True),
         ),
+
+        # Remove the old id field safely
+        migrations.RemoveField(
+            model_name='order',
+            name='id',
+        ),
+
+        # Rename new_id back to id as the primary key
+        migrations.RenameField(
+            model_name='order',
+            old_name='new_id',
+            new_name='id',
+        ),
+
+        # Alter status_type field (unchanged)
         migrations.AlterField(
             model_name='order',
             name='status_type',
-            field=models.CharField(choices=[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('packing', 'Packing'), ('completed', 'Completed'), ('cancelled', 'Cancelled')], default='pending', help_text='The current status of the order.', max_length=20),
+            field=models.CharField(
+                choices=[
+                    ('pending', 'Pending'),
+                    ('confirmed', 'Confirmed'),
+                    ('packing', 'Packing'),
+                    ('completed', 'Completed'),
+                    ('cancelled', 'Cancelled')
+                ],
+                default='pending',
+                help_text='The current status of the order.',
+                max_length=20
+            ),
         ),
     ]
