@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='order',
             name='new_id',
-            field=django_ulid.models.ULIDField(serialize=False, primary_key=True),
+            field=django_ulid.models.ULIDField(serialize=False),
         ),
 
         # Remove the old id field safely
