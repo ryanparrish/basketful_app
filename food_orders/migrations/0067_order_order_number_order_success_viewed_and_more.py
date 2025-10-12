@@ -2,7 +2,13 @@
 
 import django_ulid.models
 from django.db import migrations, models
+from food_orders.models import Order
 
+def assign_order_numbers(apps, schema_editor):
+    order = apps.get_model('food_orders', 'Order')
+    for order in Order.objects.all():
+        order.order_number = Order.generate_order_number
+        order.save(update_fields=['order_number'])
 
 class Migration(migrations.Migration):
 
@@ -14,8 +20,15 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='order',
             name='order_number',
-            field=models.CharField(default=1, editable=False, max_length=20, unique=True),
-            preserve_default=False,
+            field=models.CharField( editable=False, max_length=20, null=True),
+        ),
+                
+        migrations.RunPython(assign_order_numbers),
+
+        migrations.AlterField(
+            model_name='order',
+            name='order_number',
+            field=models.CharField( editable=False, max_length=20, null=False,unique=True),
         ),
         migrations.AddField(
             model_name='order',
