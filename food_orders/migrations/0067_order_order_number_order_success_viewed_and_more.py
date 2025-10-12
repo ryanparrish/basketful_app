@@ -22,10 +22,10 @@ class Migration(migrations.Migration):
             name='success_viewed',
             field=models.BooleanField(default=False),
         ),
-        migrations.AlterField(
+        migrations.AddField(
             model_name='order',
-            name='id',
-            field=django_ulid.models.ULIDField(primary_key=True, serialize=False),
+            name='new_id',
+            field=django_ulid.models.ULIDField(serialize=False),
         ),
         migrations.AlterField(
             model_name='order',
