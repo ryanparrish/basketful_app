@@ -99,7 +99,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'updated_at', 'display_total_price', 'paid')
+    list_display = ('order_number', 'updated_at', 'display_total_price', 'paid')
     readonly_fields = ('paid',)
     inlines = [OrderItemInline]
     change_form_template = "admin/food_orders/order/change_form.html"
@@ -215,11 +215,20 @@ class ParticipantAdmin(admin.ModelAdmin):
         self.message_user(request, f"Base balance calculated and saved for {updated_count} participants.")
     calculate_base_balance_action.short_description = "Calculate and save base balance for selected participants"
 
+@admin.action(description="Mark selected vouchers as Applied")
+def mark_as_applied(modeladmin, request, queryset):
+    updated = queryset.update(status='applied')
+    if updated:
+        messages.success(request, f"{updated} voucher(s) marked as Applied.")
+    else:
+        messages.warning(request, "No vouchers were updated.")
+
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
     # Fields to show in the list view
     list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'active')
-    
+    actions = [mark_as_applied]
+
     # Make some fields read-only
     readonly_fields = ('voucher_amnt', 'notes')
     
