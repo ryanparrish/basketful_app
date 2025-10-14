@@ -87,7 +87,6 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Order',
             fields=[
-                ('id', django_ulid.models.ULIDField(primary_key=True, serialize=False)),
                 ('order_date', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True, default=datetime.datetime(2025, 6, 6, 16, 24, 29, 31980, tzinfo=datetime.timezone.utc))),

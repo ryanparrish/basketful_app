@@ -329,7 +329,6 @@ class AccountBalance(models.Model):
         return getattr(self.participant, "name", str(self.pk))
 
 class Order(models.Model):
-    id = ULIDField(primary_key=True, default=default, editable=False)
     user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
     account = models.ForeignKey("AccountBalance", on_delete=models.PROTECT, related_name="orders")
     order_date = models.DateTimeField(auto_now_add=True)
