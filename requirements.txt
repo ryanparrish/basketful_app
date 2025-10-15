@@ -35,3 +35,6 @@ celery>=5.3,<6.0
 redis>=5.0,<6.0
 # Celery beat scheduler
 django-celery-beat>=2.8.1,<3.0
+
+#Security through obscurity
+hashids>=1.3.1
