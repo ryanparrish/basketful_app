@@ -217,7 +217,7 @@ class ParticipantAdmin(admin.ModelAdmin):
 
 @admin.action(description="Mark selected vouchers as Applied")
 def mark_as_applied(modeladmin, request, queryset):
-    updated = queryset.update(status='applied')
+    updated = queryset.update(state='applied')
     if updated:
         messages.success(request, f"{updated} voucher(s) marked as Applied.")
     else:

@@ -1,3 +1,8 @@
+#views.py
+# Standard library
+import json
+import logging
+
 # Django core
 from django.contrib import messages
 from django.db import transaction
@@ -19,13 +24,9 @@ from django.contrib.auth.views import PasswordChangeView
 from .models import AccountBalance, Order, Product, Participant, Voucher
 from .forms import ParticipantUpdateForm, CustomLoginForm
 from .utils.order_utils import OrderItemData, OrderOrchestration
-import logging
+from .utils.utils import decode_order_hash
 
 logger = logging.getLogger(__name__)
-
-
-# Standard library
-import json
 
 class CustomPasswordChangeView(PasswordChangeView):
     """Custom password change that resets the must_change_password flag."""
@@ -49,7 +50,6 @@ def get_active_vouchers(participant):
 
 def index(request):
     return render(request, "food_orders/index.html")
-
 
 def custom_login_view(request):
     """Login view with captcha enabled after 3 failed attempts."""
@@ -78,9 +78,20 @@ def custom_login_view(request):
 
 
 @login_required
-def order_detail(request, order_id):
-    """Show details for a single order. Allows duplication into a new cart."""
+def order_detail(request, order_hash):
+    """
+    Show details for a single order using a hashid.
+    Allows duplication into a new cart.
+    """
     participant = request.user.participant
+
+    # Decode hashid to get the real order ID
+    order_id = decode_order_hash(order_hash)
+    if order_id is None:
+        # Invalid hashid → 404
+        return get_object_or_404(Order, pk=-1)
+
+    # Fetch the order only if it belongs to this participant
     order = get_object_or_404(Order, id=order_id, account__participant=participant)
 
     if request.method == "POST" and "duplicate_order" in request.POST:
@@ -94,6 +105,7 @@ def order_detail(request, order_id):
         "food_orders/order_detail.html",
         {"order": order, "order_items": order.items.all()},
     )
+
 
 @login_required
 def participant_dashboard(request):

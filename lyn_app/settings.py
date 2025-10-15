@@ -31,6 +31,8 @@ if os.path.exists(env_path):
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
 DOMAIN_NAME =env('DOMAIN_NAME')
+HASHIDS_SALT = env('HASHIDS_SALT')
+HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=True)
