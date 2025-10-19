@@ -3,6 +3,7 @@ import json
 from django.shortcuts import get_object_or_404
 from decimal import Decimal
 from typing import Dict, Any
+from ..models import Product
 
 # ============================================================
 # Standalone Utilities
@@ -12,9 +13,10 @@ class OrderHelper:
     def __init__(self, order=None):
         self.order = order
 
+    @staticmethod
     def get_product_prices_json() -> str:
-        from food_orders.models import Product
-        return json.dumps({str(p["id"]): float(p["price"]) for p in Product().objects.values("id", "price")})
+        products = Product.objects.values("id", "price")
+        return json.dumps({str(p["id"]): float(p["price"]) for p in products})
 
     def get_order_or_404(order_id: int):
         from food_orders.models import Order

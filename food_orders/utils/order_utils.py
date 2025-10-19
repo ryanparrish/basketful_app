@@ -74,11 +74,17 @@ class OrderOrchestration:
 
         if not self.order:
             raise ValueError("Order must be set before calling clone()")
-        new_order = Order().objects.create(account=self.order.account, status_type=status)
-        self.order = new_order
 
+        # Correct: use the class, not an instance
+        new_order = Order.objects.create(
+            account=self.order.account,
+            status_type=status
+        )
+
+        # Now clone items from the original order
+        # Important: DO NOT reassign self.order before iterating items
         items_to_clone = [
-            OrderItem()(
+            OrderItem(
                 order=new_order,
                 product=item.product,
                 quantity=item.quantity,
@@ -87,7 +93,13 @@ class OrderOrchestration:
             )
             for item in self.order.items.all()
         ]
-        OrderItem().objects.bulk_create(items_to_clone)
+
+        OrderItem.objects.bulk_create(items_to_clone)
+
         logger.info(f"Order {self.order.id} cloned to {new_order.id} with status '{status}'.")
+
+        # Now update self.order AFTER cloning
+        self.order = new_order
         return new_order
+
 
