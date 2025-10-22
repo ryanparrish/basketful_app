@@ -43,7 +43,7 @@ urlpatterns = [
     path('order/update_cart/', views.update_cart, name='update_cart'),
     path('order/review/',views.review_order, name='review_order'),
     path('order/submit/', views.submit_order, name='submit_order'),
-    path('order/<str:order_hash>/', views.order_detail, name='order_detail'),
+    path('order/<int:order_id>/', views.order_detail, name='order_detail'),
     path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
     path('admin/logout/', LogoutView.as_view(next_page='/admin/login/'), name='admin_logout'),
     path('accounts/logout/', auth_views.LogoutView.as_view(template_name='registration/logged_out.html'),name='logout'),
