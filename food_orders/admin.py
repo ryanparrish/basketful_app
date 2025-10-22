@@ -226,7 +226,7 @@ def mark_as_applied(modeladmin, request, queryset):
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
     # Fields to show in the list view
-    list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'active')
+    list_display = ('pk', 'voucher_type', 'created_at', 'account', 'voucher_amnt', 'state')
     actions = [mark_as_applied]
 
     # Make some fields read-only
@@ -236,7 +236,7 @@ class VoucherAdmin(admin.ModelAdmin):
     exclude = ('program_pause_flag','multiplier')
     
     # Add filters in the right sidebar
-    list_filter = ('voucher_type', 'account', 'active', 'created_at')
+    list_filter = ('voucher_type', 'account', 'state', 'created_at')
     
     # Add search functionality
     search_fields = ('voucher_type__name', 'account__name', 'notes')  # adjust according to your field names
