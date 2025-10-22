@@ -21,8 +21,6 @@ from .queryset import program_pause_annotations
 from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django_ulid.models import ULIDField,default
-from ulid import ULID
 import logging
 
 logger = logging.getLogger(__name__)

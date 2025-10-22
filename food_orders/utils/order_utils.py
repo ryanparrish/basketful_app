@@ -3,9 +3,7 @@ import logging
 from typing import List
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.apps import apps
 from .order_validation import OrderItemData, OrderValidation
-from ulid import ULID
 
 logger = logging.getLogger(__name__)
 

@@ -298,7 +298,7 @@ def submit_order(request):
     
  # Clear cart
     request.session["cart"] = {}
-    request.session["last_order_id"] = str(order.id)
+    request.session["last_order_id"] = order.id
     request.session.modified = True
 
     # Redirect to success page
