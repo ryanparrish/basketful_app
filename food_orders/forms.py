@@ -70,7 +70,7 @@ class ParticipantAdminForm(forms.ModelForm):
 
 class ParticipantUpdateForm(forms.ModelForm):
     class Meta:
-        model = Participant\
+        model = Participant
         fields = ['email', 'name', ]
         widgets = {
             'email': forms.EmailInput(attrs={'placeholder': 'you@example.com'}),
