@@ -55,6 +55,7 @@ class OrderOrchestration:
         if self.order.status_type == "confirmed":
             return 
         self.order.status_type = "confirmed"
+        self.order.paid = True
         self.order.save(update_fields=["status_type", "updated_at"])
         logger.info(f"Order {self.order.id} confirmed.")
 
