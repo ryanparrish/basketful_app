@@ -87,8 +87,8 @@ def calculate_full_balance(account_balance) -> Decimal:
     from .models import Voucher
 
     vouchers = account_balance.vouchers.filter(
-        active=True,
-        voucher_type="grocery"
+    consumed_at__isnull=True,
+    voucher_type="grocery"
     ).order_by("created_at")
 
     return sum(v.voucher_amnt for v in vouchers)
