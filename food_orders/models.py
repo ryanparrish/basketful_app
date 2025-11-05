@@ -458,11 +458,28 @@ class OrderItem(models.Model):
         return self.quantity * self.price
     def __str__(self):
         return f"{self.quantity} x {self.product.name} (Order #{self.order.id})"
+    def clean(self):
+        """
+        Prevent moving an existing OrderItem to another order.
+        """
+        if self.pk:  # Only for existing items
+            old_order_id = OrderItem.objects.get(pk=self.pk).order_id
+            if old_order_id != self.order_id:
+                raise ValidationError(
+                    f"Cannot move OrderItem {self.pk} from Order {old_order_id} to {self.order_id}"
+                )
+
+    # --- Save logic ---
     def save(self, *args, **kwargs):
+        # Update price from product
         if self.product:
             self.price = self.product.price
-        super().save(*args, **kwargs)
 
+        # Run validation
+        self.full_clean()  # calls clean() internally
+
+        # Save normally
+        super().save(*args, **kwargs)
 class CombinedOrder(models.Model):
     program = models.ForeignKey(
         'Program',
