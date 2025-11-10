@@ -28,7 +28,6 @@ env_path = os.path.join(BASE_DIR, '.env')
 if os.path.exists(env_path):
     env.read_env(env_path)
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
 DOMAIN_NAME =env('DOMAIN_NAME')
 HASHIDS_SALT = env('HASHIDS_SALT')
@@ -39,7 +38,6 @@ DEBUG = env.bool('DEBUG', default=True)
 
 CELERY_TASK_ALWAYS_EAGER = env("CELERY_TASK_ALWAYS_EAGER")
 CELERY_TASK_EAGER_PROPAGATES = env("CELERY_TASK_EAGER_PROPAGATES")
-
 
 environ.Env.read_env()  # reads from .env
 

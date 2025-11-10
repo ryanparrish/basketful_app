@@ -447,6 +447,7 @@ class OrderItem(models.Model):
 
     # Historical price locked at time of order
     price_at_order = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         # Only set once (don’t overwrite if it already exists)
@@ -678,8 +679,10 @@ class VoucherLog(BaseLog):
         on_delete=models.CASCADE,
         related_name="logs"
     )
-    balance_before = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    balance_after = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    balance_before = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    balance_after = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    applied_amount = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    remaining = models.DecimalField(max_digits=5, decimal_places=2, null=True,blank=True)
     validated_at = models.DateTimeField(auto_now_add=True)  # when voucher was validated/consumed
 
     def __str__(self):

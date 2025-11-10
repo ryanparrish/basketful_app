@@ -40,17 +40,32 @@ User = get_user_model()
 
 @shared_task
 def log_voucher_application_task(order_id, voucher_id, participant_id, applied_amount, remaining):
+    # Fetch related objects
     order = Order.objects.get(id=order_id)
     voucher = Voucher.objects.get(id=voucher_id)
     participant = Participant.objects.get(id=participant_id)
 
+    # Ensure numeric values are never None
+    applied_amount = float(applied_amount or 0.0)
+    remaining = float(remaining or 0.0)
+
+    # Determine note type
     note_type = "Fully" if applied_amount == voucher.voucher_amnt else "Partially"
 
+    # Build log message
+    message = (
+        f"{note_type} used voucher {voucher.id} "
+        f"for ${applied_amount:.2f}, remaining amount needed: ${remaining:.2f}"
+    )
+
+    # Create log entry
     VoucherLog.objects.create(
         order=order,
         voucher=voucher,
         participant=participant,
-        message=f"{note_type} used voucher {voucher.id} for ${applied_amount:.2f}, remaining amount needed: ${remaining:.2f}",
+        applied_amount=applied_amount,
+        remaining=remaining,
+        message=message,
         log_type=VoucherLog.INFO,
     )
 
