@@ -98,21 +98,14 @@ class OrderValidation:
         OrderValidation.enforce_hygiene_balance(items, participant, account_balance)
 
         self.validate_order_vouchers(items=items, account_balance=account_balance)
-
-    def _aggregate_category_data(self, items: list, limit_scope: str = "category"):
+    def _aggregate_category_data(self, items: list):
         """
-        Aggregate order items by category or subcategory for validation.
+        Aggregate order items by their category or subcategory based on model relationships.
 
-        Args:
-        items: list of order item data
-        limit_scope: "category" or "subcategory"
-
-        Returns:
-            category_totals: dict[id, total quantity]
-            category_units: dict[id, unit name]
-            category_products: dict[id, list of products]
-            category_objects: dict[id, category or subcategory object]
+        - If a product has a subcategory, it groups by subcategory.
+        - Otherwise, it groups by category.
         """
+
         category_totals = {}
         category_units = {}
         category_products = {}
@@ -127,18 +120,21 @@ class OrderValidation:
             if not product:
                 continue
 
-            # pick target grouping based on scope
-            if limit_scope == "subcategory" and hasattr(product, "subcategory") and product.subcategory:
-                obj = product.subcategory
-            else:
-                obj = product.category
+            # Check relationships
+            subcategory = getattr(product, "subcategory", None)
+            category = getattr(product, "category", None)
 
-            if not obj:
-                continue
+            # Determine grouping object and level
+            if subcategory and category:
+                obj = subcategory  # subcategory-level enforcement
+            elif category:
+                obj = category     # category-level enforcement
+            else:
+                continue  # skip if neither is defined
 
             cid = obj.id
             category_totals[cid] = category_totals.get(cid, 0) + quantity
-            category_units[cid] = getattr(obj, "unit", getattr(product.category, "unit", "unit"))
+            category_units[cid] = getattr(obj, "unit", getattr(category, "unit", "unit"))
             category_products.setdefault(cid, []).append(product)
             category_objects[cid] = obj
 
