@@ -24,7 +24,7 @@ from django.contrib.auth.views import PasswordChangeView
 from .models import AccountBalance, Order, Product, Participant, Voucher
 from .forms import ParticipantUpdateForm, CustomLoginForm
 from .utils.order_utils import OrderItemData, OrderOrchestration
-from .utils.utils import decode_order_hash
+from .utils.utils import decode_order_hash, encode_order_id
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,9 @@ def participant_dashboard(request):
     orders = Order.objects.filter(account__participant=participant).order_by("-created_at")
     program = participant.program if participant.program else None
     has_vouchers = get_active_vouchers(participant).exists()
+
+    for order in orders:
+        order.hash = encode_order_id(order.id)
 
     return render(
         request,
