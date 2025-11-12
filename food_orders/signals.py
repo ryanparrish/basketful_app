@@ -31,7 +31,7 @@ User = get_user_model()
 # ============================================================
 
 @receiver(post_save, sender=Participant)
-def update_base_balance_on_change(instance, created):
+def update_base_balance_on_change(instance, created,**kwargs):
     """
     Update AccountBalance.base_balance whenever relevant fields change.
     New participants are ignored (handled by a different signal).
@@ -44,7 +44,7 @@ def update_base_balance_on_change(instance, created):
     account_balance.save(update_fields=["base_balance"])
 
 @receiver(post_save, sender=Participant)
-def ensure_account_and_vouchers( instance, created):
+def ensure_account_and_vouchers( instance, created,**kwargs):
     """
     Signal wrapper: ensure each participant has an account and initial vouchers.
     Skips new participants if you have a separate handler for creation.
@@ -58,7 +58,7 @@ def ensure_account_and_vouchers( instance, created):
 
 
 @receiver(post_save, sender=Participant)
-def initialize_participant(instance: Participant, created):
+def initialize_participant(instance: Participant, created,**kwargs):
     """
     Initialize a participant after creation:
     - Create linked User if `create_user` is True
@@ -89,7 +89,7 @@ def initialize_participant(instance: Participant, created):
         )
         send_new_user_onboarding_email.delay(user_id=instance.user.id)
        
-@receiver(post_save, sender=User)
+@receiver(post_save, sender=User,)
 def create_staff_user_profile_and_onboarding(sender, instance: User, created, update_fields, **kwargs):
     """
     Trigger onboarding email for *new* staff users only.
@@ -111,13 +111,13 @@ def create_staff_user_profile_and_onboarding(sender, instance: User, created, up
 # ============================================================
 
 @receiver(pre_save, sender=Voucher)
-def voucher_pre_save(instance):
+def voucher_pre_save(instance,**kwargs):
     """Capture balance before creating/updating a voucher."""
     instance._balance_before = instance.account.full_balance
 
 
 @receiver(post_save, sender=Voucher)
-def voucher_post_save(instance, created):
+def voucher_post_save(instance, created,**kwargs):
     """Log after a voucher is created or updated."""
     balance_after = instance.account.full_balance
     if created:
@@ -131,12 +131,12 @@ def voucher_post_save(instance, created):
 
 
 @receiver(pre_delete, sender=Voucher)
-def voucher_pre_delete(instance):
+def voucher_pre_delete(instance,**kwargs):
     """Capture balance before deleting a voucher."""
     instance._balance_before = instance.account.full_balance()
 
 @receiver(post_delete, sender=Voucher)
-def voucher_post_delete(instance):
+def voucher_post_delete(instance,**kwargs):
     """Log after a voucher is deleted."""
     balance_after = instance.account.full_balance
     log_voucher(

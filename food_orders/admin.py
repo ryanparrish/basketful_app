@@ -18,7 +18,7 @@ from django.shortcuts import render
 from .inlines import OrderItemInline
 from . import utils
 from django.http import HttpResponseRedirect
-from .tasks.logs import create_weekly_combined_orders
+from .tasks.weekly_orders import create_weekly_combined_orders
 from .utils.user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
 from .models import Participant

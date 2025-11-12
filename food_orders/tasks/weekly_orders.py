@@ -6,7 +6,6 @@ from food_orders.tasks.helper.combined_order_helper import (
     get_week_range,
     weekly_parent_exists,
     get_weekly_orders,
-    select_packer_for_program,
     create_child_combined_orders,
     create_parent_combined_order,
     assign_orders_to_packers,

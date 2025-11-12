@@ -3,7 +3,6 @@ from decimal import Decimal
 import logging
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from ..models import AccountBalance, Voucher
 from .balance_utils import calculate_base_balance
 
 logger = logging.getLogger(__name__)
@@ -12,11 +11,8 @@ logger = logging.getLogger(__name__)
 # Account & Voucher Setup
 # ============================================================
 
-
-
-logger = logging.getLogger(__name__)
-
 def setup_account_and_vouchers(participant, initial_vouchers=2, voucher_type="grocery") -> None:
+    from ..models import AccountBalance, Voucher
     """
     Ensure a participant has an AccountBalance with calculated base balance
     and initial vouchers. Safe to call multiple times; will not overwrite existing accounts.
@@ -44,8 +40,6 @@ def setup_account_and_vouchers(participant, initial_vouchers=2, voucher_type="gr
     ]
     Voucher.objects.bulk_create(vouchers)
     logger.debug(f"Created {len(vouchers)} {voucher_type} vouchers for participant {participant.id}")
-
-
 
 # ============================================================
 # Voucher Utility Functions
