@@ -72,7 +72,7 @@ def consume_voucher(voucher, order, applied_amount):
     Consume a voucher and create an OrderVoucher join record.
     """
     from .models import OrderVoucher
-    from .tasks import log_voucher_application_task
+    from .tasks.logs import log_voucher_application_task
 
     voucher.state = "consumed"
     voucher.notes = (voucher.notes or "") + f"Used on order {order.id} for ${applied_amount:.2f}; "

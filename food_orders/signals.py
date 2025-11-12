@@ -1,17 +1,22 @@
 # signals.py
+import logging
 from celery import current_app 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
+from .balance_utils import calculate_base_balance
 from .logging import log_voucher
-from .models import AccountBalance, Participant, Program, UserProfile, Voucher,ProgramPause
-from .tasks import send_new_user_onboarding_email
+from .models import (
+Participant, 
+UserProfile,
+Voucher,
+ProgramPause,
+AccountBalance
+)
+from .tasks.email import send_new_user_onboarding_email
 from .user_utils import create_participant_user
 from .voucher_utils import setup_account_and_vouchers
-import logging
-from django.dispatch import receiver
-from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -21,7 +26,7 @@ User = get_user_model()
 # ============================================================
 
 @receiver(post_save, sender=Participant)
-def update_base_balance_on_change(sender, instance, created, **kwargs):
+def update_base_balance_on_change(instance, created):
     """
     Update AccountBalance.base_balance whenever relevant fields change.
     New participants are ignored (handled by a different signal).
@@ -29,50 +34,23 @@ def update_base_balance_on_change(sender, instance, created, **kwargs):
     if created:
         return  # skip new participants
 
-    # Always recalc base balance
-    from .models import AccountBalance
-    from .balance_utils import calculate_base_balance
-
     account_balance = AccountBalance.objects.get(participant=instance)
     account_balance.base_balance = calculate_base_balance(instance)
     account_balance.save(update_fields=["base_balance"])
 
-def setup_account_and_vouchers(participant, **kwargs) -> None:
+@receiver(post_save, sender=Participant)
+def ensure_account_and_vouchers(sender, instance, created, **kwargs):
     """
-    Ensure a participant has an AccountBalance with a calculated base balance
-    and initial grocery vouchers.
-
-    Safe to call multiple times; will not overwrite existing accounts or vouchers.
+    Signal wrapper: ensure each participant has an account and initial vouchers.
+    Skips new participants if you have a separate handler for creation.
     """
-    from .models import AccountBalance, Voucher  # lazy import
-    from .balance_utils import calculate_base_balance  # updated import
+    if created:
+        # Optional: handle new participants differently if needed
+        pass
 
-    # --- Check if account already exists ---
-    try:
-        account = participant.accountbalance
-        logger.debug(f"Account already exists for participant {participant.id}")
-        return  # Account exists, nothing to do
-    except ObjectDoesNotExist:
-        pass  # No account exists, continue to create one
+    # Call the util function
+    setup_account_and_vouchers(instance)
 
-    # --- Calculate base balance ---
-    base_balance = calculate_base_balance(participant)
-    logger.debug(f"Calculated base balance {base_balance} for participant {participant.id}")
-
-    # --- Create the account ---
-    account = AccountBalance.objects.create(
-        participant=participant,
-        base_balance=base_balance
-    )
-    logger.debug(f"Created AccountBalance for participant {participant.id} with base_balance {base_balance}")
-
-    # --- Create initial grocery vouchers ---
-    initial_vouchers = [
-        Voucher(account=account, voucher_type="grocery", state="applied")
-        for _ in range(2)
-    ]
-    Voucher.objects.bulk_create(initial_vouchers)
-    logger.debug(f"Created {len(initial_vouchers)} grocery vouchers for participant {participant.id}")
 
 @receiver(post_save, sender=Participant)
 def initialize_participant(sender, instance: Participant, created, **kwargs):
@@ -186,7 +164,7 @@ from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import ProgramPause, Voucher
-from .tasks import update_voucher_flag
+from .tasks.logs import update_voucher_flag
 
 logger = logging.getLogger("program_pause_signal")
 logger.setLevel(logging.DEBUG)

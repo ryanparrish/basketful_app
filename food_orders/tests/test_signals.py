@@ -49,7 +49,7 @@ from factories import ParticipantFactory
 
 # --- The signals and tasks we intend to test ---
 from food_orders.signals import initialize_participant, create_staff_user_profile_and_onboarding
-from food_orders.tasks import send_new_user_onboarding_email, send_password_reset_email
+from food_orders.tasks.logs import send_new_user_onboarding_email, send_password_reset_email
 
 # --- Get the User model configured in the Django project ---
 User = get_user_model()

@@ -18,7 +18,7 @@ from django.shortcuts import render
 from .inlines import OrderItemInline
 from . import utils
 from django.http import HttpResponseRedirect
-from .tasks import create_weekly_combined_orders
+from .tasks.logs import create_weekly_combined_orders
 from .user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
 from .models import Participant
@@ -144,7 +144,7 @@ class OrderAdmin(admin.ModelAdmin):
             raise ValidationError("Cannot confirm order: no active vouchers available.")
 
         if not order.paid and order.total_price > 0:
-            used = order.used_voucher()
+            used = order.use_voucher()
 
         if used:
             order.paid = True

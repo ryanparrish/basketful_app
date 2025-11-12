@@ -6,7 +6,7 @@ from django.utils import timezone
 from unittest import mock
 
 from food_orders.models import Participant, Voucher, ProgramPause, VoucherSetting, AccountBalance
-from food_orders.tasks import update_voucher_flag
+from food_orders.tasks.logs import update_voucher_flag
 
 # ----------------------------
 # Helpers

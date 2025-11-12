@@ -36,11 +36,11 @@ class OrderValidation:
         order, account_balance = helper._resolve_order_and_account(order, account_balance)
         active_vouchers = helper._get_active_vouchers(account_balance)
         helper._validate_voucher_presence(account_balance, active_vouchers)
-
         if items:
             helper._validate_voucher_balance(account_balance, items, active_vouchers)
 
-        logger.info(f"[Voucher Validator] Order {getattr(order, 'id', None)} passed voucher validation.")
+        logger.info(
+            f"[Voucher Validator] Order {getattr(order, 'id', None)}passed voucher validation.")
 
     @staticmethod
     def enforce_hygiene_balance(items, participant, account_balance):
