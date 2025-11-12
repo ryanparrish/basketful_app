@@ -4,7 +4,7 @@ from typing import Optional, Generator
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User, AbstractUser
 from django.db import IntegrityError, transaction
-from .models import UserProfile
+from ..models import UserProfile
 # ============================================================
 # User Helpers (internal, could also live in utils.py)
 # ============================================================

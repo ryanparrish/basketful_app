@@ -10,7 +10,7 @@ def calculate_base_balance(participant) -> Decimal:
         return Decimal(0)
 
     # Lazy import to avoid circular dependency
-    from .models import VoucherSetting
+    from ..models import VoucherSetting
 
     setting = VoucherSetting.objects.filter(active=True).first()
     if not setting:
@@ -38,7 +38,7 @@ def calculate_available_balance(account_balance, limit=2):
     if not account_balance:
         return Decimal(0)
 
-    from . import models
+    from .. import models
 
     now = timezone.now()
 
@@ -84,7 +84,7 @@ def calculate_full_balance(account_balance) -> Decimal:
     if not account_balance:
         return Decimal(0)
 
-    from .models import Voucher
+    from ..models import Voucher
 
     vouchers = (
     account_balance.vouchers

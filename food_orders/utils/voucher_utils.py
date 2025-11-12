@@ -3,6 +3,8 @@ from decimal import Decimal
 import logging
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from ..models import AccountBalance, Voucher
+from .balance_utils import calculate_base_balance
 
 logger = logging.getLogger(__name__)
 
@@ -10,22 +12,39 @@ logger = logging.getLogger(__name__)
 # Account & Voucher Setup
 # ============================================================
 
+
+
+logger = logging.getLogger(__name__)
+
 def setup_account_and_vouchers(participant, initial_vouchers=2, voucher_type="grocery") -> None:
     """
-    Ensure a participant has an account balance and initial vouchers.
+    Ensure a participant has an AccountBalance with calculated base balance
+    and initial vouchers. Safe to call multiple times; will not overwrite existing accounts.
     """
-    from .models import AccountBalance, Voucher
-
+    # --- Check if account already exists ---
     if hasattr(participant, "accountbalance"):
+        logger.debug(f"Account already exists for participant {participant.id}")
         return
 
-    account = AccountBalance.objects.create(participant=participant)
+    # --- Calculate base balance ---
+    base_balance = calculate_base_balance(participant)
+    logger.debug(f"Calculated base balance {base_balance} for participant {participant.id}")
 
-    # Create initial vouchers
-    Voucher.objects.bulk_create([
+    # --- Create the account ---
+    account = AccountBalance.objects.create(
+        participant=participant,
+        base_balance=base_balance
+    )
+    logger.debug(f"Created AccountBalance for participant {participant.id} with base_balance {base_balance}")
+
+    # --- Create initial vouchers ---
+    vouchers = [
         Voucher(account=account, voucher_type=voucher_type, active=True)
         for _ in range(initial_vouchers)
-    ])
+    ]
+    Voucher.objects.bulk_create(vouchers)
+    logger.debug(f"Created {len(vouchers)} {voucher_type} vouchers for participant {participant.id}")
+
 
 
 # ============================================================
@@ -71,8 +90,8 @@ def consume_voucher(voucher, order, applied_amount):
     """
     Consume a voucher and create an OrderVoucher join record.
     """
-    from .models import OrderVoucher
-    from .tasks.logs import log_voucher_application_task
+    from ..models import OrderVoucher
+    from ..tasks.logs import log_voucher_application_task
 
     voucher.state = "consumed"
     voucher.notes = (voucher.notes or "") + f"Used on order {order.id} for ${applied_amount:.2f}; "
@@ -99,7 +118,7 @@ def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
     Fully consumes vouchers even if order total is smaller than voucher value.
     Returns True if any voucher was applied.
     """
-    from .models import OrderValidationLog
+    from ..models import OrderValidationLog
 
     if order.status_type != "confirmed":
         raise ValidationError(f"Cannot apply vouchers to Order {order.id}, status={order.status_type}")

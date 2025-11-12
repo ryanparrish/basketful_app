@@ -19,10 +19,10 @@ from .inlines import OrderItemInline
 from . import utils
 from django.http import HttpResponseRedirect
 from .tasks.logs import create_weekly_combined_orders
-from .user_utils import _generate_admin_username
+from .utils.user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
 from .models import Participant
-from .balance_utils import calculate_base_balance  
+from .utils.balance_utils import calculate_base_balance  
 from decimal import Decimal
 from .utils.order_helper import OrderHelper
 User = get_user_model()

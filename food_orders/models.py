@@ -15,8 +15,10 @@ from django.db.models.functions import ExtractWeek, ExtractYear
 from django.utils.timezone import now
 from django.utils import timezone
 
+from .utils import voucher_utils
+
 # Local app imports
-from . import balance_utils, voucher_utils
+from .utils import balance_utils
 from .queryset import program_pause_annotations
 from datetime import timedelta
 from django.conf import settings
@@ -369,7 +371,7 @@ class Order(models.Model):
 
     def use_voucher(self, max_vouchers: int = 2, allow_partial: bool = False) -> bool:
         logger.debug(f"Applying vouchers for Order ID {self.id}")
-        from .voucher_utils import apply_vouchers_to_order
+        from .utils.voucher_utils import apply_vouchers_to_order
         result = apply_vouchers_to_order(self, max_vouchers=max_vouchers)
         logger.debug(f"Vouchers applied result for Order ID {self.id}: {result}")
   

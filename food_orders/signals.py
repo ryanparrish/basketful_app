@@ -1,11 +1,12 @@
 # signals.py
 import logging
+import sys
 from celery import current_app 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
-from .balance_utils import calculate_base_balance
+from .utils.balance_utils import calculate_base_balance
 from .logging import log_voucher
 from .models import (
 Participant, 
@@ -15,9 +16,13 @@ ProgramPause,
 AccountBalance
 )
 from .tasks.email import send_new_user_onboarding_email
-from .user_utils import create_participant_user
-from .voucher_utils import setup_account_and_vouchers
+from .utils.user_utils import create_participant_user
+from .utils.voucher_utils import setup_account_and_vouchers
+from django.utils import timezone
+from .tasks.logs import update_voucher_flag
 
+logger = logging.getLogger("program_pause_signal")
+logger.setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
@@ -39,7 +44,7 @@ def update_base_balance_on_change(instance, created):
     account_balance.save(update_fields=["base_balance"])
 
 @receiver(post_save, sender=Participant)
-def ensure_account_and_vouchers(sender, instance, created, **kwargs):
+def ensure_account_and_vouchers( instance, created):
     """
     Signal wrapper: ensure each participant has an account and initial vouchers.
     Skips new participants if you have a separate handler for creation.
@@ -53,7 +58,7 @@ def ensure_account_and_vouchers(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=Participant)
-def initialize_participant(sender, instance: Participant, created, **kwargs):
+def initialize_participant(instance: Participant, created):
     """
     Initialize a participant after creation:
     - Create linked User if `create_user` is True
@@ -98,7 +103,7 @@ def create_staff_user_profile_and_onboarding(sender, instance: User, created, up
         # Ensure UserProfile exists
         UserProfile.objects.get_or_create(user=instance)
 
-        logger.debug(f"Triggering onboarding email for new staff user {instance.id}")
+        logger.debug("Triggering onboarding email for new staff user %s",instance.id)
         send_new_user_onboarding_email.delay(user_id=instance.id)
 
 # ============================================================
@@ -106,13 +111,13 @@ def create_staff_user_profile_and_onboarding(sender, instance: User, created, up
 # ============================================================
 
 @receiver(pre_save, sender=Voucher)
-def voucher_pre_save(sender, instance, **kwargs):
+def voucher_pre_save(instance):
     """Capture balance before creating/updating a voucher."""
     instance._balance_before = instance.account.full_balance
 
 
 @receiver(post_save, sender=Voucher)
-def voucher_post_save(sender, instance, created, **kwargs):
+def voucher_post_save(instance, created):
     """Log after a voucher is created or updated."""
     balance_after = instance.account.full_balance
     if created:
@@ -126,13 +131,12 @@ def voucher_post_save(sender, instance, created, **kwargs):
 
 
 @receiver(pre_delete, sender=Voucher)
-def voucher_pre_delete(sender, instance, **kwargs):
+def voucher_pre_delete(instance):
     """Capture balance before deleting a voucher."""
     instance._balance_before = instance.account.full_balance()
 
-
 @receiver(post_delete, sender=Voucher)
-def voucher_post_delete(sender, instance, **kwargs):
+def voucher_post_delete(instance):
     """Log after a voucher is deleted."""
     balance_after = instance.account.full_balance
     log_voucher(
@@ -142,7 +146,6 @@ def voucher_post_delete(sender, instance, **kwargs):
         balance_before=getattr(instance, '_balance_before', None),
         balance_after=balance_after
     )
-
 
 # ============================================================
 # Account / Voucher Initialization
@@ -159,15 +162,7 @@ def init_account_and_vouchers(sender, instance, created, **kwargs):
 # ============================================================
 # Program Pause Signals
 # ============================================================
-import logging
-from django.utils import timezone
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from .models import ProgramPause, Voucher
-from .tasks.logs import update_voucher_flag
 
-logger = logging.getLogger("program_pause_signal")
-logger.setLevel(logging.DEBUG)
 if not logger.handlers:
     handler = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -178,7 +173,6 @@ from .models import VoucherLog, Participant
 
 class VoucherLogger:
     """Helper to log voucher events to DB and console."""
-
     @staticmethod
     def debug(participant: Participant, message: str, voucher=None, user=None):
         logger.debug(f"[Voucher DEBUG] {message}")
@@ -204,7 +198,6 @@ class VoucherLogger:
             from django.core.exceptions import ValidationError
             raise ValidationError(message)
     
-import sys
 
 @receiver(post_save, sender=ProgramPause)
 def schedule_program_pause_and_voucher_tasks(sender, instance, created, **kwargs):
