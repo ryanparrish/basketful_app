@@ -463,8 +463,10 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {self.product.name} (Order #{self.order.id})"
     def clean(self):
         """
-        Prevent moving an existing OrderItem to another order.
+        Prevent moving an existing OrderItem to another order
+        and ensure an OrderItem is not created before its parent order.
         """
+        # prevent moving items between orders
         if self.pk:  # Only for existing items
             old_order_id = OrderItem.objects.get(pk=self.pk).order_id
             if old_order_id != self.order_id:
@@ -472,7 +474,13 @@ class OrderItem(models.Model):
                     f"Cannot move OrderItem {self.pk} from Order {old_order_id} to {self.order_id}"
                 )
 
-    # --- Save logic ---
+        # prevent creating items before the parent order exists
+        if self.order and self.created_at and self.created_at < self.order.created_at:
+            raise ValidationError(
+                f"OrderItem {self.pk or '[new]'} cannot be created before its parent order (Order ID {self.order.pk})."
+            )
+
+   # --- Save logic ---
     def save(self, *args, **kwargs):
         # Update price from product
         if self.product:
