@@ -1,13 +1,13 @@
 # food_orders/tasks/helper/combined_order_helper.py
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional
-
+from typing import Dict, List, Any, cast
+# Third party imports
+from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.core.mail import mail_admins
-
+# Local imports
 from food_orders.models import CombinedOrder, Order, Program
-from django.core.exceptions import ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,8 @@ def get_week_range(today) -> tuple:
 
 def weekly_parent_exists(program: Program, start_date, end_date) -> bool:
     """Check if a parent combined order already exists for this week."""
-    exists = CombinedOrder.objects.filter(
+    # Cast to Any to satisfy static type checkers that may not recognize Django managers
+    exists = cast(Any, CombinedOrder).objects.filter(
         program=program,
         created_at__date__range=(start_date, end_date),
         is_parent=True,
@@ -66,6 +67,7 @@ def validate_program_for_week(program: Program, start_of_week, end_of_week):
 
     return weekly_orders
 
+
 def validate_packers_exist(program: Program):
     """Raise ValidationError if no packers are assigned to the program."""
     if not program.packers.exists():
@@ -87,7 +89,8 @@ def assign_orders_to_packers(
 
     # Annotate orders for sorting
     if use_item_counts:
-        orders = orders.annotate(total_items=Sum('order_items__quantity'))
+        orders = orders.annotate(total_items=Sum('items__quantity'))
+
     else:
         orders = orders.annotate(total_items=Sum('id') * 0 + 1)
 

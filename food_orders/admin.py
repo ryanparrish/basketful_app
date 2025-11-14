@@ -1,29 +1,32 @@
 # admin.py
-from django.contrib import admin,messages
+# Standard library imports
+from decimal import Decimal
+# Django imports
+from django.contrib import admin, messages
 from django.utils.safestring import mark_safe
-from .models import (
-    Product, Order, OrderPacker, Program, Participant,
-    LifeSkillsCoach, CombinedOrder, Voucher,
-    VoucherSetting, ProgramPause,Category, Subcategory, ProductManager, EmailLog,UserProfile, OrderValidationLog
-)
-from .forms import CustomUserCreationForm,ParticipantAdminForm
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from .models import CombinedOrder,AccountBalance
+from django.http import HttpResponseRedirect
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from django.urls import path
 from django.shortcuts import render
+# Local application imports
+from .models import (
+    Product, Order, OrderPacker, Program, Participant,
+    LifeSkillsCoach, CombinedOrder, Voucher,
+    VoucherSetting, ProgramPause, Category,
+    Subcategory, ProductManager, EmailLog, UserProfile, OrderValidationLog
+)
+from .forms import CustomUserCreationForm, ParticipantAdminForm
+
 from .inlines import OrderItemInline
 from . import utils
-from django.http import HttpResponseRedirect
 from .tasks.weekly_orders import create_weekly_combined_orders
 from .utils.user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
-from .models import Participant
-from .utils.balance_utils import calculate_base_balance  
-from decimal import Decimal
+from .utils.balance_utils import calculate_base_balance 
 from .utils.order_helper import OrderHelper
 User = get_user_model()
 try:

@@ -7,6 +7,7 @@ from .order_validation import OrderItemData, OrderValidation
 
 logger = logging.getLogger(__name__)
 
+
 class OrderOrchestration:
     def __init__(self, order=None):
         self.order = order
@@ -19,7 +20,7 @@ class OrderOrchestration:
         from food_orders.models import OrderItem, Order
 
         if not order_items_data:
-            raise ValidationError(f"Cannot create an order with no items.")
+            raise ValidationError("Cannot create an order with no items.")
 
         # Validate items
         order_validator = OrderValidation()
@@ -50,6 +51,7 @@ class OrderOrchestration:
 
     @transaction.atomic
     def confirm(self):
+        """Confirm the order, setting its status to 'confirmed' and marking it as paid."""
         if not self.order:
             raise ValidationError("Order must be set before calling confirm()")
         if self.order.status_type == "confirmed":

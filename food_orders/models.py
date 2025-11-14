@@ -7,12 +7,13 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
-from django.db import models,transaction
+from django.db import models, transaction
 from django.db.models import (
     F, UniqueConstraint
 )
 from django.db.models.functions import ExtractWeek, ExtractYear
 from django.utils.timezone import now
+
 from django.utils import timezone
 
 from .utils import voucher_utils
@@ -20,14 +21,15 @@ from .utils import voucher_utils
 # Local app imports
 from .utils import balance_utils
 from .queryset import program_pause_annotations
-from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class UserProfile(models.Model):
+    """Extend the default User model with additional fields."""
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     must_change_password = models.BooleanField(default=True)
 
@@ -49,11 +51,15 @@ class Subcategory(models.Model):
 
     def __str__(self):
         return f"{self.category.name} > {self.name}"
+    
 # Class to represent a product in inventory
+
+
 class Product(models.Model):
+    """Model representing a product in the inventory."""
     is_meat = models.BooleanField(default=False)
     weight_lbs = models.DecimalField(max_digits=4, decimal_places=2, default=0)  # e.g., 1.00 for beef, 2.00 for chicken
-    category = models.ForeignKey(Category,on_delete=models.CASCADE, related_name="product",)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="product",)
     subcategory = models.ForeignKey(Subcategory, on_delete=models.CASCADE, null=True, blank=True)
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -65,8 +71,13 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     active = models.BooleanField(default=True)
+
     @staticmethod
     def get_limit_for_product(product):
+        """
+        Retrieve the applicable limit for the product
+        based on its category and subcategory.
+        """
         subcat_limit = (
             ProductManager.objects
             .filter(subcategory=product.subcategory)
@@ -91,8 +102,10 @@ class Product(models.Model):
     def __str__(self):
         return self.name
     
+  
 class ProductManager(models.Model):
-    name= models.CharField(max_length=100)
+    """Model to manage product limits per category or subcategory."""
+    name = models.CharField(max_length=100)
     category = models.OneToOneField(
     Category,
     on_delete=models.CASCADE,
@@ -127,7 +140,8 @@ class ProductManager(models.Model):
     def __str__(self):
         return self.name
     
-#Class to represent a calender of when there is no class 
+# Class to represent a calender of when there is no class 
+
 
 class ProgramPauseQuerySet(models.QuerySet):
     def with_annotations(self):
@@ -146,7 +160,6 @@ class ProgramPause(models.Model):
     # -------------------------------
     # Core pause calculation (dynamic)
     # -------------------------------
-    from django.utils.timezone import now
 
     def _calculate_pause_status(self) -> tuple[int, str]:
         """
@@ -393,6 +406,7 @@ class Order(models.Model):
         from .utils.order_utils import OrderOrchestration
 
         return OrderOrchestration(self).edit()
+    
     @classmethod
     def generate_order_number(cls):
         today = now().strftime("%Y%m%d")  # YYYYMMDD
@@ -451,12 +465,6 @@ class OrderItem(models.Model):
     price_at_order = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def save(self, *args, **kwargs):
-        # Only set once (don’t overwrite if it already exists)
-        if self.price_at_order is None and self.product_id:
-            self.price_at_order = self.product.price
-        super().save(*args, **kwargs)
-
     def total_price(self):
         return self.quantity * self.price
     def __str__(self):
@@ -480,11 +488,20 @@ class OrderItem(models.Model):
                 f"OrderItem {self.pk or '[new]'} cannot be created before its parent order (Order ID {self.order.pk})."
             )
 
-   # --- Save logic ---
+        # --- Save logic ---
+    
     def save(self, *args, **kwargs):
-        # Update price from product
-        if self.product:
-            self.price = self.product.price
+        # Keep price fields in sync with the related product.
+        # Set price_at_order only once (if None) and always update current price.
+        if self.product_id:
+            product = getattr(self, "product", None)
+            if product is None:
+                product = Product.objects.only("price").filter(pk=self.product_id).first()
+            if product:
+                if self.price_at_order is None:
+                    self.price_at_order = product.price
+                self.price = product.price
+        super().save(*args, **kwargs)
 
         # Run validation
         self.full_clean()  # calls clean() internally

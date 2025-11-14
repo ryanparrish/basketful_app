@@ -1,11 +1,14 @@
-#food_orders.utils.order_helper.py 
-import json
-from django.shortcuts import get_object_or_404
-from decimal import Decimal
-from typing import Dict, Any
-from ..models import Product
-from django.core.exceptions import ValidationError
+"""Order-related utility functions."""
+# food_orders.utils.order_helper.py
 import logging
+from decimal import Decimal
+import json
+from typing import Dict, Any
+# Django imports
+from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError
+# Local imports
+from ..models import Product
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +27,23 @@ class OrderHelper:
         return json.dumps({str(p["id"]): float(p["price"]) for p in products})
 
     def get_order_or_404(order_id: int):
+        """Retrieve an Order by ID or raise 404 if not found."""
         from food_orders.models import Order
         return get_object_or_404(Order, pk=order_id)
 
     def get_order_print_context(order) -> Dict[str, Any]:
+        """Prepare context data for order printing."""
         participant = getattr(getattr(order, "account", None), "participant", None)
         return {
             "order": order,
             "items": order.items.select_related("product").all(),
-            "total": getattr(order, "total_price", lambda: 0)(),
+            "total": getattr(order, "total_price()", lambda: 0)(),
             "customer": participant,
             "created_at": order.created_at,
         }
 
     def calculate_total_price(order) -> Decimal:
+        """Calculate the total price of the order."""
         if hasattr(order, "_test_price"):
             return Decimal(order._test_price)
         total = Decimal(0)

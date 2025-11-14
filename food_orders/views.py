@@ -1,4 +1,5 @@
-#views.py
+"""Views for food ordering application."""
+# views.py
 # Standard library
 import json
 import logging
@@ -7,7 +8,7 @@ import logging
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
-from django.core.exceptions import ValidationError,ObjectDoesNotExist
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse_lazy
@@ -27,6 +28,7 @@ from .utils.order_utils import OrderItemData, OrderOrchestration
 from .utils.utils import decode_order_hash, encode_order_id
 
 logger = logging.getLogger(__name__)
+
 
 class CustomPasswordChangeView(PasswordChangeView):
     """Custom password change that resets the must_change_password flag."""
@@ -135,6 +137,7 @@ def participant_dashboard(request):
             "has_vouchers": has_vouchers,
         },
     )
+
 
 @login_required
 def product_view(request):
@@ -263,6 +266,8 @@ def review_order(request):
         "food_orders/review_order.html",
         {"cart_items": cart_items, "total": total},
     )
+
+
 @login_required
 @transaction.atomic
 def submit_order(request):
@@ -298,8 +303,7 @@ def submit_order(request):
     except ValidationError as e:
         messages.error(request, str(e))
         return redirect("review_order")
-    
- # Clear cart
+        # Clear cart
     request.session["cart"] = {}
     request.session["last_order_id"] = order.id
     request.session.modified = True
@@ -307,8 +311,10 @@ def submit_order(request):
     # Redirect to success page
     return redirect("order_success")
 
+
 @login_required
 def order_success(request):
+    """Display order success page for the last submitted order."""
     # Pop the order ID from the session
     order_id = request.session.pop("last_order_id", None)
     if not order_id:
@@ -325,6 +331,7 @@ def order_success(request):
     order.save(update_fields=["success_viewed"])
 
     return render(request, "food_orders/order_success.html", {"order": order})
+
 
 @login_required
 @transaction.atomic
