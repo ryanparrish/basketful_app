@@ -17,6 +17,7 @@ class OrderOrchestration:
     # ----------------------------
     @transaction.atomic
     def create_order(self, account, order_items_data: List['OrderItemData']):
+        """Create a new order with the given account and order items."""
         from food_orders.models import OrderItem, Order
 
         if not order_items_data:
@@ -63,6 +64,7 @@ class OrderOrchestration:
 
     @transaction.atomic
     def cancel(self):
+        """Cancel the order, setting its status to 'cancelled'."""
         if not self.order:
             raise ValueError("Order must be set before calling cancel()")
         self.order.status_type = "cancelled"
@@ -71,6 +73,7 @@ class OrderOrchestration:
 
     @transaction.atomic
     def clone(self, status="pending"):
+        """Clone the current order with a new status."""
         from food_orders.models import OrderItem, Order
 
         if not self.order:

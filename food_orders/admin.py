@@ -3,10 +3,9 @@
 from decimal import Decimal
 # Django imports
 from django.contrib import admin, messages
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse
-from django.http import HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
@@ -28,14 +27,19 @@ from .utils.user_utils import _generate_admin_username
 from .inlines import VoucherLogInline
 from .utils.balance_utils import calculate_base_balance 
 from .utils.order_helper import OrderHelper
+from .utils.utils import generate_combined_order_pdf
+
+
 User = get_user_model()
 try:
     admin.site.unregister(User)
 except admin.sites.NotRegistered:
     pass  # If not registered yet, ignore 
 
+
 @admin.register(User)
 class CustomUserAdmin(DefaultUserAdmin):
+    """Custom admin for User model with dynamic fieldsets."""
     add_form = CustomUserCreationForm
     add_fieldsets = (
         (None, {
@@ -73,6 +77,7 @@ class CustomUserAdmin(DefaultUserAdmin):
         if obj is None:
             kwargs['form'] = self.add_form
         return super().get_form(request, obj, **kwargs)
+    
     def save_model(self, request, obj, form, change):
         is_new = obj.pk is None
 
@@ -92,16 +97,22 @@ class CustomUserAdmin(DefaultUserAdmin):
             profile.must_change_password = True
             profile.save(update_fields=["must_change_password"])
 
+
 class SubcategoryInline(admin.StackedInline):
+    """Inline admin for Subcategory within Category."""
     model = Subcategory
     extra = 1
+
+   
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
+    """Admin for Category with Subcategory inline."""
     list_display = ('name',)
     inlines = [SubcategoryInline]
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
+    """Admin for Order model."""
     list_display = ('order_number', 'updated_at', 'display_total_price', 'paid')
     readonly_fields = ('paid',)
     inlines = [OrderItemInline]
@@ -109,10 +120,12 @@ class OrderAdmin(admin.ModelAdmin):
     exclude = ('user',)
 
     def display_total_price(self, obj):
+        """Display the total price of the order."""
         return obj.total_price
     display_total_price.short_description = "Total Price"
 
     class Media:
+        """Media class to include custom JS."""
         js = ('food_orders/js/orderitem_inline.js',)
 
     def get_urls(self):
@@ -127,6 +140,7 @@ class OrderAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def print_order(self, request, order_id):
+        """Render a printable view of the order."""
         order = OrderHelper.get_order_or_404(order_id)
         context = OrderHelper.get_order_print_context(order)
         return render(request, "admin/food_orders/order/print_order.html", context)
@@ -136,7 +150,6 @@ class OrderAdmin(admin.ModelAdmin):
         script_tag = f'<script>window.productPrices = {product_json};</script>'
         context['additional_inline_script'] = script_tag
         return super().render_change_form(request, context, add, change, form_url, obj)
-
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -153,14 +166,17 @@ class OrderAdmin(admin.ModelAdmin):
             order.paid = True
             order.save(update_fields=["paid"])
 
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    """Admin for Product model with image preview."""
     readonly_fields = ['image_preview']
     search_fields = ['name', 'description', 'category__name']
 
     def image_preview(self, obj):
         if obj.image:
-            return mark_safe(f'<img src="{obj.image.url}" style="max-height: 200px;" />')
+            # Use format_html to safely construct the HTML and avoid mark_safe with unescaped input
+            return format_html('<img src="{}" style="max-height: 200px;" />', obj.image.url)
         return "(No image uploaded)"
 
     image_preview.short_description = "Current Image"
@@ -186,27 +202,32 @@ class ParticipantAdmin(admin.ModelAdmin):
     actions = ['calculate_base_balance_action']
 
     def full_balance_display(self, obj):
+        """Display the full balance of the participant."""
         balance = obj.balances().get('full_balance', 0)
         return f"${balance:.2f}" if balance else "No Balance"
     full_balance_display.short_description = "Full Balance"
 
     def available_balance_display(self, obj):
+        """Display the available balance of the participant."""
         balance = obj.balances().get('available_balance', 0)
         return f"${balance:.2f}" if balance else "No Balance"
     available_balance_display.short_description = "Available Balance"
 
     def hygiene_balance_display(self, obj):
+        """Display the hygiene balance of the participant."""
         balance = obj.balances().get('hygiene_balance', 0)
         return f"${balance:.2f}" if balance else "No Balance"
     hygiene_balance_display.short_description = "Hygiene Balance"
 
     def get_base_balance(self, obj):
+        """Display the base balance from AccountBalance."""
         if hasattr(obj, 'accountbalance'):
             return f"${obj.accountbalance.base_balance:,.2f}"
         return Decimal(0)
     get_base_balance.short_description = "Base Balance"
 
     def calculate_base_balance_action(self, request, queryset):
+        """Calculate and save base balance for selected participants."""
         updated_count = 0
         for participant in queryset:
             base = calculate_base_balance(participant)
@@ -236,7 +257,7 @@ class VoucherAdmin(admin.ModelAdmin):
     readonly_fields = ('voucher_amnt', 'notes')
     
     # Fields to hide from the admin form entirely
-    exclude = ('program_pause_flag','multiplier')
+    exclude = ('program_pause_flag', 'multiplier')
     
     # Add filters in the right sidebar
     list_filter = ('voucher_type', 'account', 'state', 'created_at')
@@ -267,13 +288,18 @@ class EmailLogAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+
 @admin.register(CombinedOrder)
 class CombinedOrderAdmin(admin.ModelAdmin):
+    """Admin for CombinedOrder with custom actions."""
     actions = ['download_combined_order_pdf']
     readonly_fields = ('orders',)
     change_list_template = "admin/program_changelist.html"
     list_display = ('program', 'created_at', 'updated_at')
 
+    # ------------------------
+    # Custom URLs
+    # ------------------------
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -284,21 +310,39 @@ class CombinedOrderAdmin(admin.ModelAdmin):
             ),
         ]
         return custom_urls + urls
-    
-    def run_weekly_task(self, request):
-        create_weekly_combined_orders.delay()  # run asynchronously
-        self.message_user(request, "Weekly combined orders task has been triggered!")
-        return HttpResponseRedirect("../")
-    
+
+    # ------------------------
+    # Custom Actions
+    # ------------------------
+    @admin.action(description="Download Combined Order PDF")
     def download_combined_order_pdf(self, request, queryset):
         if queryset.count() != 1:
-            self.message_user(request, "Please select exactly one combined order to download.", level='error')
+            self.message_user(
+                request,
+                "Please select exactly one combined order to download.",
+                level='error'
+            )
             return
         combined_order = queryset.first()
-        pdf_buffer = utils.generate_combined_order_pdf(combined_order)
+
+        # Call your utils function (returns BytesIO)
+        pdf_buffer = generate_combined_order_pdf(combined_order)
+
+        # Wrap in HttpResponse for download
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="combined_order_{combined_order.id}.pdf"'
+        response['Content-Disposition'] = (
+            f'attachment; filename="combined_order_{combined_order.id}.pdf"'
+        )
         return response
+
+    # ------------------------
+    # Weekly Task Trigger
+    # ------------------------
+    def run_weekly_task(self, request):
+        """Trigger the weekly combined orders task asynchronously."""
+        create_weekly_combined_orders.delay()
+        self.message_user(request, "Weekly combined orders task has been triggered!")
+        return HttpResponseRedirect("../")
 
 @admin.register(ProgramPause)
 class ProgramPauseAdmin(admin.ModelAdmin):

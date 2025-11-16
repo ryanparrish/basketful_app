@@ -23,15 +23,16 @@ class OrderHelper:
 
     @staticmethod
     def get_product_prices_json() -> str:
+        """Return a JSON string mapping product IDs to their prices."""
         products = Product.objects.values("id", "price")
         return json.dumps({str(p["id"]): float(p["price"]) for p in products})
 
-    def get_order_or_404(order_id: int):
+    def get_order_or_404(self, order_id: int):
         """Retrieve an Order by ID or raise 404 if not found."""
         from food_orders.models import Order
         return get_object_or_404(Order, pk=order_id)
 
-    def get_order_print_context(order) -> Dict[str, Any]:
+    def get_order_print_context(self, order) -> Dict[str, Any]:
         """Prepare context data for order printing."""
         participant = getattr(getattr(order, "account", None), "participant", None)
         return {
