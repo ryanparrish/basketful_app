@@ -144,7 +144,7 @@ def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
         # Update order paid status
         if applied:
             order.paid = remaining <= 0
-            order.save(update_fields=["paid"], skip_voucher=True)
+            order.save(update_fields=["paid"])
             logger.debug(
                 "[Voucher Apply] Applied vouchers to Order %s, remaining %.2f, paid: %s",
                 order.id, remaining, order.paid

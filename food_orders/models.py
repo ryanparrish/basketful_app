@@ -276,14 +276,6 @@ class Participant(models.Model):
     active = models.BooleanField(default=True)
     allergy = models.CharField(max_length=100, default="None", blank=True, null=True)
 
-    def __str__(self):
-        return self.name
-
-    def save(self, *args, **kwargs):
-        # Optional: full_clean for validation on every save
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def balances(self):
         """
         Return all balances related to this participant as a dict.
@@ -313,11 +305,13 @@ class Participant(models.Model):
         self.full_clean()  # Optional if you want validation on every save
         super().save(*args, **kwargs)
 
+
 # Class to represent account balance
 class AccountBalance(models.Model):
+    """Model representing the account balance for a participant."""
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True)
-    base_balance = models.DecimalField(max_digits=4,decimal_places=1,default=0, validators=[MinValueValidator(0)])
+    base_balance = models.DecimalField(max_digits=4, decimal_places=1, default=0, validators=[MinValueValidator(0)])
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -426,30 +420,62 @@ class Order(models.Model):
 
             return f"{prefix}-{today}-{new_sequence:06d}"
 
+    def clean(self):
+        """
+        Enforce model-level validation for confirmed orders:
+        - Hygiene spending limits
+        - OrderItem integrity (no moving between orders, no pre-order creation)
+        Logs validation errors to OrderValidationLog.
+        """
+        if self.status_type != "confirmed":
+            return
+
+        errors = []
+
+        # --- Hygiene validation ---
+        hygiene_total = 0
+        for item in self.items.select_related("product"):
+            if getattr(item.product, "category", None) and item.product.category.name.lower() == "hygiene":
+                hygiene_total += item.total_price()
+
+        hygiene_balance = getattr(self.account, "hygiene_balance", 0)
+
+        if hygiene_total > hygiene_balance:
+            errors.append(f"Hygiene limit exceeded for Order #{self.id}: {hygiene_total} > {hygiene_balance}")
+
+        # --- OrderItem validations ---
+        for item in self.items.all():
+            if item.pk:
+                old_order_id = OrderItem.objects.filter(pk=item.pk).values_list("order_id", flat=True).first()
+                if old_order_id != item.order_id:
+                    errors.append(f"Cannot move OrderItem {item.pk} from Order {old_order_id} to {item.order_id}")
+
+            if item.order and item.created_at and item.created_at < self.created_at:
+                errors.append(f"OrderItem {item.pk or '[new]'} cannot be created before parent order #{self.id}")
+
+        # --- Log errors and raise ValidationError ---
+        if errors:
+            from .models import OrderValidationLog
+            for e in errors:
+                OrderValidationLog.objects.create(order=self, error_message=e)
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
-        if not self.order_number:
-            self.order_number = self.generate_order_number()
-        skip_voucher = kwargs.pop("skip_voucher", False)
-        is_new = self.pk is None
-        prev_status = None
-
-        if not is_new:
-            prev_status = (
-                Order.objects.filter(pk=self.pk)
-                .values_list("status_type", flat=True)
-                .first()
-            )
-            logger.debug(f"Previous status for Order ID {self.pk}: {prev_status}")
-
-        logger.debug(f"Saving Order ID {self.pk} (new={is_new}, skip_voucher={skip_voucher})")
-        super().save(*args, **kwargs)
-        logger.debug(f"Order ID {self.pk} saved successfully.")
+        """
+        Save the order with model-level validation.
+        Wrap in transaction to prevent partial saves on validation failure.
+        """
+        with transaction.atomic():
+            self.full_clean()  # calls self.clean() internally
+            super().save(*args, **kwargs)
 
     def __str__(self):
         order_id = self.id or "(unsaved)"
         return f"Order #{order_id} - Status: {self.status_type}"
 
+
 class OrderItem(models.Model):
+    """Model representing an item within an order."""
     order = models.ForeignKey(
         'Order',
         on_delete=models.CASCADE,
