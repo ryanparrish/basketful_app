@@ -29,7 +29,7 @@ if os.path.exists(env_path):
     env.read_env(env_path)
 
 SECRET_KEY = env('SECRET_KEY')
-DOMAIN_NAME =env('DOMAIN_NAME')
+DOMAIN_NAME = env('DOMAIN_NAME')
 HASHIDS_SALT = env('HASHIDS_SALT')
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
@@ -37,7 +37,9 @@ ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=True)
 
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
-CELERY_TASK_EAGER_PROPAGATES = env.bool("CELERY_TASK_EAGER_PROPAGATES", default=False)
+CELERY_TASK_EAGER_PROPAGATES = env.bool(
+    "CELERY_TASK_EAGER_PROPAGATES", default=False
+)
 
 environ.Env.read_env()  # reads from .env
 
@@ -143,16 +145,22 @@ else:
 
 # Installed apps
 INSTALLED_APPS = [
-    'food_orders.apps.FoodOrdersConfig',
-    'django.contrib.admin',
-    'django.contrib.auth',
     'django.contrib.contenttypes',
+    'django.contrib.staticfiles',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',
+    'django.contrib.admin',
+    'django.contrib.auth',
     'django_bootstrap5',
     'django_recaptcha',
-    'storages',  
+    'storages',
+    'LifeSkills',
+    'voucher',
+    'account',
+    'pantry',
+    'orders',
+    'core',
+    'log',
 ]
 
 # Middleware configuration
@@ -191,7 +199,9 @@ WSGI_APPLICATION = 'lyn_app.wsgi.application'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',  
+    },
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},

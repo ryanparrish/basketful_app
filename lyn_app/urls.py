@@ -20,9 +20,10 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth.views import LogoutView
+from orders import views as order_views
 # Local imports
-from food_orders import views
-from food_orders.views import (
+from pantry import views
+from pantry.views import (
     participant_dashboard,
     CustomPasswordChangeView
 )
@@ -41,10 +42,10 @@ urlpatterns = [
     path('orders/create/', views.product_view, name='create_order'),
     path('accounts/update/', views.account_update_view, name='account_update'),
     path('order/update_cart/', views.update_cart, name='update_cart'),
-    path('order/review/', views.review_order, name='review_order'),
-    path('order/submit/', views.submit_order, name='submit_order'),
-    path("order/success/", views.order_success, name="order_success"),
-    path("order/<str:order_hash>/", views.order_detail, name="order_detail"),
+    path('order/review/', order_views.review_order, name='review_order'),
+    path('order/submit/', order_views.submit_order, name='submit_order'),
+    path("order/success/", order_views.order_success, name="order_success"),
+    path("order/<str:order_hash>/", order_views.order_detail, name="order_detail"),
     path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
     path('admin/logout/', LogoutView.as_view(next_page='/admin/login/'), name='admin_logout'),
     path('accounts/logout/', auth_views.LogoutView.as_view(template_name='registration/logged_out.html'),name='logout'),

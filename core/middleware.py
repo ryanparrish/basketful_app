@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.shortcuts import redirect
-from food_orders.models import OrderValidationLog  
+from log.models import OrderValidationLog
 
 logger = logging.getLogger("custom_validation")
 
@@ -35,31 +35,36 @@ class GlobalErrorMiddleware:
             self.handle_validation_error(request, e)
 
             # For non-admin/API paths → redirect with toast
-            if not (request.path.startswith("/admin/") or request.path.startswith("/api/")):
+            if not (
+                request.path.startswith("/admin/") or request.path.startswith("/api/")
+            ):
                 messages.error(request, str(e))
                 return redirect("participant_dashboard")
 
             # Let admin/API bubble the error
-            raise
+            raise e
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             # Log and fallback redirect for unhandled errors
-            logger.exception("Unhandled exception on path=%s", request.path)
+            logger.exception("Unhandled exception on path=%s", request.path, exc_info=e)
             messages.error(request, "Something went wrong. Please try again.")
             return redirect("home")  # Safe fallback page
 
     def handle_validation_error(self, request, exception):
+        """Log ValidationError details appropriately based on DEBUG setting."""
         user = getattr(request, "user", None)
         participant = getattr(user, "participant", None)
 
         if settings.DEBUG:
             logger.debug(
-                f"ValidationError on path={request.path}, "
-                f"user={getattr(user, 'username', 'Anonymous')}, "
-                f"participant={getattr(participant, 'id', None)}: {exception}"
+                "ValidationError on path=%s, user=%s, participant=%s, error=%s",
+                request.path,
+                getattr(user, "username", "Anonymous"),
+                getattr(participant, "id", None),
+                exception
             )
         else:
-            OrderValidationLog.objects.create(
+            OrderValidationLog.objects.create(  # pylint: disable=no-member
                 user=user if user and user.is_authenticated else None,
                 participant=participant,
                 message=str(exception),
