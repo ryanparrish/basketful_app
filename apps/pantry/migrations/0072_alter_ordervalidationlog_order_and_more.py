@@ -60,12 +60,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='productlimit',
             name='category',
-            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='product_manager', to='food_orders.category'),
+            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='product_manager', to='pantry.category'),
         ),
         migrations.AddField(
             model_name='productlimit',
             name='subcategory',
-            field=models.ForeignKey(blank=True, help_text='If Sub-Category is selected limit will be applied at the subcategory level.', null=True, on_delete=django.db.models.deletion.CASCADE, to='food_orders.subcategory'),
+            field=models.ForeignKey(blank=True, help_text='If Sub-Category is selected limit will be applied at the subcategory level.', null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.subcategory'),
         ),
         migrations.DeleteModel(
             name='CombinedOrder',

@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ('applied_amount', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('applied_at', models.DateTimeField(auto_now_add=True)),
                 ('order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='applied_vouchers', to='orders.order')),
-                ('voucher', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='food_orders.voucher')),
+                ('voucher', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='voucher.voucher')),
             ],
         ),
     ]

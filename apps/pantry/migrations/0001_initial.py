@@ -93,7 +93,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('image', models.ImageField(blank=True, null=True, upload_to='products/')),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='products', to='food_orders.category')),
+                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='products', to='pantry.category')),
             ],
         ),
         migrations.CreateModel(
@@ -103,13 +103,13 @@ class Migration(migrations.Migration):
                 ('quantity', models.IntegerField()),
                 ('price', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='order_items', to='orders.order')),
-                ('product', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='order_items', to='food_orders.product')),
+                ('product', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='order_items', to='pantry.product')),
             ],
         ),
         migrations.AddField(
             model_name='order',
             name='products',
-            field=models.ManyToManyField(related_name='orders', to='food_orders.product'),
+            field=models.ManyToManyField(related_name='orders', to='pantry.product'),
         ),
         migrations.CreateModel(
             name='Voucher',

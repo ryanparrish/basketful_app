@@ -46,13 +46,13 @@ class Migration(migrations.Migration):
                 ('limit', models.IntegerField(default=2, help_text='Maximum number of products allowed in this category per order.', validators=[django.core.validators.MinValueValidator(1)])),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='food_orders.category')),
+                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='pantry.category')),
                 ('subcategory', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.subcategory')),
             ],
         ),
         migrations.AddField(
             model_name='product',
             name='subcategory',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='food_orders.subcategory'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.subcategory'),
         ),
     ]

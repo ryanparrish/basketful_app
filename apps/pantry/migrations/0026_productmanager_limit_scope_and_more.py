@@ -19,11 +19,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='productmanager',
             name='category',
-            field=models.ForeignKey(help_text='If category is selected limit will be enforced at the category level', on_delete=django.db.models.deletion.CASCADE, to='food_orders.category'),
+            field=models.ForeignKey(help_text='If category is selected limit will be enforced at the category level', on_delete=django.db.models.deletion.CASCADE, to='pantry.category'),
         ),
         migrations.AlterField(
             model_name='productmanager',
             name='subcategory',
-            field=models.ForeignKey(blank=True, help_text='If Sub-Category is selected limit will be applied at the subcategory level', null=True, on_delete=django.db.models.deletion.CASCADE, to='food_orders.subcategory'),
+            field=models.ForeignKey(blank=True, help_text='If Sub-Category is selected limit will be applied at the subcategory level', null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.subcategory'),
         ),
     ]

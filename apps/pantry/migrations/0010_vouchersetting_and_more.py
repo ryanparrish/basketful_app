@@ -68,7 +68,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='voucher',
             name='account',
-            field=models.ForeignKey(default='1', on_delete=django.db.models.deletion.CASCADE, related_name='account', to='food_orders.accountbalance'),
+            field=models.ForeignKey(default='1', on_delete=django.db.models.deletion.CASCADE, related_name='account', to='account.accountbalance'),
             preserve_default=False,
         ),
         migrations.AddField(
