@@ -1,10 +1,11 @@
 # core/middleware.py
+"""Middleware for global error handling and logging."""
 import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.shortcuts import redirect
-from log.models import OrderValidationLog
+from apps.log.models import OrderValidationLog
 
 logger = logging.getLogger("custom_validation")
 
@@ -46,7 +47,9 @@ class GlobalErrorMiddleware:
 
         except Exception as e:  # pylint: disable=broad-except
             # Log and fallback redirect for unhandled errors
-            logger.exception("Unhandled exception on path=%s", request.path, exc_info=e)
+            logger.exception(
+                "Unhandled exception on path=%s", request.path, exc_info=e
+            )
             messages.error(request, "Something went wrong. Please try again.")
             return redirect("home")  # Safe fallback page
 
@@ -56,12 +59,9 @@ class GlobalErrorMiddleware:
         participant = getattr(user, "participant", None)
 
         if settings.DEBUG:
-            logger.debug(
+            logger.error(
                 "ValidationError on path=%s, user=%s, participant=%s, error=%s",
-                request.path,
-                getattr(user, "username", "Anonymous"),
-                getattr(participant, "id", None),
-                exception
+                request.path, user, participant, exception
             )
         else:
             OrderValidationLog.objects.create(  # pylint: disable=no-member

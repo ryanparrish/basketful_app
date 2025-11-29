@@ -1,0 +1,98 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Create Combined Order</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" action="">
+        {% csrf_token %}
+        
+        <fieldset class="module aligned">
+            <h2>Select Program and Time Frame</h2>
+            
+            <div class="form-row">
+                {{ form.program.errors }}
+                <div>
+                    <label for="{{ form.program.id_for_label }}">{{ form.program.label }}:</label>
+                    {{ form.program }}
+                    {% if form.program.help_text %}
+                        <p class="help">{{ form.program.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="form-row">
+                {{ form.start_date.errors }}
+                <div>
+                    <label for="{{ form.start_date.id_for_label }}">{{ form.start_date.label }}:</label>
+                    {{ form.start_date }}
+                    {% if form.start_date.help_text %}
+                        <p class="help">{{ form.start_date.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="form-row">
+                {{ form.end_date.errors }}
+                <div>
+                    <label for="{{ form.end_date.id_for_label }}">{{ form.end_date.label }}:</label>
+                    {{ form.end_date }}
+                    {% if form.end_date.help_text %}
+                        <p class="help">{{ form.end_date.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if form.non_field_errors %}
+                <div class="form-row">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+        </fieldset>
+        
+        <div class="submit-row">
+            <input type="submit" value="Create Combined Order" class="default">
+            <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+
+    {% if preview_orders %}
+        <div class="module">
+            <h2>Preview: Orders to be Combined ({{ preview_orders|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Date</th>
+                        <th>Participant</th>
+                        <th>Total Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in preview_orders %}
+                        <tr>
+                            <td>{{ order.order_number }}</td>
+                            <td>{{ order.order_date|date:"Y-m-d" }}</td>
+                            <td>{{ order.account.participant }}</td>
+                            <td>${{ order.total_price }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4">No orders found for the selected criteria.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

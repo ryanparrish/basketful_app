@@ -1,0 +1,66 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        /* Force object-tools buttons to stay horizontal */
+        .object-tools {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            justify-content: flex-end !important;
+            align-items: center !important;
+            float: none !important;
+            width: auto !important;
+            padding-bottom: 2%;
+        }
+
+        .object-tools ul {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            list-style: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .object-tools li {
+            display: inline-block !important;
+        }
+
+        .object-tools .addlink,
+        .object-tools .btn {
+            display: inline-block !important;
+            margin: 0 !important;
+        }
+
+        /* Optional: Stack on very small screens */
+        @media (max-width: 600px) {
+            .object-tools ul {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block object-tools %}
+    <div class="object-tools">
+        <ul>
+            <li>
+                <a href="{% url 'admin:orders_combinedorder_create' %}" 
+                   class="btn btn-primary">
+                    Create Combined Order
+                </a>
+            </li>
+            {% if has_add_permission %}
+            <li>
+                <a href="{% url 'admin:orders_combinedorder_add' %}" 
+                   class="addlink">
+                    {% trans 'Add Combined Order' %}
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+{% endblock %}

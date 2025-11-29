@@ -1,8 +1,7 @@
-
 # 🧭 Project Structure — Lyn Project
 
 This document outlines the folder and file hierarchy for the **Lyn Project**,  
-a Django-based application with modular apps (`core`, `food_orders`, etc.).
+a Django-based application with modular apps (`core`, `lifeskills`, `pantry`, etc.).
 
 Use this as a quick reference for navigating the codebase and understanding where key logic lives —  
 such as models, views, utils, and orchestration helpers.
@@ -11,9 +10,33 @@ such as models, views, utils, and orchestration helpers.
 
 ## 📂 Folder Tree
 
-
 lyn_project/
+├── .DS_Store
+├── .dockerignore
+├── .env
+├── .git/
+├── .github/
+├── .gitignore
+├── .pytest_cache/
+├── .venv/
+├── .vscode/
+├── Dockerfile
+├── LICENSE
+├── PROJECT_STRUCTURE.md
+├── README.md
 ├── __pycache__/
+├── account/
+│   ├── __init__.py
+│   ├── __pycache__/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── forms.py
+│   ├── migrations/
+│   ├── models.py
+│   ├── signals.py
+│   ├── tests.py
+│   ├── utils/
+│   └── views.py
 ├── coaches/
 ├── core/
 │   ├── __init__.py
@@ -25,46 +48,47 @@ lyn_project/
 │   ├── models.py
 │   ├── tests.py
 │   └── views.py
-├── food_orders/
+├── lifeskills/
+│   ├── __init__.py
+│   ├── __pycache__/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── migrations/
+│   ├── models.py
+│   ├── queryset.py
+│   ├── signals.py
+│   ├── tests.py
+│   └── views.py
+├── log/
+├── core/
+├── manage.py
+├── media/
+├── models.dot
+├── old_requirements.txt
+├── orders/
+├── pantry/
 │   ├── __init__.py
 │   ├── __pycache__/
 │   ├── admin/
 │   ├── admin.py
 │   ├── apps.py
-│   ├── balance_utils.py
 │   ├── forms.py
 │   ├── inlines.py
-│   ├── logging.py
+│   ├── management/
 │   ├── middleware.py
 │   ├── migrations/
 │   ├── models.py
-│   ├── queryset.py
 │   ├── signals.py
 │   ├── static/
-│   ├── tasks.py
+│   ├── tasks/
 │   ├── templates/
 │   ├── tests/
-│   ├── user_utils.py
 │   ├── utils/
-│   │   ├── __init__.py
-│   │   ├── __pycache__/
-│   │   ├── order_helper.py
-│   │   ├── order_utils.py
-│   │   └── order_validation.py
-│   ├── utils.py
 │   ├── validators.py
 │   ├── views.py
-│   ├── voucher_utils.py
 │   └── widgets.py
-├── lyn_app/
-├── media/
-├── staticfiles/
-├── db.sqlite3
-├── docker-compose.yml
-├── Dockerfile
-├── LICENSE
-├── manage.py
-├── models.dot
 ├── pytest.ini
-├── README.md
-└── requirements.txt
+├── rename_migrations_app.py
+├── requirements.txt
+├── staticfiles/
+└── voucher/
