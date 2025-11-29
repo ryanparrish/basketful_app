@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='combinedorder',
             name='packed_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='combined_orders', to='pantry.orderpacker'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='combined_orders', to='pantry.OrderPacker'),
         ),
         migrations.AlterField(
             model_name='combinedorder',

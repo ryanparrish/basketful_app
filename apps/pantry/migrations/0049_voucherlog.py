@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 ('balance_after', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('order', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='voucher_logs', to='orders.order')),
-                ('participant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='voucher_logs', to='lifeskills.participant')),
+                ('participant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='voucher_logs', to='account.participant')),
                 ('voucher', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='logs', to='voucher.voucher')),
             ],
             options={

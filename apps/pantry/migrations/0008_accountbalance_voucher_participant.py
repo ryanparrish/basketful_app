@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ('full_voucher', models.DecimalField(decimal_places=2, default=0.0, max_digits=10)),
                 ('half_voucher', models.DecimalField(decimal_places=2, default=0.0, max_digits=10)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
-                ('participant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participant_balance', to='lifeskills.participant')),
+                ('participant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participant_balance', to='account.participant')),
             ],
         ),
         migrations.AddField(

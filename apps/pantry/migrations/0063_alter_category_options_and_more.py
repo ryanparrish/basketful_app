@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='ordervalidationlog',
             name='participant',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='lifeskills.participant'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='account.participant'),
         ),
         migrations.AlterField(
             model_name='voucherlog',
@@ -62,6 +62,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='voucherlog',
             name='participant',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='lifeskills.participant'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='account.participant'),
         ),
     ]

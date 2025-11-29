@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='combinedorder',
             name='packed_by',
-            field=models.ForeignKey(default=1, on_delete=django.db.models.deletion.CASCADE, related_name='packed_orders', to='pantry.orderpacker'),
+            field=models.ForeignKey(default=1, on_delete=django.db.models.deletion.CASCADE, related_name='packed_orders', to='pantry.OrderPacker'),
             preserve_default=False,
         ),
     ]

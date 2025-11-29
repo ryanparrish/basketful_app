@@ -79,7 +79,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='accountbalance',
             name='participant',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participant_account_balance', to='lifeskills.participant'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participant_account_balance', to='account.participant'),
         ),
         migrations.AlterField(
             model_name='participant',
@@ -93,7 +93,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='voucher',
             name='Participant',
-            field=models.ForeignKey(default='1', on_delete=django.db.models.deletion.CASCADE, related_name='participant_voucher', to='lifeskills.participant'),
+            field=models.ForeignKey(default='1', on_delete=django.db.models.deletion.CASCADE, related_name='participant_voucher', to='account.participant'),
             preserve_default=False,
         ),
     ]
