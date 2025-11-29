@@ -60,7 +60,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('summarized_data', models.JSONField(blank=True, default=dict)),
                 ('is_parent', models.BooleanField(default=False)),
-                ('packed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='combined_orders', to='pantry.orderpacker')),
+                ('packed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='combined_orders', to='pantry.OrderPacker')),
                 ('program', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='combined_orders', to='lifeskills.program')),
                 ('orders', models.ManyToManyField(blank=True, related_name='combined_orders', to='orders.order')),
             ],

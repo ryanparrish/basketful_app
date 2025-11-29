@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name='combined_orders',
-                to='pantry.orderpacker',
+                to='pantry.OrderPacker',
             ),
         ),
         migrations.AlterField(
