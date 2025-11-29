@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='voucher',
             name='account',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='vouchers', to='food_orders.accountbalance'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='vouchers', to='account.accountbalance'),
         ),
     ]

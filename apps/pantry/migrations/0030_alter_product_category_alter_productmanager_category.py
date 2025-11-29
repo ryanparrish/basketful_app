@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='product',
             name='category',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='product', to='food_orders.category'),
+            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='product', to='pantry.category'),
         ),
         migrations.AlterField(
             model_name='productmanager',

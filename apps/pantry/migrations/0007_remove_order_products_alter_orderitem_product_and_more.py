@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='orderitem',
             name='product',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='food_orders.product'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='pantry.product'),
         ),
         migrations.AlterField(
             model_name='orderitem',

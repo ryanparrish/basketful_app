@@ -27,14 +27,14 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='product',
             name='category',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='food_orders.category'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.category'),
         ),
         migrations.CreateModel(
             name='Subcategory',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=100)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='subcategories', to='food_orders.category')),
+                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='subcategories', to='pantry.category')),
             ],
         ),
         migrations.CreateModel(
@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='food_orders.category')),
-                ('subcategory', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='food_orders.subcategory')),
+                ('subcategory', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='pantry.subcategory')),
             ],
         ),
         migrations.AddField(

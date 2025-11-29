@@ -74,7 +74,7 @@ class Migration(migrations.Migration):
                 ('address', models.TextField()),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('assigned_coach', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='customers', to='food_orders.lifeskillscoach')),
+                ('assigned_coach', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='customers', to='lifeskills.lifeskillscoach')),
             ],
         ),
         migrations.AddField(

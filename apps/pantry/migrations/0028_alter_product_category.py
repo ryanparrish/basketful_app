@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='product',
             name='category',
-            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='catproductmanager', to='food_orders.category'),
+            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='catproductmanager', to='pantry.category'),
         ),
     ]

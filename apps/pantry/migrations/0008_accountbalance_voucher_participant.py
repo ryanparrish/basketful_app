@@ -24,6 +24,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='voucher',
             name='Participant',
-            field=models.ManyToManyField(related_name='participant_voucher', to='food_orders.accountbalance'),
+            field=models.ManyToManyField(related_name='participant_voucher', to='account.accountbalance'),
         ),
     ]
