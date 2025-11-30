@@ -3,11 +3,11 @@
 import random
 from decimal import Decimal
 from django.core.management.base import BaseCommand
-from pantry.models import (
+from apps.pantry.models import (
     Category, Product
 )
 
-from pantry.tests.factories import (
+from apps.pantry.tests.factories import (
     ParticipantFactory, VoucherFactory, OrderFactory, OrderItemFactory
 )
 

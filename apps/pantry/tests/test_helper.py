@@ -56,9 +56,11 @@ def make_items(product_quantity_list):
 # Factory Wrappers
 # ============================================================
 
+
 def create_category(name="Category"):
     """Create a Category using the factory."""
     return CategoryFactory(name=name)
+
 
 def create_product(name, price, category, weight_lbs=0.0, quantity=10):
     """Create a Product using the factory."""
@@ -70,6 +72,7 @@ def create_product(name, price, category, weight_lbs=0.0, quantity=10):
         quantity_in_stock=quantity,
     )
 
+
 def create_participant(name="Test User", email="test@example.com", adults=1, children=0, infants=0):
     """
     Create a Participant using the factory with default values and reset balances.
@@ -79,6 +82,7 @@ def create_participant(name="Test User", email="test@example.com", adults=1, chi
     )
 
     return participant
+
 
 def create_voucher(participant, multiplier=1, base_balance=Decimal("0")):
     """
