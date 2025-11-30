@@ -21,6 +21,7 @@ class Category(models.Model):
         """Meta options for Category."""
         verbose_name_plural = "Categories"
         db_table = 'food_orders_category'
+        managed = False
 
 
 class Subcategory(models.Model):
@@ -96,6 +97,7 @@ class Product(models.Model):
 
     class Meta:
         db_table = 'food_orders_product'
+        managed = False
   
 
 class ProductLimit(models.Model):
