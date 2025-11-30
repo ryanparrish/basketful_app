@@ -27,7 +27,7 @@ class Subcategory(models.Model):
     """Model representing a subcategory of products."""
     name = models.CharField(max_length=100)
     category = models.ForeignKey(
-        Category, 
+        'pantry.Category', 
         on_delete=models.CASCADE, 
         related_name='subcategories'
     )
@@ -48,10 +48,10 @@ class Product(models.Model):
         max_digits=4, decimal_places=2, default=0
     )  # e.g., 1.00 for beef, 2.00 for chicken
     category = models.ForeignKey(
-        Category, on_delete=models.CASCADE, related_name="products"
+        'pantry.Category', on_delete=models.CASCADE, related_name="products"
     )
     subcategory = models.ForeignKey(
-        Subcategory, on_delete=models.CASCADE, null=True, blank=True
+        'pantry.Subcategory', on_delete=models.CASCADE, null=True, blank=True
     )
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -102,7 +102,7 @@ class ProductLimit(models.Model):
     """Model to manage product limits per category or subcategory."""
     name = models.CharField(max_length=100)
     category = models.ForeignKey(
-        Category,
+        'pantry.Category',
         on_delete=models.CASCADE,
         related_name="category_limits",
         null=True,
@@ -110,7 +110,7 @@ class ProductLimit(models.Model):
     )
 
     subcategory = models.ForeignKey(
-        Subcategory,
+        'pantry.Subcategory',
         on_delete=models.CASCADE,
         related_name="subcategory_limits",
         null=True,
