@@ -9,6 +9,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('pantry', '0048_emaillog'),
         ('orders', '0001_initial'),
+        ('voucher', '0001_initial'),
     ]
 
     operations = [
