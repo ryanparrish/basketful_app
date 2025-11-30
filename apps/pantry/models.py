@@ -150,7 +150,7 @@ class ProductLimit(models.Model):
     def __str__(self) -> str:
         return str(self.name)
 
-""""
+
 class OrderPacker(models.Model):
     
     name = models.CharField(max_length=100)
@@ -165,4 +165,3 @@ class OrderPacker(models.Model):
 
     def __str__(self) -> str:
         return str(self.name)
-    """
