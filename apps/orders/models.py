@@ -209,7 +209,7 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
         self.full_clean()
 
-"""
+
 class CombinedOrder(models.Model):
   
     program = models.ForeignKey("lifeskills.Program", on_delete=models.CASCADE, related_name="combined_orders")
@@ -248,4 +248,3 @@ class CombinedOrder(models.Model):
 
     def __str__(self):
         return f"{self.program.name} Combined Order ({self.created_at and self.created_at.strftime('%Y-%m-%d')})"
-"""
