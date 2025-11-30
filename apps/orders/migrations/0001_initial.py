@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('pantry', '0001_initial'),
-        ('pantry', '0006_orderpacker_combinedorder_delete_orderpacked'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
