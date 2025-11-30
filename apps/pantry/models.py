@@ -21,7 +21,6 @@ class Category(models.Model):
         """Meta options for Category."""
         verbose_name_plural = "Categories"
         db_table = 'food_orders_category'
-        app_label = 'pantry'
 
 
 class Subcategory(models.Model):
