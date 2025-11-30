@@ -214,7 +214,7 @@ class CombinedOrder(models.Model):
   
     program = models.ForeignKey("lifeskills.Program", on_delete=models.CASCADE, related_name="combined_orders")
     orders = models.ManyToManyField("Order", related_name="combined_orders", blank=True)
-    packed_by = models.ForeignKey("pantry.OrderPacker", on_delete=models.SET_NULL, null=True, blank=True, related_name="combined_orders")
+    # packed_by = models.ForeignKey("pantry.OrderPacker", on_delete=models.SET_NULL, null=True, blank=True, related_name="combined_orders")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     summarized_data = models.JSONField(default=dict, blank=True)
