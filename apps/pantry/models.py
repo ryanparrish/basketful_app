@@ -117,7 +117,6 @@ class ProductLimit(models.Model):
         null=True,
         blank=True,
     )
-
     notes = models.TextField(blank=True, null=True)
     limit = models.IntegerField(
         default=2,
@@ -156,9 +155,6 @@ class OrderPacker(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'food_orders_orderpacker'
 
     def __str__(self) -> str:
         return str(self.name)
