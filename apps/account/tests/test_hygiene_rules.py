@@ -71,7 +71,7 @@ class TestHygieneRules:
         # Hygiene balance = 1/3 of voucher balance, assume 30 for test purposes
         # Exceeding it intentionally
         account_balance = participant.accountbalance
-        order = Order.objects.create(participant=participant)
+        order = Order.objects.create(account=account_balance)
         quantity = 3
         order_item = OrderItem(order=order, product=product, quantity=quantity)
 
@@ -91,11 +91,14 @@ class TestHygieneRules:
         participant = create_test_participant()
         voucher = create_test_voucher(participant)
         participant.refresh_from_db()  # ensures balances are up-to-date
-
         # --- Create order ---
         order = Order.objects.create(account=participant.accountbalance)
-        order_item = OrderItem.objects.create(order=order, product=product, quantity=1)
-
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=1,
+            price=product.price
+        )
         # --- Validate ---
         validator = OrderValidation()
         validator.validate_order_items([order_item], participant, participant.accountbalance)

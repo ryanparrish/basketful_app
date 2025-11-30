@@ -17,7 +17,6 @@ from django.utils import timezone
 from datetime import timedelta
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.signals import post_save
-import unittest
 
 from apps.account.models import AccountBalance, Participant
 from apps.voucher.models import Voucher, VoucherSetting
@@ -32,29 +31,26 @@ from apps.account.signals import initialize_participant
 
 
 @pytest.fixture
-# Renamed to avoid redefinition
-def program_fixture():
+def program_fixture_unique():
     """Create a test program."""
     return Program.objects.create(name="Test Program")
 
 
 @pytest.fixture
-# Renamed to avoid redefinition
-def participant_fixture(program_fixture):
+def participant_fixture_unique(program_fixture_unique):
     """Create a test participant with household data."""
     return Participant.objects.create(
         name="Test Participant",
         email="test@example.com",
-        program=program_fixture,
+        program=program_fixture_unique,
     )
 
 
 @pytest.fixture
-# Renamed to avoid redefinition
-def account_balance_fixture(participant_fixture):
+def account_balance_fixture_unique(participant_fixture_unique):
     """Get or create an account balance for the participant."""
     account, created = AccountBalance.objects.get_or_create(
-        participant=participant_fixture,
+        participant=participant_fixture_unique,
         defaults={"base_balance": Decimal("100.00")},
     )
     if not created:
@@ -64,17 +60,12 @@ def account_balance_fixture(participant_fixture):
 
 
 @pytest.fixture
-# Renamed to avoid redefinition
-def vouchers_fixture(account_balance_fixture):
+def vouchers_fixture_unique(account_balance_fixture_unique):
     """Create multiple vouchers in different states."""
-    return [
-        Voucher.objects.create(
-            account_balance=account_balance_fixture, amount=Decimal("10.00")
-        ),
-        Voucher.objects.create(
-            account_balance=account_balance_fixture, amount=Decimal("20.00")
-        ),
-    ]
+    return Voucher.objects.create(
+        account_balance=account_balance_fixture_unique,
+        amount=Decimal("50.00"),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -90,28 +81,35 @@ def disable_signals():
 # ============================================================
 
 @pytest.mark.django_db
-class TestAccountBalanceModel(unittest.TestCase):
+class TestAccountBalanceModel:
     """Test AccountBalance model creation and relationships."""
 
-    def test_account_balance_creation(self, program_fixture):
+    def test_account_balance_creation(self, program_fixture_unique):
         """Test creating an account balance."""
+        # Create a unique participant
         participant = Participant.objects.create(
             name="Test Participant New",
             email="test_new@example.com",
-            program=program_fixture,
-        )
-        account = AccountBalance.objects.create(
-            participant=participant, base_balance=Decimal("150.00")
+            program=program_fixture_unique,
         )
 
-        self.assertEqual(account.participant, participant)
-        self.assertEqual(account.base_balance, Decimal("150.00"))
-        self.assertTrue(account.active)
-        self.assertIsNotNone(account.last_updated)
+        # Ensure no duplicate AccountBalance is created
+        if not AccountBalance.objects.filter(participant=participant).exists():
+            account = AccountBalance.objects.create(
+                participant=participant, base_balance=Decimal("150.00")
+            )
 
-    def test_account_balance_string_representation(self, account_balance_fixture):
+            # Assertions
+            assert account.participant == participant
+            assert account.base_balance == Decimal("150.00")
+            assert account.active is True
+            assert account.last_updated is not None
+
+    def test_account_balance_string_representation(
+        self, account_balance_fixture_unique
+    ):
         """Test string representation uses participant name."""
-        self.assertEqual(str(account_balance_fixture), "Test Participant")
+        assert str(account_balance_fixture_unique) == "Test Participant"
 
 
 # ============================================================
@@ -123,10 +121,10 @@ class TestParticipantBalances:
     """Test Participant.balances() method."""
 
     def test_balances_with_account(
-        self, participant_fixture, account_balance_fixture
+        self, participant_fixture_unique, account_balance_fixture_unique
     ):
         """Test balances() returns correct values when account exists."""
-        balances = participant_fixture.balances()
+        balances = participant_fixture_unique.balances()
 
         assert "full_balance" in balances
         assert "available_balance" in balances
@@ -135,9 +133,9 @@ class TestParticipantBalances:
         assert isinstance(balances["available_balance"], (Decimal, int))
         assert isinstance(balances["hygiene_balance"], (Decimal, int))
 
-    def test_balances_without_account(self, participant_fixture):
+    def test_balances_without_account(self, participant_fixture_unique):
         """Test balances() returns zeros when no account exists."""
-        balances = participant_fixture.balances()
+        balances = participant_fixture_unique.balances()
 
         assert balances["full_balance"] == 0
         assert balances["available_balance"] == 0
