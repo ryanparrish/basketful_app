@@ -3,6 +3,8 @@
 import django.db.models.deletion
 from django.db import migrations, models
 
+from apps import pantry
+
 
 class Migration(migrations.Migration):
 
@@ -14,11 +16,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='product',
             name='category',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='product', to='pantry.category'),
+            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='product', to=pantry.category),
         ),
         migrations.AlterField(
             model_name='productmanager',
             name='category',
-            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='product_manager', to='food_orders.category'),
+            field=models.OneToOneField(help_text='If category is selected, limit will be enforced at the category level.', on_delete=django.db.models.deletion.CASCADE, related_name='product_manager', to=pantry.category),
         ),
     ]
