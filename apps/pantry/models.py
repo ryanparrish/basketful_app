@@ -150,10 +150,9 @@ class ProductLimit(models.Model):
     def __str__(self) -> str:
         return str(self.name)
 
-
-# Class to represent who packed the order
+""""
 class OrderPacker(models.Model):
-    """Model representing an order packer."""
+    
     name = models.CharField(max_length=100)
     programs = models.ManyToManyField(
         'lifeskills.Program', related_name='packers', blank=True
@@ -166,3 +165,4 @@ class OrderPacker(models.Model):
 
     def __str__(self) -> str:
         return str(self.name)
+    """
