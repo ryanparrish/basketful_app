@@ -8,6 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('orders', '0003_alter_order_account'),
+        ('pantry', '0006_orderpacker_combinedorder_delete_orderpacked'),
     ]
 
     operations = [
