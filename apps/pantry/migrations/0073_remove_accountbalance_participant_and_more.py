@@ -7,7 +7,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('pantry', '0072_alter_ordervalidationlog_order_and_more'),
-        ('orders', '0003_alter_order_account'),
     ]
 
     operations = [

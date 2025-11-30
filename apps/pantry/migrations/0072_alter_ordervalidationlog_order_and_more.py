@@ -8,7 +8,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('pantry', '0071_productlimit_remove_combinedorder_orders_and_more'),
-        ('orders', '0001_initial'),
     ]
 
     operations = [

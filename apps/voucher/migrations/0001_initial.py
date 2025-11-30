@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('account', '0001_initial'),
-        ('orders', '0003_alter_order_account'),
+        ('orders', '0001_initial'),
     ]
 
     operations = [
