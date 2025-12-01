@@ -188,20 +188,37 @@ class TestUserOnboardingSignals:
     onboarding emails.
     """
 
-    @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
-    def test_initialize_participant_creates_user_and_profile(self, voucher_setting_fixture, mocker):
+    @override_settings(
+        CELERY_TASK_ALWAYS_EAGER=True,
+        CELERY_TASK_EAGER_PROPAGATES=True,
+        CELERY_BROKER_BACKEND='memory',
+        CELERY_RESULT_BACKEND='cache',
+        CELERY_CACHE_BACKEND='memory'
+    )
+    def test_initialize_participant_creates_user_and_profile(
+        self, voucher_setting_fixture, mocker
+    ):
         """
         Tests that if `create_user=True`, the signal correctly calls the user
         creation utility, links the new user, and creates a UserProfile.
         """
         # --- ARRANGE ---
+        # --- Patch the email task to prevent Celery connection attempts ---
+        mocker.patch(
+            "apps.account.signals.send_new_user_onboarding_email.delay"
+        )
         # --- Use the `mocker` fixture to patch the user creation function ---
         # --- This isolates the test to the signal logic itself. ---
         mock_create_user = mocker.patch(
             "apps.account.signals.create_participant_user"
         )
-        mock_user = User(id=1, username="mocked")  # A mock User object
-        mock_create_user.return_value = mock_user # Make the patch return our mock user
+        # Create a real user in the database instead of mock
+        mock_user = User.objects.create(
+            username="mocked",
+            email="mocked@example.com"
+        )
+        # Make the patch return our real user
+        mock_create_user.return_value = mock_user
 
         # --- ACT ---
         # --- Create a participant with the flag to create a user ---
@@ -209,12 +226,14 @@ class TestUserOnboardingSignals:
         participant.refresh_from_db()
 
         # --- ASSERT ---
-        # --- Check that the participant is now linked to the user returned by the mock ---
+        # --- Check that participant is linked to user ---
         assert participant.user == mock_user
         # --- Check that a UserProfile was created for this user ---
-        self.assertTrue(UserProfile.objects.filter(user=mock_user).exists())
+        assert UserProfile.objects.filter(user=mock_user).exists()
 
-    def test_initialize_participant_triggers_onboarding_email(self, voucher_setting_fixture, mocker):
+    def test_initialize_participant_triggers_onboarding_email(
+        self, voucher_setting_fixture, mocker
+    ):
         """
         Tests that creating a participant with a new user also triggers the
         onboarding email task.
@@ -227,14 +246,18 @@ class TestUserOnboardingSignals:
         mock_send_email = mocker.patch(
             "apps.account.signals.send_new_user_onboarding_email.delay"
         )
-        mock_user = User(id=2, username="mocked2")
+        # Create a real user in the database instead of mock
+        mock_user = User.objects.create(
+            username="mocked2",
+            email="mocked2@example.com"
+        )
         mock_create_user.return_value = mock_user
 
         # --- ACT ---
         ParticipantFactory(create_user=True)
 
         # --- ASSERT ---
-        # --- Verify that the email task's `.delay()` method was called exactly once with the new user's ID ---
+        # --- Verify that the email task's `.delay()` method was called ---
         mock_send_email.assert_called_once_with(user_id=mock_user.id)
 
     def test_create_staff_user_triggers_onboarding(self, mocker):

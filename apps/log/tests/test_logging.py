@@ -6,7 +6,7 @@ Test helper functions for order validation in the food_orders app.
 Provides utilities to inspect vouchers for a given account with clean console logging.
 """
 
-from apps.pantry.models import Voucher
+from apps.voucher.models import Voucher
 
 _logged_once = False  # Module-level flag to print header only once per test run
 

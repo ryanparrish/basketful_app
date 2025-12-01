@@ -21,7 +21,7 @@ class Category(models.Model):
         """Meta options for Category."""
         verbose_name_plural = "Categories"
         db_table = 'food_orders_category'
-        managed = False
+        
 
 
 class Subcategory(models.Model):
@@ -49,10 +49,10 @@ class Product(models.Model):
         max_digits=4, decimal_places=2, default=0
     )  # e.g., 1.00 for beef, 2.00 for chicken
     category = models.ForeignKey(
-        'pantry.Category', on_delete=models.CASCADE, related_name="products"
+        'pantry.Category', on_delete=models.SET_NULL, null=True, blank=True, related_name="products"
     )
     subcategory = models.ForeignKey(
-        'pantry.Subcategory', on_delete=models.CASCADE, null=True, blank=True
+        'pantry.Subcategory', on_delete=models.SET_NULL, null=True, blank=True, related_name="products"
     )
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -97,7 +97,7 @@ class Product(models.Model):
 
     class Meta:
         db_table = 'food_orders_product'
-        managed = False
+        
   
 
 class ProductLimit(models.Model):

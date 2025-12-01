@@ -7,7 +7,7 @@ from django.http import HttpResponseRedirect
 # First-party imports
 from apps.orders.tasks.weekly_orders import create_weekly_combined_orders
 # Local application imports
-from .models import (
+from apps.pantry.models import (
     Product, Category,
     Subcategory, OrderPacker,
     ProductLimit

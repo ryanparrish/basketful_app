@@ -38,16 +38,26 @@ def create_hygiene_product(name="Soap", price=Decimal("10.00"), stock=100):
     )
 
 
-def create_test_participant(email=None):
-    return Participant.objects.create(
+def create_test_participant(email=None, base_balance=Decimal("100.00")):
+    participant = Participant.objects.create(
         email=email or faker.email(),
         name=faker.name()
     )
+    # Update the auto-created AccountBalance with the desired base_balance
+    account_balance = participant.accountbalance
+    account_balance.base_balance = base_balance
+    account_balance.save()
+    return participant
 
 
 def create_test_voucher(participant, multiplier=1):
     account = participant.accountbalance
-    return Voucher.objects.create(account=account, multiplier=multiplier)
+    voucher = Voucher.objects.create(
+        account=account,
+        multiplier=multiplier,
+        state="applied"  # Set to applied state so it has a balance
+    )
+    return voucher
 
 
 # ============================================================
@@ -63,8 +73,12 @@ class TestHygieneRules:
         exceeds the participant's hygiene balance.
         """
         # --- Setup ---
-        product = create_hygiene_product(name="Toothbrush", price=Decimal("15.00"))
-        participant = create_test_participant(email="hygiene_test@example.com")
+        product = create_hygiene_product(
+            name="Toothbrush", price=Decimal("15.00")
+        )
+        participant = create_test_participant(
+            email="hygiene_test@example.com"
+        )
         voucher = create_test_voucher(participant, multiplier=1)
         participant.refresh_from_db()
 
@@ -77,7 +91,9 @@ class TestHygieneRules:
 
         validator = OrderValidation()
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate_order_items([order_item], participant, account_balance)
+            validator.validate_order_items(
+                [order_item], participant, account_balance
+            )
 
         assert "Hygiene items total" in str(exc_info.value)
 
@@ -101,7 +117,9 @@ class TestHygieneRules:
         )
         # --- Validate ---
         validator = OrderValidation()
-        validator.validate_order_items([order_item], participant, participant.accountbalance)
+        validator.validate_order_items(
+            [order_item], participant, participant.accountbalance
+        )
 
         # --- Assertions ---
         order_item.refresh_from_db()

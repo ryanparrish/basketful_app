@@ -31,19 +31,51 @@ from apps.account.signals import initialize_participant
 
 
 @pytest.fixture
-def program_fixture_unique():
+def program():
     """Create a test program."""
     return Program.objects.create(name="Test Program")
+
+
+@pytest.fixture
+def program_fixture_unique():
+    """Create a test program."""
+    return Program.objects.create(name="Test Program Unique")
+
+
+@pytest.fixture
+def participant(program):
+    """Create a test participant with household data."""
+    return Participant.objects.create(
+        name="Test Participant",
+        email="test@example.com",
+        program=program,
+        adults=2,
+        children=2,
+        diaper_count=1,
+    )
 
 
 @pytest.fixture
 def participant_fixture_unique(program_fixture_unique):
     """Create a test participant with household data."""
     return Participant.objects.create(
-        name="Test Participant",
-        email="test@example.com",
+        name="Test Participant Unique",
+        email="test_unique@example.com",
         program=program_fixture_unique,
     )
+
+
+@pytest.fixture
+def account_balance(participant):
+    """Get or create an account balance for the participant."""
+    account, created = AccountBalance.objects.get_or_create(
+        participant=participant,
+        defaults={"base_balance": Decimal("100.00")},
+    )
+    if not created:
+        account.base_balance = Decimal("100.00")
+        account.save()
+    return account
 
 
 @pytest.fixture
@@ -60,11 +92,39 @@ def account_balance_fixture_unique(participant_fixture_unique):
 
 
 @pytest.fixture
+def voucher_setting(program):
+    """Create a voucher setting."""
+    return VoucherSetting.objects.create(
+        adult_amount=Decimal("50.00"),
+        child_amount=Decimal("25.00"),
+        infant_modifier=Decimal("15.00"),
+        active=True,
+    )
+
+
+@pytest.fixture
+def vouchers(account_balance):
+    """Create multiple vouchers in different states."""
+    v1 = Voucher.objects.create(
+        account=account_balance,
+        state="applied",
+        voucher_type="grocery",
+    )
+    v2 = Voucher.objects.create(
+        account=account_balance,
+        state="applied",
+        voucher_type="grocery",
+    )
+    return [v1, v2]
+
+
+@pytest.fixture
 def vouchers_fixture_unique(account_balance_fixture_unique):
     """Create multiple vouchers in different states."""
     return Voucher.objects.create(
-        account_balance=account_balance_fixture_unique,
-        amount=Decimal("50.00"),
+        account=account_balance_fixture_unique,
+        state="applied",
+        voucher_type="grocery",
     )
 
 
@@ -109,7 +169,7 @@ class TestAccountBalanceModel:
         self, account_balance_fixture_unique
     ):
         """Test string representation uses participant name."""
-        assert str(account_balance_fixture_unique) == "Test Participant"
+        assert str(account_balance_fixture_unique) == "Test Participant Unique"
 
 
 # ============================================================
@@ -153,9 +213,9 @@ class TestBaseBalanceCalculation:
     def test_calculate_base_balance_with_setting(self, participant, voucher_setting):
         """Test base balance calculation with active voucher setting."""
         # participant has: 2 adults, 2 children, 1 diaper
-        # setting has: adult=50, child=25, infant=10
-        expected = (2 * Decimal('50.00')) + (2 * Decimal('25.00')) + (1 * Decimal('10.00'))
-        # = 100 + 50 + 10 = 160
+        # setting has: adult=50, child=25, infant_modifier=15
+        expected = (2 * Decimal('50.00')) + (2 * Decimal('25.00')) + (1 * Decimal('15.00'))
+        # = 100 + 50 + 15 = 165
 
         result = calculate_base_balance(participant)
         assert result == expected
@@ -197,7 +257,7 @@ class TestBaseBalanceCalculation:
             program=program
         )
 
-        expected = (4 * Decimal('25.00')) + (2 * Decimal('10.00'))  # 100 + 20 = 120
+        expected = (4 * Decimal('25.00')) + (2 * Decimal('15.00'))  # 100 + 30 = 130
         result = calculate_base_balance(participant)
         assert result == expected
 
@@ -299,8 +359,8 @@ class TestAvailableBalanceCalculation:
         )
 
         # Mark one voucher with program_pause_flag
-        vouchers['applied1'].program_pause_flag = True
-        vouchers['applied1'].save()
+        vouchers[0].program_pause_flag = True
+        vouchers[0].save()
 
         # During pause, only vouchers with program_pause_flag should count
         result = calculate_available_balance(account_balance, limit=2)
@@ -452,24 +512,26 @@ class TestAccountBalanceEdgeCases:
 
     def test_account_balance_with_decimal_precision(self, program):
         """Test account balance handles decimal precision correctly."""
-        # Create participant without triggering signals
+        from django.utils import timezone
+        # Create participant with unique email to avoid duplicate key error
+        unique_email = f"test_precision_{int(timezone.now().timestamp())}@example.com"
         participant = Participant.objects.create(
             name='Test Precision',
-            email='test_precision@example.com',
+            email=unique_email,
             program=program
         )
-        account = AccountBalance.objects.create(
-            participant=participant,
-            base_balance=Decimal('123.45')
-        )
+        # Update the auto-created account balance instead of creating new one
+        account = participant.accountbalance
+        account.base_balance = Decimal('123.5')
+        account.save()
 
-        assert account.base_balance == Decimal('123.45')
+        assert account.base_balance == Decimal('123.5')
 
-        # Test updating with high precision
-        account.base_balance = Decimal('99.99')
+        # Test updating with precision (model has decimal_places=1)
+        account.base_balance = Decimal('99.9')
         account.save()
         account.refresh_from_db()
-        assert account.base_balance == Decimal('99.99')
+        assert account.base_balance == Decimal('99.9')
 
     def test_multiple_voucher_settings_only_one_active(self, voucher_setting):
         """Test that only one voucher setting can be active."""
