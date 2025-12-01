@@ -6,6 +6,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
+from django.contrib.auth.hashers import make_password
+from django.utils.crypto import get_random_string
 from django.apps import apps
 # Local app imports
 from .models import Participant
@@ -13,6 +15,7 @@ from .forms import CustomUserCreationForm, ParticipantAdminForm
 from .models import UserProfile, AccountBalance
 from .utils.user_utils import _generate_admin_username
 from .utils.balance_utils import calculate_base_balance
+from .tasks.email import send_password_reset_email
 User = get_user_model()
 
 # Lazily load the Product model to avoid circular import issues
@@ -102,7 +105,7 @@ class ParticipantAdmin(admin.ModelAdmin):
         'hygiene_balance_display',
         'get_base_balance',
     )
-    actions = ['calculate_base_balance_action']
+    actions = ['calculate_base_balance_action', 'reset_password_and_send_email']
 
     def full_balance_display(self, obj):
         """Display the full balance of the participant."""
@@ -149,5 +152,53 @@ class ParticipantAdmin(admin.ModelAdmin):
                 "participants."
             )
         )
-    calculate_base_balance_action.short_description = "Calculate and save base balance for selected participants"
+    calculate_base_balance_action.short_description = (
+        "Calculate and save base balance for selected participants"
+    )
+
+    def reset_password_and_send_email(self, request, queryset):
+        """
+        Reset password for selected participants and send password reset email.
+        
+        This action:
+        1. Generates a random temporary password for each participant's user
+        2. Sets the must_change_password flag
+        3. Sends a password reset email to the user
+        """
+        reset_count = 0
+        email_count = 0
+        
+        for participant in queryset:
+            if not participant.user:
+                continue
+            
+            user = participant.user
+            
+            # Generate a random temporary password
+            temp_password = get_random_string(length=12)
+            user.password = make_password(temp_password)
+            user.save(update_fields=['password'])
+            
+            # Set must_change_password flag
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            profile.must_change_password = True
+            profile.save(update_fields=['must_change_password'])
+            
+            # Send password reset email (async)
+            send_password_reset_email.delay(user.id)
+            
+            reset_count += 1
+            email_count += 1
+        
+        self.message_user(
+            request,
+            (
+                f"Password reset for {reset_count} participant(s). "
+                f"{email_count} password reset email(s) queued."
+            )
+        )
+    reset_password_and_send_email.short_description = (
+        "Reset password and send reset email"
+    )
+
 

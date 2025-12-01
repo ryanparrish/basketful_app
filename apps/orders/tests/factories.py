@@ -55,7 +55,11 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
     @factory.post_generation
     def create_account_balance(obj, create, extracted, **kwargs):
         if create:
-            AccountBalanceFactory.create(participant=obj)
+            # Use get_or_create to avoid conflicts with signal
+            AccountBalance.objects.get_or_create(
+                participant=obj,
+                defaults={'base_balance': Decimal("100.00")}
+            )
 
 
 class CategoryFactory(factory.django.DjangoModelFactory):
@@ -80,9 +84,11 @@ class VoucherFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Voucher
 
-    participant = factory.SubFactory(ParticipantFactory)
+    account = factory.SubFactory(AccountBalanceFactory)
+    voucher_type = 'grocery'
+    state = 'applied'
+    active = True
     multiplier = 1
-    base_balance = Decimal("50.00")
 
 
 class VoucherSettingFactory(factory.django.DjangoModelFactory):
@@ -102,6 +108,7 @@ class OrderFactory(factory.django.DjangoModelFactory):
 
     account = factory.SubFactory(AccountBalanceFactory)
     status = 'pending'
+    order_number = factory.Sequence(lambda n: f'ORD-{n:08d}')
 
 
 class OrderItemFactory(factory.django.DjangoModelFactory):

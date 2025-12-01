@@ -25,6 +25,12 @@ class CategoryAdmin(admin.ModelAdmin):
     """Admin for Category with Subcategory inline."""
     list_display = ('name',)
     inlines = [SubcategoryInline]
+    
+    def get_inlines(self, request, obj):
+        """Only show subcategory inline for existing categories."""
+        if obj:  # obj exists means we're editing an existing category
+            return self.inlines
+        return []  # Hide inlines when creating a new category
 
 
 @admin.register(Product)

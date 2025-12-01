@@ -43,9 +43,10 @@ def order_with_items_setup(db):
         email="test@example.com",
         active=True
     )
-    account = AccountBalance.objects.create(
+    # Use get_or_create to avoid conflict with signal
+    account, _ = AccountBalance.objects.get_or_create(
         participant=participant,
-        base_balance=Decimal("100.0")
+        defaults={'base_balance': Decimal("100.0")}
     )
     
     # Create category and products

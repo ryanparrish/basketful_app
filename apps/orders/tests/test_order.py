@@ -351,3 +351,123 @@ def test_submit_order_view(client):
     assert total_applied == expected_total
 
     logger.info("Total vouchers applied: %s", total_applied)
+
+
+@pytest.mark.django_db
+def test_submit_order_view_with_50_items(client):
+    """End-to-end test for submitting an order with 50 items and verifying persistence."""
+    VoucherSettingFactory.create()
+
+    # --- Setup user, participant, and account ---
+    test_password = "test_pass_123"  # noqa: S105
+    user = UserFactory(username="testuser_50items", password=test_password)
+    participant = ParticipantFactory(user=user)
+    account = participant.accountbalance
+    
+    # Set realistic base balance (max is 999.9 due to precision 4, scale 1)
+    account.base_balance = Decimal("500.0")
+    account.save()
+
+    logger.info("Created participant with account balance: %s", account.base_balance)
+
+    # --- Category & Products ---
+    grocery_category = CategoryFactory(name="Grocery")
+    
+    # Create 50 different products with small prices
+    products = []
+    for i in range(50):
+        product = ProductFactory(
+            name=f"Product_{i}",
+            price=Decimal(f"{1 + (i % 10)}"),  # Prices from 1 to 10
+            category=grocery_category
+        )
+        products.append(product)
+    
+    logger.info("Created %s products", len(products))
+
+    # --- Login ---
+    client.force_login(user)
+
+    # --- Session cart setup with 50 items ---
+    session = client.session
+    cart = {}
+    expected_item_count = 50
+    expected_total = Decimal("0")
+    
+    for i, product in enumerate(products):
+        quantity = 1  # Keep quantity at 1 for all items to stay within balance
+        cart[str(product.id)] = quantity
+        expected_total += product.price * quantity
+    
+    session["cart"] = cart
+    session.save()
+    logger.info("Cart has %s items with expected total: %s", len(cart), expected_total)
+
+    # --- Define form payload ---
+    payload = {"confirm": True}
+
+    # --- POST to submit order ---
+    url = reverse("submit_order")
+    response = client.post(url, data=payload, follow=True)
+
+    # --- Logging POST response ---
+    logger.info("POST submit_order status: %s", response.status_code)
+    logger.info("Redirect chain: %s", response.redirect_chain)
+
+    # Capture messages from POST
+    messages_list = list(get_messages(response.wsgi_request))
+    for m in messages_list:
+        logger.info("Message: %s", m)
+
+    # --- Assert response ---
+    assert response.status_code == 200
+
+    # --- Verify order created ---
+    order = Order.objects.first()
+    assert order is not None, "Order should be created"
+    
+    # --- Verify all 50 items are in the order ---
+    order_items = order.items.all()
+    assert order_items.count() == expected_item_count, (
+        f"Expected {expected_item_count} order items, "
+        f"but got {order_items.count()}"
+    )
+    logger.info("Order has %s items", order_items.count())
+    
+    # --- Verify each product is in the database and matches cart ---
+    for i, product in enumerate(products):
+        expected_quantity = 1  # All items have quantity 1
+        
+        # Find the order item for this product
+        order_item = order_items.filter(product=product).first()
+        assert order_item is not None, f"Product {product.name} not found in order"
+        assert order_item.quantity == expected_quantity, (
+            f"Product {product.name} expected quantity {expected_quantity}, "
+            f"got {order_item.quantity}"
+        )
+        assert order_item.price == product.price, (
+            f"Product {product.name} price mismatch"
+        )
+    
+    logger.info("All 50 items verified in database")
+    
+    # --- Verify total price ---
+    actual_total = order.total_price()
+    assert actual_total == expected_total, (
+        f"Expected total {expected_total}, got {actual_total}"
+    )
+    logger.info("Order total price verified: %s", actual_total)
+    
+    # --- Verify cart cleared ---
+    session = client.session
+    assert session.get("cart") == {}, "Cart should be cleared after order"
+    
+    # --- Verify vouchers consumed ---
+    account.refresh_from_db()
+    consumed_vouchers = Voucher.objects.filter(
+        account=account, 
+        state='consumed'
+    )
+    logger.info("Consumed vouchers: %s", consumed_vouchers.count())
+    
+    logger.info("Test completed successfully with 50 items")

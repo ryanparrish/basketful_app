@@ -119,10 +119,82 @@ class Order(models.Model):
                 OrderValidationLog.objects.create(order=self, error_message=str(msg))
             raise ValidationError(errors)
 
+    def _consume_vouchers(self):
+        """
+        Consume vouchers when order is confirmed.
+        
+        Rules:
+        - If order total <= 1 voucher amount: consume 1 voucher
+        - If order total > 1 voucher amount: consume both vouchers
+        - Participants can have max 2 active vouchers
+        """
+        if self.status != "confirmed":
+            return
+        
+        from apps.voucher.models import Voucher
+        
+        order_total = self.total_price()
+        if order_total == 0:
+            return
+        
+        # Get active grocery vouchers for this account (max 2)
+        active_vouchers = list(Voucher.objects.filter(
+            account=self.account,
+            voucher_type='grocery',
+            active=True,
+            state='applied'
+        ).order_by('created_at')[:2])  # Limit to 2 vouchers max
+        
+        if not active_vouchers:
+            return
+        
+        # Calculate single voucher amount (they should all be the same)
+        single_voucher_amount = active_vouchers[0].voucher_amnt if active_vouchers else Decimal('0')
+        
+        # Determine how many vouchers to consume
+        if order_total <= single_voucher_amount:
+            # Order total is less than or equal to one voucher: consume 1
+            vouchers_to_consume = active_vouchers[:1]
+        else:
+            # Order total is greater than one voucher: consume all available (max 2)
+            vouchers_to_consume = active_vouchers
+        
+        # Mark vouchers as consumed
+        for voucher in vouchers_to_consume:
+            voucher.active = False
+            voucher.state = 'consumed'
+        
+        # Save all consumed vouchers
+        if vouchers_to_consume:
+            Voucher.objects.bulk_update(
+                vouchers_to_consume,
+                ['active', 'state'],
+                batch_size=100
+            )
+            logger.info(
+                f"Order {self.id}: Consumed {len(vouchers_to_consume)} voucher(s) "
+                f"for total ${order_total} (single voucher amount: ${single_voucher_amount})"
+            )
+
     def save(self, *args, **kwargs):
+        # Track if status is changing to confirmed
+        is_new = self.pk is None
+        old_status = None
+        
+        if not is_new:
+            try:
+                old_instance = Order.objects.get(pk=self.pk)
+                old_status = old_instance.status
+            except Order.DoesNotExist:
+                pass
+        
         with transaction.atomic():
             self.full_clean()
             super().save(*args, **kwargs)
+            
+            # Consume vouchers if order is being confirmed
+            if self.status == "confirmed" and old_status != "confirmed":
+                self._consume_vouchers()
 
     # -----------------------------
     # Private helpers

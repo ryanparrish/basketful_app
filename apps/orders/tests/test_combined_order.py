@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
+from unittest.mock import patch
 from apps.orders.models import Order, CombinedOrder
 from apps.orders.forms import CreateCombinedOrderForm
 from apps.lifeskills.models import Program
@@ -14,6 +15,15 @@ from apps.orders.tests.factories import (
     CategoryFactory,
     ProductFactory,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_task_always_eager(settings):
+    """Mock Celery to run tasks synchronously for all tests in this module."""
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+    settings.CELERY_TASK_EAGER_PROPAGATES = True
+    with patch('celery.app.task.Task.apply_async', side_effect=lambda args, kwargs: None):
+        yield
 
 
 def create_test_order(account, status='pending', order_date=None):
