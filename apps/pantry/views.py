@@ -119,6 +119,9 @@ def product_view(request):
         products
     )
     
+    # Get existing cart from session for persistence
+    session_cart = request.session.get("cart", {})
+    
     logger.info(f"Total products to display: {len(products_by_category)}")
 
     return render(
@@ -128,6 +131,7 @@ def product_view(request):
             "products_by_category": products_by_category,
             "products_json": products_json,
             "query": query,
+            "session_cart": json.dumps(session_cart),
         },
     )
 
