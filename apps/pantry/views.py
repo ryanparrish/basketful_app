@@ -6,6 +6,7 @@ import logging
 
 # Django core
 from django.contrib import messages
+from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
@@ -26,78 +27,99 @@ from .utils import get_active_vouchers
 logger = logging.getLogger(__name__)
 
 
-
-@login_required
-def product_view(request):
-    """Product selection page for creating a new order."""
-    query = request.GET.get("q", "")
-    
-    # Debug: Check total products
-    total_products = Product.objects.count()
-    logger.info(f"Total products in database: {total_products}")
-    
-    products = Product.objects.filter(
+def get_base_products():
+    """Get base queryset of active products with categories."""
+    return Product.objects.filter(
         category__isnull=False,
         active=True
     ).select_related('category').order_by("category", "name")
-    
-    logger.info(f"Products with categories: {products.count()}")
-    logger.info(f"SQL Query: {products.query}")
-    logger.info(f"Query parameter: '{query}'")
 
-    if query:
-        products = products.filter(
-            Q(name__icontains=query)
-            | Q(description__icontains=query)
-            | Q(category__name__icontains=query)
+
+def search_products(queryset, query):
+    """
+    Search products using fuzzy matching with trigram similarity.
+    Falls back to basic contains search if trigrams aren't available.
+    """
+    if not query:
+        return queryset
+    
+    try:
+        # Use trigram similarity for fuzzy search
+        queryset = queryset.annotate(
+            name_similarity=TrigramSimilarity('name', query),
+            desc_similarity=TrigramSimilarity('description', query),
+            cat_similarity=TrigramSimilarity('category__name', query),
+        ).filter(
+            Q(name_similarity__gt=0.1) |
+            Q(desc_similarity__gt=0.1) |
+            Q(cat_similarity__gt=0.1)
+        ).order_by('-name_similarity', '-desc_similarity', '-cat_similarity')
+    except Exception as e:
+        logger.warning(
+            f"Trigram search failed, using basic search: {e}"
         )
-        logger.info(f"Products after query filter: {products.count()}")
-
-    participant = request.user.participant
-    active_vouchers = get_active_vouchers(participant)
-    logger.info(f"Active vouchers for {participant}: {active_vouchers.count()}")
-    
-    logger.info(f"Products before voucher check: {products.count()}")
-    
-    if not active_vouchers.exists():
-        messages.warning(
-            request,
-            "You don't have any active vouchers. Please contact your coach."
+        # Fallback to basic case-insensitive search
+        queryset = queryset.filter(
+            Q(name__icontains=query) |
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)
         )
-        return redirect("participant_dashboard")
     
-    logger.info(f"Products after voucher check: {products.count()}")
+    return queryset
 
-    # Group products by category
+
+def group_products_by_category(products):
+    """
+    Group products by category and prepare JSON data.
+    Returns tuple of (products_by_category, products_json).
+    """
     products_by_category = {}
     all_products = {}
     
-    # Force evaluation of queryset to a list
-    logger.info(f"About to convert to list, products count: {products.count()}")
-    # Create a fresh queryset to avoid any caching issues
-    products_fresh = Product.objects.filter(
-        category__isnull=False,
-        active=True
-    ).select_related('category').order_by("category", "name")
-    products_list = list(products_fresh)
-    logger.info(f"Starting to process {len(products_list)} products")
-    
-    for idx, product in enumerate(products_list):
-        logger.info(
-            f"Processing product {idx + 1}: ID={product.id}, "
-            f"Name={product.name}, Category ID={product.category_id}"
-        )
+    for product in products:
         category = product.category
         products_by_category.setdefault(category, []).append(product)
         all_products[product.id] = {
             "name": product.name,
             "price": float(product.price)
         }
-        if idx == 0:
-            logger.info(f"First product processed successfully: {product.name}")
-
-    logger.info(f"Total products to display: {len(all_products)}")
+    
     products_json = mark_safe(json.dumps(all_products))
+    return products_by_category, products_json
+
+
+@login_required
+def product_view(request):
+    """Product selection page for creating a new order."""
+    query = request.GET.get("q", "")
+    
+    # Get base products
+    products = get_base_products()
+    logger.info(f"Base products count: {products.count()}")
+    
+    # Apply search if query exists
+    if query:
+        products = search_products(products, query)
+        logger.info(f"Products after search '{query}': {products.count()}")
+    
+    # Check for active vouchers
+    participant = request.user.participant
+    active_vouchers = get_active_vouchers(participant)
+    
+    if not active_vouchers.exists():
+        messages.warning(
+            request,
+            "You don't have any active vouchers. "
+            "Please contact your coach."
+        )
+        return redirect("participant_dashboard")
+    
+    # Group products and prepare data
+    products_by_category, products_json = group_products_by_category(
+        products
+    )
+    
+    logger.info(f"Total products to display: {len(products_by_category)}")
 
     return render(
         request,
