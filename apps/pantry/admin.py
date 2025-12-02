@@ -33,6 +33,15 @@ class CategoryAdmin(admin.ModelAdmin):
         return []  # Hide inlines when creating a new category
 
 
+@admin.register(Subcategory)
+class SubcategoryAdmin(admin.ModelAdmin):
+    """Admin for Subcategory with category filtering."""
+    list_display = ('name', 'category')
+    list_filter = ('category',)
+    search_fields = ('name', 'category__name')
+    ordering = ('category', 'name')
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     """Admin for Product model with image preview."""
