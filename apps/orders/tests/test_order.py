@@ -471,3 +471,179 @@ def test_submit_order_view_with_50_items(client):
     logger.info("Consumed vouchers: %s", consumed_vouchers.count())
     
     logger.info("Test completed successfully with 50 items")
+
+
+# ============================================================
+# Order Number Uniqueness and Idempotency Tests
+# ============================================================
+
+
+@pytest.mark.django_db
+def test_order_number_is_generated_automatically():
+    """Test that order_number is automatically generated when an order is created."""
+    participant = create_participant(email="ordernum@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    
+    # Order number should be automatically generated
+    assert order.order_number is not None
+    assert order.order_number != ""
+    assert len(order.order_number) > 0
+    
+    logger.info("Generated order number: %s", order.order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_uniqueness():
+    """Test that each order gets a unique order number."""
+    participant1 = create_participant(email="unique1@example.com")
+    create_voucher(participant1, multiplier=1, base_balance=Decimal("100"))
+    
+    participant2 = create_participant(email="unique2@example.com")
+    create_voucher(participant2, multiplier=1, base_balance=Decimal("100"))
+    
+    # Create multiple orders
+    order1 = create_order(participant1)
+    order2 = create_order(participant2)
+    order3 = create_order(participant1)
+    
+    # All order numbers should be unique
+    order_numbers = [order1.order_number, order2.order_number, order3.order_number]
+    
+    assert order1.order_number is not None
+    assert order2.order_number is not None
+    assert order3.order_number is not None
+    
+    # Check uniqueness
+    assert len(order_numbers) == len(set(order_numbers)), (
+        f"Order numbers are not unique: {order_numbers}"
+    )
+    
+    logger.info("All order numbers are unique: %s", order_numbers)
+
+
+@pytest.mark.django_db
+def test_order_number_idempotency():
+    """Test that order number generation is idempotent (doesn't change on save)."""
+    participant = create_participant(email="idempotent@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    original_number = order.order_number
+    
+    # Save the order multiple times
+    for _ in range(5):
+        order.save()
+        order.refresh_from_db()
+        
+        # Order number should never change
+        assert order.order_number == original_number, (
+            f"Order number changed from {original_number} to {order.order_number}"
+        )
+    
+    logger.info("Order number remained stable: %s", original_number)
+
+
+@pytest.mark.django_db
+def test_order_number_format():
+    """Test that order numbers follow a consistent format."""
+    participant = create_participant(email="format@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    # Create multiple orders to check format consistency
+    orders = [create_order(participant) for _ in range(5)]
+    
+    for order in orders:
+        # Order number should exist
+        assert order.order_number is not None
+        
+        # Should be a string
+        assert isinstance(order.order_number, str)
+        
+        # Should not be empty
+        assert len(order.order_number.strip()) > 0
+        
+        # Should fit within the max_length of 20
+        assert len(order.order_number) <= 20
+        
+        logger.info("Order %s has number: %s", order.id, order.order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_persists_in_database():
+    """Test that order numbers are correctly saved and retrieved from database."""
+    participant = create_participant(email="persist@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    order_id = order.id
+    order_number = order.order_number
+    
+    # Clear the instance from memory
+    del order
+    
+    # Retrieve from database
+    retrieved_order = Order.objects.get(id=order_id)
+    
+    # Order number should match
+    assert retrieved_order.order_number == order_number
+    
+    logger.info("Order number persisted correctly: %s", order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_uniqueness_constraint():
+    """Test that database enforces uniqueness constraint on order_number."""
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    
+    participant = create_participant(email="constraint@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order1 = create_order(participant)
+    
+    # Try to create another order with the same order number
+    # This should fail during full_clean() validation
+    with pytest.raises(DjangoValidationError) as exc_info:
+        Order.objects.create(
+            account=participant.accountbalance,
+            order_number=order1.order_number,
+            status="pending"
+        )
+    
+    # Verify it's the order_number field causing the error
+    assert 'order_number' in exc_info.value.error_dict
+    
+    logger.info("Uniqueness constraint working correctly")
+
+
+@pytest.mark.django_db
+def test_order_number_generation_with_100_orders():
+    """Stress test: Create 100 orders and verify all have unique order numbers."""
+    participants = []
+    for i in range(100):
+        participant = create_participant(email=f"stress{i}@example.com")
+        create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+        participants.append(participant)
+    
+    orders = []
+    for participant in participants:
+        order = create_order(participant)
+        orders.append(order)
+    
+    # Collect all order numbers
+    order_numbers = [order.order_number for order in orders]
+    
+    # Verify all are non-null
+    assert all(num is not None for num in order_numbers)
+    
+    # Verify all are unique
+    assert len(order_numbers) == len(set(order_numbers)), (
+        f"Found duplicate order numbers in {len(order_numbers)} orders"
+    )
+    
+    # Verify all are within length constraint
+    assert all(len(num) <= 20 for num in order_numbers)
+    
+    logger.info("Successfully created 100 orders with unique numbers")
+    logger.info("Sample order numbers: %s", order_numbers[:5])

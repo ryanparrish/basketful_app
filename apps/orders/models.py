@@ -5,6 +5,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
+import secrets
+from datetime import datetime
 # Django imports
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
@@ -75,6 +77,29 @@ class Order(models.Model):
         self.full_clean()
         self.status = "confirmed"
         self.save()
+
+    @staticmethod
+    def _generate_order_number():
+        """Generate a unique order number with format: ORD-YYYYMMDD-XXXXXX."""
+        timestamp = datetime.now().strftime('%Y%m%d')
+        # Generate 6 random alphanumeric characters for uniqueness
+        random_part = secrets.token_hex(3).upper()  # 6 chars
+        return f'ORD-{timestamp}-{random_part}'
+
+    def _ensure_order_number(self):
+        """Ensure order has a unique order number, generating one if needed."""
+        if not self.order_number:
+            max_attempts = 10
+            for _ in range(max_attempts):
+                candidate = self._generate_order_number()
+                if not Order.objects.filter(order_number=candidate).exists():
+                    self.order_number = candidate
+                    return
+            # If we couldn't generate unique number after max_attempts,
+            # fall back to timestamp + pk (will be set after save)
+            raise ValidationError(
+                "Failed to generate unique order number after multiple attempts"
+            )
 
     def clean(self):
         """
@@ -177,6 +202,10 @@ class Order(models.Model):
             )
 
     def save(self, *args, **kwargs):
+        # Generate order number if this is a new order
+        if self.pk is None:
+            self._ensure_order_number()
+        
         # Track if status is changing to confirmed
         is_new = self.pk is None
         old_status = None
