@@ -145,8 +145,21 @@ class Order(models.Model):
 
         # --- Log errors and raise ---
         if errors:
+            from django.db import transaction
+            # Save logs in a separate transaction so they persist even if
+            # the main transaction is rolled back
             for msg in errors:
-                OrderValidationLog.objects.create(order=self, message=str(msg))
+                try:
+                    with transaction.atomic():
+                        OrderValidationLog.objects.create(
+                            order=self,
+                            message=str(msg)
+                        )
+                except Exception as log_error:
+                    # Don't let logging failures prevent validation errors
+                    logger.error(
+                        f"Failed to create OrderValidationLog: {log_error}"
+                    )
             raise ValidationError(errors)
 
     def _consume_vouchers(self):

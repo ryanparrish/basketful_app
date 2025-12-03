@@ -191,8 +191,13 @@ class CategoryLimitValidator:
             
             if not obj:
                 continue
-                
-            cid = obj.id
+            
+            # Use tuple (type, id) as key to avoid ID collisions
+            # e.g., ('category', 2) vs ('subcategory', 2) are different
+            cid = (
+                ('subcategory', obj.id) if subcategory
+                else ('category', obj.id)
+            )
             category_totals[cid] += item.quantity
             category_units[cid] = getattr(obj, "unit", "unit")
             category_products[cid].append(product)
@@ -254,11 +259,11 @@ class CategoryLimitValidator:
             # Get the product limit for this category
             product_limit = ProductLimit.objects.filter(
                 category=(
-                    category if isinstance(category, Category) 
+                    category if isinstance(category, Category)
                     else category.category
                 ),
                 subcategory=(
-                    category if isinstance(category, Subcategory) 
+                    category if isinstance(category, Subcategory)
                     else None
                 )
             ).first()
@@ -273,7 +278,7 @@ class CategoryLimitValidator:
             if total > allowed:
                 # Build detailed error message
                 category_type = (
-                    "Subcategory" if isinstance(category, Subcategory) 
+                    "Subcategory" if isinstance(category, Subcategory)
                     else "Category"
                 )
                 
