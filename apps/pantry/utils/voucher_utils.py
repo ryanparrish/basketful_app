@@ -104,8 +104,11 @@ def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
     Returns True if any voucher was applied.
     """
 
-    if order.status_type != "confirmed":
-        raise ValidationError(f"Cannot apply vouchers to Order {order.id}, status={order.status_type}")
+    if order.status != "confirmed":
+        raise ValidationError(
+            f"Cannot apply vouchers to Order {order.id}, "
+            f"status={order.status}"
+        )
 
     account = order.account
     participant = account.participant

@@ -1,8 +1,10 @@
 # Standard library
 """Models for Food Orders application."""
 import logging
+from collections import defaultdict
 # Django imports
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 from django.utils.timezone import now
 from django.db import models
 # Local app imports
@@ -163,3 +165,120 @@ class OrderPacker(models.Model):
         return str(self.name)
     class Meta:
         db_table = 'food_orders_order_packer'
+
+
+class CategoryLimitValidator:
+    """Utility class for validating category limits on orders."""
+    
+    @staticmethod
+    def aggregate_category_data(order_items):
+        """
+        Aggregate order items by category/subcategory.
+        
+        Returns:
+            tuple: (category_totals, category_units, category_products, category_objects)
+        """
+        category_totals = defaultdict(int)
+        category_units = {}
+        category_products = defaultdict(list)
+        category_objects = {}
+        
+        for item in order_items:
+            product = item.product
+            subcategory = getattr(product, "subcategory", None)
+            category = getattr(product, "category", None)
+            obj = subcategory or category
+            
+            if not obj:
+                continue
+                
+            cid = obj.id
+            category_totals[cid] += item.quantity
+            category_units[cid] = getattr(obj, "unit", "unit")
+            category_products[cid].append(product)
+            category_objects[cid] = obj
+            
+        return (
+            dict(category_totals),
+            category_units,
+            dict(category_products),
+            category_objects
+        )
+    
+    @staticmethod
+    def compute_allowed_quantity(product_limit, participant):
+        """
+        Compute the allowed quantity based on limit scope.
+        
+        Args:
+            product_limit: ProductLimit instance
+            participant: Participant instance
+            
+        Returns:
+            int: Calculated allowed quantity
+        """
+        allowed = product_limit.limit
+        scope = product_limit.limit_scope
+        
+        if scope == "per_adult":
+            allowed *= participant.adults
+        elif scope == "per_child":
+            allowed *= participant.children
+        elif scope == "per_infant":
+            allowed *= participant.diaper_count or 0
+        elif scope == "per_household":
+            allowed *= participant.household_size()
+        
+        return allowed
+    
+    @staticmethod
+    def validate_category_limits(order_items, participant):
+        """
+        Validate that order items don't exceed category limits.
+        
+        Args:
+            order_items: QuerySet or list of order items
+            participant: Participant instance
+            
+        Raises:
+            ValidationError: If any category limit is exceeded
+        """
+        category_totals, _, category_products, category_objects = \
+            CategoryLimitValidator.aggregate_category_data(order_items)
+        
+        for cid, total in category_totals.items():
+            category = category_objects[cid]
+            
+            # Get the product limit for this category
+            product_limit = ProductLimit.objects.filter(
+                category=category if isinstance(category, Category) else category.category,
+                subcategory=category if isinstance(category, Subcategory) else None
+            ).first()
+            
+            if not product_limit or not product_limit.limit:
+                continue
+            
+            allowed = CategoryLimitValidator.compute_allowed_quantity(
+                product_limit, participant
+            )
+            
+            if total > allowed:
+                product_names = ", ".join(
+                    p.name for p in category_products[cid]
+                )
+                scope_text = (
+                    f", scope: {product_limit.limit_scope}"
+                    if product_limit.limit_scope else ""
+                )
+                error_msg = (
+                    f"Limit exceeded for {category.name}{scope_text}: "
+                    f"{total} > {allowed}. Products: {product_names}"
+                )
+                # Log the validation error
+                from apps.log.models import OrderValidationLog
+                OrderValidationLog.objects.create(
+                    participant=participant,
+                    message=error_msg,
+                    log_type="ERROR"
+                )
+                raise ValidationError(error_msg)

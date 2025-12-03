@@ -5,6 +5,7 @@ from typing import List, Any
 from dataclasses import dataclass
 import logging
 from .order_helper import OrderHelper
+from apps.pantry.models import CategoryLimitValidator
 
 logger = logging.getLogger(__name__)
 
@@ -65,131 +66,10 @@ class OrderValidation:
 
         logger.debug("[Validator] Validating for Participant: %s", participant)
 
-        # Step 1: Aggregate totals per category
-        (
-            category_totals,
-            category_units,
-            category_products,
-            category_objects,
-        ) = self._aggregate_category_data(items)
+        # Step 1: Validate category-level limits using CategoryLimitValidator
+        CategoryLimitValidator.validate_category_limits(items, participant)
 
-        # Step 2: Enforce category-level limits
-        self._enforce_category_limits(
-            participant,
-            category_totals,
-            category_units,
-            category_products,
-            category_objects,
-        )
-
+        # Step 2: Enforce hygiene balance
         OrderValidation.enforce_hygiene_balance(items, participant, account_balance)
 
-    def _aggregate_category_data(self, items: list):
-        """
-        Aggregate order items by their category or subcategory based on model relationships.
-
-        - If a product has a subcategory, it groups by subcategory.
-        - Otherwise, it groups by category.
-        """
-
-        category_totals = {}
-        category_units = {}
-        category_products = {}
-        category_objects = {}
-
-        for item_data in items:
-            if getattr(item_data, "delete", False):
-                continue
-
-            product = getattr(item_data, "product", None)
-            quantity = getattr(item_data, "quantity", 0)
-            if not product:
-                continue
-
-            # Check relationships
-            subcategory = getattr(product, "subcategory", None)
-            category = getattr(product, "category", None)
-
-            # Determine grouping object and level
-            if subcategory and category:
-                obj = subcategory  # subcategory-level enforcement
-            elif category:
-                obj = category     # category-level enforcement
-            else:
-                continue  # skip if neither is defined
-
-            cid = obj.id
-            category_totals[cid] = category_totals.get(cid, 0) + quantity
-            category_units[cid] = getattr(obj, "unit", getattr(category, "unit", "unit"))
-            category_products.setdefault(cid, []).append(product)
-            category_objects[cid] = obj
-
-        return category_totals, category_units, category_products, category_objects
-
-    def _compute_allowed_quantity(self, product_manager, participant):
-
-        """Compute allowed quantity based on the category's limit scope."""
-        allowed = product_manager.limit
-        scope = product_manager.limit_scope
-
-        try:
-            if scope == "per_adult":
-                allowed *= participant.adults
-            elif scope == "per_child":
-                allowed *= participant.children
-            elif scope == "per_infant":
-                allowed *= participant.diaper_count or 0
-            elif scope == "per_household":
-                allowed *= participant.household_size()
-            elif scope == "per_order":
-                pass
-        except Exception as e:
-            logger.error(f"[Validator] Error computing allowed quantity: {e}")
-            raise ValidationError("Error computing allowed quantity")
-        return allowed
-    
-    def _enforce_category_limits(
-        self,
-        participant,
-        category_totals,
-        category_units,
-        category_products,
-        category_objects,
-    ):
-        """
-        Check each category and subcategory's total against its configured
-        limit.
-        """
-        for category_id, total_value in category_totals.items():
-            category_or_subcategory = category_objects[category_id]
-
-            # Fetch limits for subcategories or categories
-            if hasattr(category_or_subcategory, "subcategory_limits"):
-                limits = category_or_subcategory.subcategory_limits.all()
-            elif hasattr(category_or_subcategory, "category_limits"):
-                limits = category_or_subcategory.category_limits.all()
-            else:
-                continue
-
-            for limit in limits:
-                allowed = self._compute_allowed_quantity(limit, participant)
-                unit = category_units[category_id]
-
-                if total_value > allowed:
-                    product_names = ", ".join(
-                        p.name for p in category_products[category_id]
-                    )
-                    msg = (
-                        f"Limit exceeded for {category_or_subcategory.name} "
-                        f"({unit}, scope: {limit.limit_scope}): "
-                        f"{total_value} > allowed {allowed}. "
-                        f"Products: {product_names}"
-                    )
-                    raise ValidationError(f"[{participant}] {msg}")
-
-                logger.debug(
-                    f"[Validator] {category_or_subcategory.name}: "
-                    f"total={total_value}, allowed={allowed}, "
-                    f"scope={limit.limit_scope} ({unit})"
-                )
 

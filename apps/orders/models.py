@@ -12,6 +12,8 @@ from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from django.db.models import UniqueConstraint, F
 from django.db.models.functions import ExtractWeek, ExtractYear
+# Local imports
+from apps.pantry.models import CategoryLimitValidator
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +128,10 @@ class Order(models.Model):
 
         # --- Category limits ---
         try:
-            self._validate_category_limits()
+            participant = getattr(self.account, "participant", None)
+            CategoryLimitValidator.validate_category_limits(
+                self.items.all(), participant
+            )
         except ValidationError as e:
             errors.extend(e.error_list if hasattr(e, "error_list") else [e])
 
@@ -141,7 +146,7 @@ class Order(models.Model):
         # --- Log errors and raise ---
         if errors:
             for msg in errors:
-                OrderValidationLog.objects.create(order=self, error_message=str(msg))
+                OrderValidationLog.objects.create(order=self, message=str(msg))
             raise ValidationError(errors)
 
     def _consume_vouchers(self):
@@ -224,54 +229,6 @@ class Order(models.Model):
             # Consume vouchers if order is being confirmed
             if self.status == "confirmed" and old_status != "confirmed":
                 self._consume_vouchers()
-
-    # -----------------------------
-    # Private helpers
-    # -----------------------------
-    def _aggregate_category_data(self):
-        category_totals, category_units, category_products, category_objects = {}, {}, {}, {}
-        for item in self.items.all():
-            product = item.product
-            subcategory = getattr(product, "subcategory", None)
-            category = getattr(product, "category", None)
-            obj = subcategory or category
-            if not obj:
-                continue
-            cid = obj.id
-            category_totals[cid] = category_totals.get(cid, 0) + item.quantity
-            category_units[cid] = getattr(obj, "unit", "unit")
-            category_products.setdefault(cid, []).append(product)
-            category_objects[cid] = obj
-        return category_totals, category_units, category_products, category_objects
-
-    def _compute_allowed_quantity(self, product_manager, participant):
-        allowed = product_manager.limit
-        scope = product_manager.limit_scope
-        if scope == "per_adult":
-            allowed *= participant.adults
-        elif scope == "per_child":
-            allowed *= participant.children
-        elif scope == "per_infant":
-            allowed *= participant.diaper_count or 0
-        elif scope == "per_household":
-            allowed *= participant.household_size()
-        return allowed
-
-    def _validate_category_limits(self):
-        category_totals, _, category_products, category_objects = self._aggregate_category_data()
-        participant = getattr(self.account, "participant", None)
-        for cid, total in category_totals.items():
-            category = category_objects[cid]
-            pm = getattr(category, "product_manager", None)
-            if not pm or not pm.limit:
-                continue
-            allowed = self._compute_allowed_quantity(pm, participant)
-            if total > allowed:
-                product_names = ", ".join(p.name for p in category_products[cid])
-                raise ValidationError(
-                    f"Category limit exceeded for {category.name} "
-                    f"({total} > {allowed}). Products: {product_names}"
-                )
 
 
 class OrderItem(models.Model):
