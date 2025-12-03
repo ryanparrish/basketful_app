@@ -74,7 +74,8 @@ def test_subcategory_limit_enforced():
         validator.validate_order_items(
             items_exceed, participant, order.account
         )
-    assert "Limit exceeded for Juice" in str(exc_info.value)  # noqa: B101
+    assert "Subcategory 'Juice'" in str(exc_info.value)  # noqa: B101
+    assert "Ordered 4, allowed 3" in str(exc_info.value)  # noqa: B101
 
 
 @pytest.mark.django_db

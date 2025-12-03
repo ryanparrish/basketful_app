@@ -246,13 +246,21 @@ class CategoryLimitValidator:
         category_totals, _, category_products, category_objects = \
             CategoryLimitValidator.aggregate_category_data(order_items)
         
+        errors = []
+        
         for cid, total in category_totals.items():
             category = category_objects[cid]
             
             # Get the product limit for this category
             product_limit = ProductLimit.objects.filter(
-                category=category if isinstance(category, Category) else category.category,
-                subcategory=category if isinstance(category, Subcategory) else None
+                category=(
+                    category if isinstance(category, Category) 
+                    else category.category
+                ),
+                subcategory=(
+                    category if isinstance(category, Subcategory) 
+                    else None
+                )
             ).first()
             
             if not product_limit or not product_limit.limit:
@@ -263,22 +271,57 @@ class CategoryLimitValidator:
             )
             
             if total > allowed:
-                product_names = ", ".join(
-                    p.name for p in category_products[cid]
+                # Build detailed error message
+                category_type = (
+                    "Subcategory" if isinstance(category, Subcategory) 
+                    else "Category"
                 )
-                scope_text = (
-                    f", scope: {product_limit.limit_scope}"
-                    if product_limit.limit_scope else ""
-                )
+                
+                # Get individual product details
+                product_details = []
+                for p in category_products[cid]:
+                    # Find the quantity for this specific product
+                    product_qty = sum(
+                        item.quantity for item in order_items
+                        if item.product.id == p.id
+                    )
+                    product_details.append(
+                        f"{p.name} (qty: {product_qty})"
+                    )
+                
+                product_list = ", ".join(product_details)
+                
+                # Build scope description
+                scope = product_limit.limit_scope or "per_household"
+                scope_description = {
+                    "per_adult": f"{participant.adults} adult(s)",
+                    "per_child": f"{participant.children} child(ren)",
+                    "per_infant": (
+                        f"{participant.diaper_count or 0} infant(s)"
+                    ),
+                    "per_household": (
+                        f"household of {participant.household_size()}"
+                    ),
+                    "per_order": "per order"
+                }.get(scope, scope)
+                
                 error_msg = (
-                    f"Limit exceeded for {category.name}{scope_text}: "
-                    f"{total} > {allowed}. Products: {product_names}"
+                    f"Limit exceeded for {category_type} "
+                    f"'{category.name}' (scope: {scope}, "
+                    f"limit: {product_limit.limit} {scope_description}): "
+                    f"Ordered {total}, allowed {allowed}. "
+                    f"Products: {product_list}"
                 )
-                # Log the validation error
-                from apps.log.models import OrderValidationLog
-                OrderValidationLog.objects.create(
-                    participant=participant,
-                    message=error_msg,
-                    log_type="ERROR"
+                
+                logger.warning(
+                    f"Category limit violation - "
+                    f"Participant: {participant.name}, "
+                    f"{category_type}: {category.name}, "
+                    f"Ordered: {total}, Allowed: {allowed}, "
+                    f"Scope: {scope}, Products: {product_list}"
                 )
-                raise ValidationError(error_msg)
+                
+                errors.append(error_msg)
+        
+        if errors:
+            raise ValidationError(errors)
