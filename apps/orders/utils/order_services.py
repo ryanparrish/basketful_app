@@ -80,8 +80,6 @@ def generate_combined_order_pdf(combined_order) -> BytesIO:
     y -= 20
 
     p.setFont("Helvetica", 12)
-    p.drawString(50, y, f"Packed By: {combined_order.packed_by}")
-    y -= 20
     p.drawString(50, y, f"Created At: {combined_order.created_at.strftime('%Y-%m-%d %H:%M')}")
     y -= 30
 

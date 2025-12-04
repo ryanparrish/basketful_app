@@ -348,12 +348,23 @@ class TestVoucherUtilsLogging:
         Note: This test verifies voucher_utils integration with OrderValidationLog.
         """
         from apps.pantry.utils.voucher_utils import apply_vouchers_to_order
-        from apps.orders.tests.factories import OrderItemFactory
+        from apps.orders.tests.factories import OrderItemFactory, VoucherFactory
+        from unittest.mock import patch
         
         # Create order with items
         participant = ParticipantFactory(adults=1, children=0)
+        
+        # Set sufficient balance to avoid validation errors
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        
+        # Create vouchers to provide available balance (so validation passes)
+        voucher1 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
+        voucher2 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
+        
         order = OrderFactory(
-            account=participant.accountbalance,
+            account=account,
             status="pending"  # Start as pending to avoid validation
         )
         # Add an item so order has content
@@ -363,10 +374,14 @@ class TestVoucherUtilsLogging:
         order.status = "confirmed"
         order.save()
         
+        # Now delete the vouchers so apply_vouchers_to_order finds none
+        voucher1.delete()
+        voucher2.delete()
+        
         # Clear existing logs
         OrderValidationLog.objects.all().delete()
         
-        # Apply vouchers (none available)
+        # Apply vouchers (none available after deletion)
         result = apply_vouchers_to_order(order)
         
         # Verify log was created

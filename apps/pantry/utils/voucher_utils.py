@@ -112,7 +112,7 @@ def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
 
     account = order.account
     participant = account.participant
-    remaining = order.total_price
+    remaining = order.total_price()  # Call the method
     applied = False
 
     vouchers = get_active_vouchers(account, max_vouchers=max_vouchers)
