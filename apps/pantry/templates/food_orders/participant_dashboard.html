@@ -4,6 +4,44 @@
 {% block content %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
 
+<!-- Order Window Toast Notification -->
+{% if order_window.window_enabled and not can_order %}
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+  <div id="orderWindowToast" class="toast show" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="false">
+    <div class="toast-header bg-warning text-dark">
+      <i class="bi bi-clock-history me-2"></i>
+      <strong class="me-auto">Order Window Closed</strong>
+      <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+    <div class="toast-body">
+      {% if order_window.next_class %}
+        <p class="mb-2"><strong>Your next class:</strong><br>
+        {{ order_window.next_class|date:"l, F j, Y \a\\t g:i A" }}</p>
+        
+        {% if order_window.hours_until_open %}
+          <p class="mb-2"><strong>Order window opens:</strong><br>
+          {{ order_window.window_opens|date:"l, F j, Y \a\\t g:i A" }}</p>
+          
+          <p class="mb-0 text-muted small">
+            <i class="bi bi-hourglass-split"></i> 
+            Opens in {{ order_window.hours_until_open|floatformat:0 }} hours
+          </p>
+        {% else %}
+          <p class="mb-2"><strong>Order window closed:</strong><br>
+          {{ order_window.window_closes|date:"l, F j, Y \a\\t g:i A" }}</p>
+          
+          <p class="mb-0 text-muted small">
+            Window closed for this class. Check back for your next class.
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="mb-0">No program assigned. Please contact your coordinator.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="container py-4">
   <!-- Header + Hamburger -->
     <!-- Hamburger for mobile -->
@@ -102,11 +140,15 @@
 
     <div class="d-md-block p-3 text-center">
         <form action="{% url 'create_order' %}">
-        {% if has_vouchers %}
+        {% if has_vouchers and can_order %}
          <button type="submit" class="btn btn-success me-2">Place a New Order</button>
         {% else %}
-    
-        <button type="submit" class="btn btn-success me-2" disabled>Place a New Order</button>
+        <button type="submit" class="btn btn-success me-2" disabled 
+                {% if not can_order %}
+                title="Order window is closed. Check notification above for details."
+                {% endif %}>
+          Place a New Order
+        </button>
         {% endif %}
         </form>
         <a href="{% url 'account_update' %}" class="btn btn-outline-primary me-2">Update Account</a>

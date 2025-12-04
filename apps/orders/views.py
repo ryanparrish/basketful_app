@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 # First-party
 from apps.account.models import AccountBalance
 from apps.pantry.models import Product
+from core.utils import can_place_order
 # Local application
 from .models import Order, OrderItemData
 from .utils.order_utils import OrderOrchestration
@@ -152,10 +153,23 @@ def order_detail(request, order_hash):
         return get_object_or_404(Order, pk=-1)  # force 404
 
     order = get_object_or_404(Order, id=order_id, account__participant=participant)
+    
+    # Check order window status
+    can_order, window_context = can_place_order(participant)
 
     if request.method == "POST" and "duplicate_order" in request.POST:
+        if not can_order:
+            messages.error(request, "Orders cannot be placed at this time.")
+            return redirect("order_detail", order_hash=order_hash)
+        
         request.session["cart"] = {str(item.product.id): item.quantity for item in order.items.all()}
         request.session.modified = True
         return redirect("review_order")
 
-    return render(request, "food_orders/order_detail.html", {"order": order, "order_items": order.items.all()})
+    context = {
+        "order": order,
+        "order_items": order.items.all(),
+        "can_order": can_order,
+        **window_context
+    }
+    return render(request, "food_orders/order_detail.html", context)

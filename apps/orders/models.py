@@ -116,6 +116,18 @@ class Order(models.Model):
 
         errors = []
 
+        # --- Available balance (food items) ---
+        food_items = [
+            item for item in self.items.select_related("product")
+            if getattr(item.product.category, "name", "").lower() != "hygiene"
+        ]
+        food_total = sum(item.total_price() for item in food_items)
+        available_balance = getattr(self.account, "available_balance", 0)
+        if food_total > available_balance:
+            errors.append(
+                f"Food balance exceeded: ${food_total} > ${available_balance}"
+            )
+
         # --- Hygiene balance ---
         hygiene_items = [
             item for item in self.items.select_related("product")
@@ -124,7 +136,10 @@ class Order(models.Model):
         hygiene_total = sum(item.total_price() for item in hygiene_items)
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
         if hygiene_total > hygiene_balance:
-            errors.append(f"Hygiene limit exceeded: {hygiene_total} > {hygiene_balance}")
+            errors.append(
+                f"Hygiene balance exceeded: "
+                f"${hygiene_total} > ${hygiene_balance}"
+            )
 
         # --- Category limits ---
         try:

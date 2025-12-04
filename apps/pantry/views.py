@@ -126,7 +126,7 @@ def product_view(request):
 
     return render(
         request,
-        "food_orders/create_order.html",
+        "pantry/create_order.html",
         {
             "products_by_category": products_by_category,
             "products_json": products_json,
