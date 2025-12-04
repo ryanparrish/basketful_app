@@ -168,7 +168,7 @@ class Order(models.Model):
                     with transaction.atomic():
                         OrderValidationLog.objects.create(
                             order=self,
-                            message=str(msg)
+                            error_message=str(msg)
                         )
                 except Exception as log_error:
                     # Don't let logging failures prevent validation errors
@@ -251,7 +251,9 @@ class Order(models.Model):
                 pass
         
         with transaction.atomic():
-            self.full_clean()
+            # Skip validation if only updating specific fields
+            if 'update_fields' not in kwargs:
+                self.full_clean()
             super().save(*args, **kwargs)
             
             # Consume vouchers if order is being confirmed
