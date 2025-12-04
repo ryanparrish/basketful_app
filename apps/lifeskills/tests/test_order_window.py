@@ -33,8 +33,8 @@ class ParticipantDashboardOrderWindowTest(TestCase):
             user=self.user
         )
 
-        # Create account balance
-        self.account = AccountBalance.objects.create(
+        # Get or create account balance (might be created by signal)
+        self.account, _ = AccountBalance.objects.get_or_create(
             participant=self.participant
         )
 

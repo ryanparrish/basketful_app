@@ -1,6 +1,7 @@
 # apps/log/tests/test_admin.py
 """Tests for log admin configurations."""
 import pytest
+from unittest.mock import patch
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
@@ -73,7 +74,8 @@ class TestEmailLogAdmin:
         )
         assert admin.has_delete_permission(request, email_log) is False
 
-    def test_has_change_permission_returns_true(self):
+    @patch('apps.pantry.tasks.email.send_new_user_onboarding_email.delay')
+    def test_has_change_permission_returns_true(self, mock_email):
         """Verify change permission is enabled (default behavior)."""
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)

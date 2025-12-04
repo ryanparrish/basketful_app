@@ -116,6 +116,11 @@ class Order(models.Model):
 
         errors = []
 
+        # Check if order has been saved (has items)
+        if not self.pk:
+            # Order hasn't been saved yet, skip validation that requires items
+            return
+
         # --- Available balance (food items) ---
         food_items = [
             item for item in self.items.select_related("product")

@@ -87,9 +87,42 @@ class OrderAdmin(admin.ModelAdmin):
 class CombinedOrderAdmin(admin.ModelAdmin):
     """Admin for CombinedOrder with custom actions."""
     actions = ['download_combined_order_pdf']
-    readonly_fields = ('orders',)
+    readonly_fields = ('display_orders', 'created_at', 'updated_at')
     change_list_template = "admin/orders/combinedorder/change_list.html"
-    list_display = ('program', 'created_at', 'updated_at')
+    list_display = ('program', 'created_at', 'updated_at', 'order_count')
+    
+    def display_orders(self, obj):
+        """Display orders in a readable format with links."""
+        from django.urls import reverse
+        from django.utils.html import format_html_join
+        from django.utils.safestring import mark_safe
+        
+        orders = obj.orders.all()
+        if not orders:
+            return "No orders"
+        
+        # Build list of tuples for format_html_join
+        order_data = []
+        for order in orders:
+            url = reverse('admin:orders_order_change', args=[order.id])
+            participant_name = order.account.participant.user.get_full_name()
+            order_text = f"Order #{order.order_number} - {participant_name}"
+            order_data.append((url, order_text))
+        
+        # Use format_html_join to safely join HTML
+        return format_html_join(
+            mark_safe('<br>'),  # noqa: S308
+            '<a href="{}">{}</a>',
+            order_data
+        )
+    
+    display_orders.short_description = 'Orders'
+    
+    def order_count(self, obj):
+        """Display count of orders in the combined order."""
+        return obj.orders.count()
+    
+    order_count.short_description = 'Order Count'
 
     # ------------------------
     # Custom URLs

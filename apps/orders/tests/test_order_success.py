@@ -44,7 +44,7 @@ def user_with_order(db):
         account.save()
     
     # Create category and products
-    category = CategoryFactory(name="Food", limit_per_order=10)
+    category = CategoryFactory(name="Food")
     product1 = ProductFactory(category=category, price=Decimal("10.00"))
     product2 = ProductFactory(category=category, price=Decimal("15.00"))
     
@@ -344,7 +344,9 @@ class TestOrderValidationEdgeCases:
         # This test verifies the fix for the 'message' vs 'error_message' bug
         user = UserFactory()
         participant = ParticipantFactory(user=user)
-        account = AccountBalanceFactory(participant=participant)
+        account, _ = AccountBalance.objects.get_or_create(
+            participant=participant
+        )
         
         order = Order.objects.create(
             user=user,
@@ -421,11 +423,10 @@ class TestVoucherConsumptionEdgeCases:
         order = user_with_order['order']
         account = user_with_order['account']
         
-        # Create and consume voucher
+        # Create and consume voucher (voucher_amnt is calculated via property)
         voucher = Voucher.objects.create(
             account=account,
-            voucher_type='food',
-            amount=Decimal("100.00"),
+            voucher_type='grocery',
             state='consumed',
             active=False
         )
