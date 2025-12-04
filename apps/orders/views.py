@@ -114,13 +114,29 @@ def order_success(request):
         return redirect("participant_dashboard")
 
     try:
-        order = Order.objects.get(id=order_id, account__participant=request.user.participant)
+        order = Order.objects.get(
+            id=order_id,
+            account__participant=request.user.participant
+        )
     except Order.DoesNotExist:
         messages.error(request, "Order not found.")
         return redirect("participant_dashboard")
 
-    order.success_viewed = True
-    order.save(update_fields=["success_viewed"])
+    # Try to mark order as viewed, but don't fail if there's an error
+    try:
+        order.success_viewed = True
+        order.save(update_fields=["success_viewed"])
+    except ValidationError as e:
+        # Log the error but don't prevent showing the success page
+        logger.error(
+            f"Failed to update success_viewed for order {order_id}: {e}"
+        )
+    except Exception as e:
+        # Catch any other unexpected errors
+        logger.error(
+            f"Unexpected error updating order {order_id}: {e}",
+            exc_info=True
+        )
 
     return render(request, "food_orders/order_success.html", {"order": order})
 

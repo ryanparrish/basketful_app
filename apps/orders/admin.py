@@ -150,11 +150,22 @@ class CombinedOrderAdmin(admin.ModelAdmin):
                         {'form': form}
                     )
                 
-                # Create the combined order
-                combined_order = CombinedOrder.objects.create(
-                    program=program
+                # Get or create the combined order for this program/week
+                from django.utils import timezone
+                
+                # Get the current week's combined order or create new one
+                current_year = timezone.now().year
+                current_week = timezone.now().isocalendar()[1]
+                
+                combined_order, created = CombinedOrder.objects.get_or_create(
+                    program=program,
+                    created_at__year=current_year,
+                    created_at__week=current_week,
+                    defaults={'program': program}
                 )
-                combined_order.orders.set(orders)
+                
+                # Add orders to the combined order
+                combined_order.orders.add(*orders)
                 combined_order.save()
                 
                 messages.success(

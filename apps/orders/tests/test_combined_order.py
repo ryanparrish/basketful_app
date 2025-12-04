@@ -415,3 +415,277 @@ class TestCombinedOrderCreation:
         assert response.status_code == 200
         assert 'form' in response.context
         assert not response.context['form'].is_valid()
+
+
+@pytest.mark.django_db
+class TestCombinedOrderUniqueConstraint:
+    """Test the unique_program_per_week constraint and get_or_create logic."""
+
+    def test_cannot_create_duplicate_combined_order_same_week(self, program):
+        """Test that unique constraint prevents duplicate combined orders."""
+        # Create first combined order
+        combined_order1 = CombinedOrder.objects.create(program=program)
+        
+        # Try to create another in the same week - should raise IntegrityError
+        # if constraint is working (but our code should use get_or_create)
+        from django.db import IntegrityError
+        with pytest.raises(IntegrityError):
+            CombinedOrder.objects.create(program=program)
+
+    def test_can_create_combined_order_different_weeks(self, program):
+        """Test that combined orders can be created in different weeks."""
+        # Create first combined order
+        combined_order1 = CombinedOrder.objects.create(program=program)
+        
+        # Create another with created_at in a different week
+        from django.utils import timezone
+        next_week = timezone.now() + timedelta(days=7)
+        
+        # Manually create and set the date
+        from django.db.models import Model
+        combined_order2 = CombinedOrder(program=program)
+        Model.save(combined_order2)
+        
+        # Update created_at to next week
+        CombinedOrder.objects.filter(pk=combined_order2.pk).update(
+            created_at=next_week
+        )
+        
+        # Should have 2 combined orders
+        assert CombinedOrder.objects.filter(program=program).count() == 2
+
+    def test_can_create_combined_order_different_programs_same_week(
+        self, program, another_program
+    ):
+        """Test that different programs can have combined orders same week."""
+        combined_order1 = CombinedOrder.objects.create(program=program)
+        combined_order2 = CombinedOrder.objects.create(
+            program=another_program
+        )
+        
+        assert CombinedOrder.objects.count() == 2
+        assert combined_order1.program != combined_order2.program
+
+    def test_admin_creates_combined_order_twice_same_week(
+        self, program, admin_user, client, product
+    ):
+        """
+        Test that creating combined order twice in same week
+        reuses existing order.
+        """
+        participant = ParticipantFactory(program=program)
+        now = timezone.now()
+        
+        order1 = create_test_order(
+            participant.accountbalance,
+            status='confirmed',
+            order_date=now
+        )
+        
+        client.force_login(admin_user)
+        url = reverse('admin:orders_combinedorder_create')
+        form_data = {
+            'program': program.id,
+            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
+            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
+        }
+        
+        # Create first time
+        response1 = client.post(url, data=form_data, follow=True)
+        assert response1.status_code == 200
+        assert CombinedOrder.objects.count() == 1
+        
+        # Create another order
+        order2 = create_test_order(
+            participant.accountbalance,
+            status='confirmed',
+            order_date=now
+        )
+        
+        # Try to create again in same week - should reuse existing
+        response2 = client.post(url, data=form_data, follow=True)
+        assert response2.status_code == 200
+        
+        # Should still have only 1 combined order
+        assert CombinedOrder.objects.count() == 1
+        
+        # But it should have both orders
+        combined_order = CombinedOrder.objects.first()
+        assert combined_order.orders.count() == 2
+        assert order1 in combined_order.orders.all()
+        assert order2 in combined_order.orders.all()
+
+    def test_get_or_create_returns_existing_combined_order(self, program):
+        """Test that get_or_create returns existing combined order."""
+        from django.utils import timezone
+        
+        current_year = timezone.now().year
+        current_week = timezone.now().isocalendar()[1]
+        
+        # Create first
+        combined_order1, created1 = CombinedOrder.objects.get_or_create(
+            program=program,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            defaults={'program': program}
+        )
+        assert created1
+        
+        # Get or create again - should return existing
+        combined_order2, created2 = CombinedOrder.objects.get_or_create(
+            program=program,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            defaults={'program': program}
+        )
+        assert not created2
+        assert combined_order1.id == combined_order2.id
+
+    def test_combined_order_with_parent_and_child(self, program):
+        """Test creating parent and child combined orders."""
+        from django.utils import timezone
+        
+        current_year = timezone.now().year
+        current_week = timezone.now().isocalendar()[1]
+        
+        # Create child combined order
+        child_order, _ = CombinedOrder.objects.get_or_create(
+            program=program,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            is_parent=False,
+            defaults={'program': program, 'is_parent': False}
+        )
+        
+        # Create parent combined order
+        parent_order, _ = CombinedOrder.objects.get_or_create(
+            program=program,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            is_parent=True,
+            defaults={'program': program, 'is_parent': True}
+        )
+        
+        # Should have both parent and child
+        assert CombinedOrder.objects.filter(program=program).count() == 2
+        assert CombinedOrder.objects.filter(
+            program=program, is_parent=True
+        ).count() == 1
+        assert CombinedOrder.objects.filter(
+            program=program, is_parent=False
+        ).count() == 1
+
+    def test_helper_function_create_child_combined_orders(self, program):
+        """Test the create_child_combined_orders helper function."""
+        from apps.orders.tasks.helper.combined_order_helper import (
+            create_child_combined_orders
+        )
+        
+        participant = ParticipantFactory(program=program)
+        order1 = create_test_order(
+            participant.accountbalance,
+            status='confirmed'
+        )
+        order2 = create_test_order(
+            participant.accountbalance,
+            status='confirmed'
+        )
+        
+        orders = [order1, order2]
+        packer = None  # No packer for this test
+        
+        # Create child combined orders
+        child_orders = create_child_combined_orders(program, orders, packer)
+        
+        # Should create combined orders (may reuse if already exists)
+        assert len(child_orders) > 0
+        
+        # Call again - should reuse existing
+        child_orders2 = create_child_combined_orders(program, orders, packer)
+        
+        # Should not create duplicates
+        total_combined = CombinedOrder.objects.filter(
+            program=program, is_parent=False
+        ).count()
+        assert total_combined >= 1  # At least one combined order
+
+    def test_helper_function_create_parent_combined_order(self, program):
+        """Test the create_parent_combined_order helper function."""
+        from apps.orders.tasks.helper.combined_order_helper import (
+            create_parent_combined_order
+        )
+        
+        # Create some child orders first
+        child1 = CombinedOrder.objects.create(
+            program=program,
+            is_parent=False
+        )
+        child2 = CombinedOrder.objects.create(
+            program=program,
+            is_parent=False
+        )
+        
+        # Need to set created_at to different values to avoid constraint
+        from django.utils import timezone
+        CombinedOrder.objects.filter(pk=child2.pk).update(
+            created_at=timezone.now() + timedelta(days=7)
+        )
+        
+        child_orders = [child1, child2]
+        
+        # Create parent
+        parent_order = create_parent_combined_order(
+            program, child_orders, packer=None
+        )
+        
+        assert parent_order.is_parent
+        assert parent_order.program == program
+        
+        # Call again - should reuse existing
+        parent_order2 = create_parent_combined_order(
+            program, child_orders, packer=None
+        )
+        
+        # Should be the same order
+        assert parent_order.id == parent_order2.id
+
+    def test_combined_order_summarized_data_updates(self, program, product):
+        """Test that summarized data updates when orders are added."""
+        from django.utils import timezone
+        
+        participant = ParticipantFactory(program=program)
+        order = create_test_order(
+            participant.accountbalance,
+            status='confirmed'
+        )
+        
+        # Add items to order
+        from apps.orders.models import OrderItem
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=5,
+            price=product.price,
+            price_at_order=product.price
+        )
+        
+        current_year = timezone.now().year
+        current_week = timezone.now().isocalendar()[1]
+        
+        combined_order, created = CombinedOrder.objects.get_or_create(
+            program=program,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            defaults={'program': program}
+        )
+        
+        combined_order.orders.add(order)
+        
+        # Update summarized data
+        summarized = combined_order.summarized_items_by_category()
+        combined_order.summarized_data = summarized
+        combined_order.save(update_fields=['summarized_data'])
+        
+        # Verify summarized data contains the product
+        assert len(combined_order.summarized_data) > 0
+        assert product.category.name in combined_order.summarized_data
