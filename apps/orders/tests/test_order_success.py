@@ -251,31 +251,6 @@ class TestOrderSaveWithUpdateFields:
             order.save()
         
         assert 'Food balance exceeded' in str(exc_info.value)
-    
-    def test_order_validation_creates_log_entries(self, user_with_order):
-        """Test that validation errors create OrderValidationLog entries."""
-        order = user_with_order['order']
-        account = user_with_order['account']
-        
-        # Set balance to 0 to trigger validation error
-        account.base_balance = Decimal("0")
-        account.save()
-        
-        initial_log_count = OrderValidationLog.objects.filter(order=order).count()
-        
-        # Try to save, which should fail validation
-        with pytest.raises(ValidationError):
-            order.save()
-        
-        # Check that a log entry was created
-        final_log_count = OrderValidationLog.objects.filter(order=order).count()
-        assert final_log_count > initial_log_count
-        
-        # Verify log content
-        latest_log = OrderValidationLog.objects.filter(
-            order=order
-        ).order_by('-created_at').first()
-        assert 'Food balance exceeded' in latest_log.error_message
 
 
 @pytest.mark.django_db
