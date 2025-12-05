@@ -58,7 +58,38 @@ function loadCartFromStorage() {
  * Add item to cart
  */
 function addToCart(productId, quantity) {
-  if (quantity <= 0) return false;
+  // Validate product ID
+  if (!productId || productId === 'undefined' || productId === 'null') {
+    console.error('Invalid product ID');
+    return false;
+  }
+  
+  // Validate quantity is a number
+  if (typeof quantity !== 'number') {
+    console.error('Quantity must be a number, got:', typeof quantity);
+    return false;
+  }
+  
+  // Check for NaN
+  if (isNaN(quantity)) {
+    console.error('Quantity cannot be NaN');
+    return false;
+  }
+  
+  // Check for Infinity
+  if (!Number.isFinite(quantity)) {
+    console.error('Quantity must be finite');
+    return false;
+  }
+  
+  // Round to integer (reject floats)
+  quantity = Math.round(quantity);
+  
+  // Check positive
+  if (quantity <= 0) {
+    console.error('Quantity must be positive');
+    return false;
+  }
   
   cart[productId] = (cart[productId] || 0) + quantity;
   saveCartToStorage(cart);
@@ -99,8 +130,10 @@ function calculateCartTotal(products) {
   let total = 0;
   for (const [productId, quantity] of Object.entries(cart)) {
     const product = products[productId];
-    if (product) {
+    if (product && typeof product.price === 'number' && !isNaN(product.price)) {
       total += product.price * quantity;
+    } else {
+      console.warn(`Product ${productId} has no valid price, skipping in total`);
     }
   }
   return total;

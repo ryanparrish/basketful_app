@@ -87,7 +87,12 @@
   </div>
   <div class="offcanvas-body d-flex flex-column">
     <ul id="mobile-cart-items" class="list-group mb-3"></ul>
-    <button class="btn btn-success mt-auto" id="mobile-submit-order">Submit Order</button>
+    <div class="mt-auto">
+      <button class="btn btn-outline-danger w-100 mb-2" id="clear-cart-btn">
+        <i class="bi bi-trash"></i> Clear Cart
+      </button>
+      <button class="btn btn-success w-100" id="mobile-submit-order">Submit Order</button>
+    </div>
   </div>
 </div>
 
@@ -292,6 +297,18 @@
 
   const submitBtn = document.getElementById('mobile-submit-order');
   if (submitBtn) submitBtn.addEventListener('click', submitOrder);
+
+  // ---------- Clear Cart Button ----------
+  const clearCartBtn = document.getElementById('clear-cart-btn');
+  if (clearCartBtn) {
+    clearCartBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear your entire cart?')) {
+        cart = {};
+        saveCartToStorage();
+        renderCart();
+      }
+    });
+  }
 
   // ---------- Mobile Cart Drawer ----------
   const drawerToggle = document.getElementById('cart-drawer-toggle');

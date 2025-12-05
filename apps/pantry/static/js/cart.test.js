@@ -64,6 +64,26 @@ describe('Cart Initialization', () => {
     }
     expect(cart).toEqual({});
   });
+
+  test('should clear cart completely', () => {
+    // Add multiple items
+    addToCart('1', 5);
+    addToCart('2', 3);
+    addToCart('3', 10);
+    expect(getCartItemCount()).toBe(18);
+    
+    // Clear cart
+    clearCart();
+    
+    // Verify cart is empty
+    const cart = getCart();
+    expect(Object.keys(cart)).toHaveLength(0);
+    expect(getCartItemCount()).toBe(0);
+    
+    // Verify localStorage is cleared
+    const stored = localStorage.getItem('cart');
+    expect(JSON.parse(stored)).toEqual({});
+  });
 });
 
 describe('Filter State Management', () => {
