@@ -94,6 +94,7 @@
 <!-- Embed product data -->
 <script>
   const products = JSON.parse("{{ products_json|escapejs }}");
+  const allProducts = JSON.parse("{{ all_products_json|escapejs }}");
   const sessionCart = JSON.parse("{{ session_cart|escapejs }}");
 </script>
 
@@ -201,7 +202,7 @@
     let total = 0;
 
     for (const [productId, quantity] of Object.entries(cart)) {
-      const product = products[productId];
+      const product = allProducts[productId];
       if (!product) continue;
 
       const subtotal = product.price * quantity;
