@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Search + Cart Bug Detector</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }
+    .test-section { border: 2px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; }
+    .pass { background: #d4edda; border-color: #28a745; }
+    .fail { background: #f8d7da; border-color: #dc3545; }
+    .warning { background: #fff3cd; border-color: #ffc107; }
+    .result { font-weight: bold; font-size: 1.2em; margin: 10px 0; }
+    .code { background: #f4f4f4; padding: 10px; border-left: 4px solid #007bff; margin: 10px 0; font-family: monospace; white-space: pre-wrap; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; font-size: 16px; }
+    .fix-needed { color: #dc3545; font-weight: bold; }
+    .all-good { color: #28a745; font-weight: bold; }
+    h2 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Search + Cart Bug Detector</h1>
+  
+  <div class="test-section" id="instructions">
+    <h2>Instructions</h2>
+    <ol>
+      <li>Open your Django app in another tab: <code>http://localhost:8000/pantry/products/</code></li>
+      <li>Open browser DevTools (F12 or Cmd+Option+I)</li>
+      <li>Go to Console tab</li>
+      <li>Copy and paste each test below into the console</li>
+      <li>Check the results</li>
+    </ol>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 1: Check if allProducts variable exists</h2>
+    <p>Run this in the browser console on your order page:</p>
+    <div class="code">console.log('allProducts exists:', typeof allProducts !== 'undefined');
+console.log('allProducts:', allProducts);</div>
+    
+    <h3>Expected Result:</h3>
+    <div class="code">✅ allProducts exists: true
+✅ allProducts: {1: {name: "Apple", price: 2.5}, 2: {name: "Banana", price: 3.0}, ...}</div>
+    
+    <h3>If you see:</h3>
+    <div class="code fail">❌ allProducts exists: false
+❌ ReferenceError: allProducts is not defined</div>
+    <p class="fix-needed">➡️ The template is NOT passing all_products_json correctly!</p>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 2: Check renderCart uses allProducts</h2>
+    <p>Run this in the browser console:</p>
+    <div class="code">// View the renderCart function source
+console.log(renderCart.toString());</div>
+    
+    <h3>Expected Result - Should contain:</h3>
+    <div class="code">✅ "allProducts[productId]"</div>
+    
+    <h3>If you see:</h3>
+    <div class="code fail">❌ "products[productId]"  (without "all")</div>
+    <p class="fix-needed">➡️ The renderCart function is using the WRONG variable!</p>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 3: Simulate Search Bug</h2>
+    <p>Run this step-by-step in the browser console:</p>
+    
+    <h3>Step 1: Add items to cart</h3>
+    <div class="code">// Assuming products with IDs 1, 2, 3 exist
+addToCart(1, 2);  // Add 2 of product 1
+addToCart(2, 3);  // Add 3 of product 2
+addToCart(3, 1);  // Add 1 of product 3
+console.log('Cart:', cart);</div>
+    
+    <h3>Step 2: Simulate search filtering products</h3>
+    <div class="code">// Save original products
+const originalProducts = {...products};
+
+// Simulate search that only shows product 1
+products = { '1': products['1'] };
+console.log('Filtered products:', products);
+console.log('All products:', allProducts);</div>
+    
+    <h3>Step 3: Re-render cart</h3>
+    <div class="code">renderCart();
+console.log('Cart after renderCart:', cart);</div>
+    
+    <h3>Step 4: Check cart display</h3>
+    <div class="code">const cartItems = document.querySelectorAll('#mobile-cart-items .list-group-item');
+console.log('Visible cart items:', cartItems.length - 1);  // -1 for total row
+console.log('Expected cart items:', Object.keys(cart).length);</div>
+    
+    <h3>Expected Results:</h3>
+    <div class="code pass">✅ Filtered products: {1: {...}}  (only 1 product)
+✅ All products: {1: {...}, 2: {...}, 3: {...}}  (all 3 products)
+✅ Visible cart items: 3
+✅ Expected cart items: 3
+✅ All 3 items visible in cart drawer despite search filter</div>
+    
+    <h3>If you see (BUG):</h3>
+    <div class="code fail">❌ Visible cart items: 1
+❌ Expected cart items: 3
+❌ Only product 1 visible, products 2 and 3 missing from cart drawer</div>
+    
+    <h3>Step 5: Restore products</h3>
+    <div class="code">// Restore original products and re-render
+products = originalProducts;
+renderCart();</div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 4: Check Template Source</h2>
+    <p>View page source (Cmd+U or Ctrl+U) and search for:</p>
+    <div class="code">const allProducts = JSON.parse</div>
+    
+    <h3>Expected:</h3>
+    <div class="code pass">✅ Found: const allProducts = JSON.parse("{{ all_products_json|escapejs }}");</div>
+    
+    <h3>If NOT found:</h3>
+    <div class="code fail">❌ Template is missing allProducts variable definition
+❌ Only found: const products = JSON.parse(...)</div>
+    <p class="fix-needed">➡️ Template file needs to be updated!</p>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 5: Check Django View Context</h2>
+    <p>Add this to your Django view temporarily:</p>
+    <div class="code">def product_view(request):
+    # ... existing code ...
+    
+    # DEBUG: Print context before rendering
+    print("Context keys:", {
+        "has_all_products_json": "all_products_json" in locals(),
+        "all_products_json_length": len(all_products_json) if "all_products_json" in locals() else 0
+    })
+    
+    return render(request, "pantry/create_order.html", {
+        # ... existing context ...
+    })</div>
+    
+    <p>Then reload the page and check your Django console output.</p>
+    
+    <h3>Expected:</h3>
+    <div class="code pass">✅ Context keys: {'has_all_products_json': True, 'all_products_json_length': 245}</div>
+    
+    <h3>If you see:</h3>
+    <div class="code fail">❌ Context keys: {'has_all_products_json': False, 'all_products_json_length': 0}</div>
+    <p class="fix-needed">➡️ Django view is NOT creating all_products_json!</p>
+  </div>
+
+  <div class="test-section warning">
+    <h2>⚠️ Common Issues</h2>
+    <ul>
+      <li><strong>Wrong Template File:</strong> Make sure you edited <code>core/templates/pantry/create_order.html</code> (NOT <code>apps/pantry/templates/food_orders/create_order.html</code>)</li>
+      <li><strong>Template Cache:</strong> Try hard refresh (Cmd+Shift+R or Ctrl+Shift+R)</li>
+      <li><strong>Django Cache:</strong> Restart Django server: <code>python manage.py runserver</code></li>
+      <li><strong>Browser Cache:</strong> Clear cache or open in incognito/private mode</li>
+    </ul>
+  </div>
+
+  <div class="test-section">
+    <h2>Quick Diagnostic Summary</h2>
+    <p>After running all tests, check:</p>
+    <ul>
+      <li>✅ <code>allProducts</code> variable defined in template?</li>
+      <li>✅ <code>renderCart()</code> uses <code>allProducts[productId]</code>?</li>
+      <li>✅ Cart items remain visible during simulated search?</li>
+      <li>✅ Django view passes <code>all_products_json</code> to template?</li>
+      <li>✅ Template file is <code>core/templates/pantry/create_order.html</code>?</li>
+    </ul>
+    
+    <p><strong>If ALL checks pass:</strong> <span class="all-good">Bug is fixed! 🎉</span></p>
+    <p><strong>If ANY check fails:</strong> <span class="fix-needed">Review the failing test above for fix instructions</span></p>
+  </div>
+
+</body>
+</html>
