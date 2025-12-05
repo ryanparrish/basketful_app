@@ -58,11 +58,11 @@ lyn_project/
 
 ### Test Coverage
 
-**Total: 43 tests across 3 test suites**
+**Total: 91 tests across 5 test suites** ✅ All passing
 
-1. **cart.test.js** - 13 tests
+1. **cart.test.js** - 14 tests
    - Cart initialization
-   - Add/remove/update items
+   - Add/remove/update/clear items
    - Cart calculations
    - Session vs localStorage priority
 
@@ -75,6 +75,33 @@ lyn_project/
    - Cart-to-server data validation
    - Cart clearing after submission
    - Data integrity and error handling
+
+4. **cart-edge-cases.test.js** - 35 tests
+   - Invalid data type handling
+   - Large number handling
+   - Race condition handling
+   - Price calculation edge cases
+   - Found and fixed 6 production bugs
+
+5. **cart-search-bug.test.js** - 12 tests
+   - Search + cart interaction
+   - Documents previous bug behavior
+   - **Bug fixed in production code** (see CART_SEARCH_BUG.md)
+
+### Production Fixes
+
+**6 Critical Bugs Fixed:**
+1. String quantities rejected
+2. Float quantities now rounded
+3. NaN quantities rejected
+4. Infinity quantities rejected
+5. Undefined product IDs rejected
+6. Undefined prices handled with warning
+
+**Search Bug Fixed:**
+- Cart items no longer disappear when using search
+- Cart now uses complete product list (allProducts) for rendering
+- See CART_SEARCH_BUG.md for details
 
 ## Writing Tests
 

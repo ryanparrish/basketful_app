@@ -68,24 +68,41 @@ def search_products(queryset, query):
     return queryset
 
 
-def group_products_by_category(products):
+def group_products_by_category(products, all_products_for_cart=None):
     """
     Group products by category and prepare JSON data.
-    Returns tuple of (products_by_category, products_json).
+    
+    Args:
+        products: Products to display (may be filtered by search)
+        all_products_for_cart: Optional complete product list for cart rendering
+        
+    Returns tuple of (products_by_category, products_json, all_products_json).
     """
     products_by_category = {}
-    all_products = {}
+    display_products = {}
     
     for product in products:
         category = product.category
         products_by_category.setdefault(category, []).append(product)
-        all_products[product.id] = {
+        display_products[product.id] = {
             "name": product.name,
             "price": float(product.price)
         }
     
-    products_json = mark_safe(json.dumps(all_products))
-    return products_by_category, products_json
+    # Use all_products_for_cart if provided, otherwise use display products
+    if all_products_for_cart is not None:
+        cart_products = {}
+        for product in all_products_for_cart:
+            cart_products[product.id] = {
+                "name": product.name,
+                "price": float(product.price)
+            }
+        all_products_json = mark_safe(json.dumps(cart_products))
+    else:
+        all_products_json = mark_safe(json.dumps(display_products))
+    
+    products_json = mark_safe(json.dumps(display_products))
+    return products_by_category, products_json, all_products_json
 
 
 @login_required
@@ -93,14 +110,16 @@ def product_view(request):
     """Product selection page for creating a new order."""
     query = request.GET.get("q", "")
     
-    # Get base products
-    products = get_base_products()
-    logger.info(f"Base products count: {products.count()}")
+    # Get base products (all active products)
+    all_products = get_base_products()
+    logger.info(f"Base products count: {all_products.count()}")
     
     # Apply search if query exists
     if query:
-        products = search_products(products, query)
-        logger.info(f"Products after search '{query}': {products.count()}")
+        filtered_products = search_products(all_products, query)
+        logger.info(f"Products after search '{query}': {filtered_products.count()}")
+    else:
+        filtered_products = all_products
     
     # Check for active vouchers
     participant = request.user.participant
@@ -115,8 +134,10 @@ def product_view(request):
         return redirect("participant_dashboard")
     
     # Group products and prepare data
-    products_by_category, products_json = group_products_by_category(
-        products
+    # Pass all_products for cart rendering to fix search bug
+    products_by_category, products_json, all_products_json = group_products_by_category(
+        filtered_products,
+        all_products_for_cart=all_products
     )
     
     # Get existing cart from session for persistence
@@ -130,6 +151,7 @@ def product_view(request):
         {
             "products_by_category": products_by_category,
             "products_json": products_json,
+            "all_products_json": all_products_json,
             "query": query,
             "session_cart": json.dumps(session_cart),
         },

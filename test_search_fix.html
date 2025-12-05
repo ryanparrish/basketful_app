@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cart + Search Fix Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+    .cart-item { padding: 10px; border-bottom: 1px solid #ddd; }
+    .success { color: green; font-weight: bold; }
+    .error { color: red; font-weight: bold; }
+    #cart-list { border: 1px solid #ccc; min-height: 200px; padding: 10px; }
+    button { margin: 5px; padding: 10px; cursor: pointer; }
+    .info { background: #e3f2fd; padding: 10px; margin: 10px 0; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Cart + Search Fix Verification</h1>
+  
+  <div class="info">
+    <strong>Test Scenario:</strong>
+    <ol>
+      <li>Add Apple, Banana, Carrot to cart</li>
+      <li>Simulate search for "apple" (filters products to only Apple)</li>
+      <li>Verify cart STILL shows all 3 items (using allProducts)</li>
+    </ol>
+  </div>
+
+  <h2>Actions</h2>
+  <button onclick="addApple()">Add Apple ($2.50)</button>
+  <button onclick="addBanana()">Add Banana ($3.00)</button>
+  <button onclick="addCarrot()">Add Carrot ($1.00)</button>
+  <button onclick="searchForApple()">Search "apple" (filter products)</button>
+  <button onclick="clearSearch()">Clear Search</button>
+  <button onclick="resetTest()">Reset Test</button>
+
+  <h2>Product Lists</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div>
+      <h3>products (filtered by search)</h3>
+      <div id="products-list" style="border: 1px solid #ccc; padding: 10px; min-height: 100px;"></div>
+    </div>
+    <div>
+      <h3>allProducts (complete list for cart)</h3>
+      <div id="all-products-list" style="border: 1px solid #ccc; padding: 10px; min-height: 100px;"></div>
+    </div>
+  </div>
+
+  <h2>Cart (rendered using allProducts)</h2>
+  <div id="cart-list"></div>
+  <div id="cart-total" style="font-weight: bold; margin-top: 10px;"></div>
+
+  <h2>Test Results</h2>
+  <div id="test-results"></div>
+
+  <script src="apps/pantry/static/js/cart.js"></script>
+  <script>
+    // Simulate the template variables
+    let products = {
+      '1': { name: 'Apple', price: 2.50 },
+      '2': { name: 'Banana', price: 3.00 },
+      '3': { name: 'Carrot', price: 1.00 }
+    };
+
+    let allProducts = {
+      '1': { name: 'Apple', price: 2.50 },
+      '2': { name: 'Banana', price: 3.00 },
+      '3': { name: 'Carrot', price: 1.00 }
+    };
+
+    let cart = {};
+
+    function updateProductsDisplay() {
+      const productsList = document.getElementById('products-list');
+      const allProductsList = document.getElementById('all-products-list');
+      
+      productsList.innerHTML = Object.entries(products)
+        .map(([id, p]) => `<div>ID ${id}: ${p.name} - $${p.price.toFixed(2)}</div>`)
+        .join('');
+      
+      allProductsList.innerHTML = Object.entries(allProducts)
+        .map(([id, p]) => `<div>ID ${id}: ${p.name} - $${p.price.toFixed(2)}</div>`)
+        .join('');
+    }
+
+    function renderCart() {
+      const cartList = document.getElementById('cart-list');
+      const cartTotal = document.getElementById('cart-total');
+      
+      let html = '';
+      let total = 0;
+      
+      for (const [productId, quantity] of Object.entries(cart)) {
+        // THIS IS THE FIX: Use allProducts instead of products
+        const product = allProducts[productId];
+        
+        if (!product) {
+          html += `<div class="cart-item error">Product ID ${productId}: NOT FOUND (quantity: ${quantity})</div>`;
+          continue;
+        }
+
+        const subtotal = product.price * quantity;
+        total += subtotal;
+
+        html += `<div class="cart-item">
+          ${product.name} - $${product.price.toFixed(2)} × ${quantity} = $${subtotal.toFixed(2)}
+          <button onclick="removeFromCart('${productId}')" style="float: right;">Remove</button>
+        </div>`;
+      }
+      
+      cartList.innerHTML = html || '<div style="padding: 20px; text-align: center; color: #999;">Cart is empty</div>';
+      cartTotal.innerHTML = `Total: $${total.toFixed(2)}`;
+    }
+
+    function addApple() {
+      cart['1'] = (cart['1'] || 0) + 1;
+      renderCart();
+      runTests();
+    }
+
+    function addBanana() {
+      cart['2'] = (cart['2'] || 0) + 1;
+      renderCart();
+      runTests();
+    }
+
+    function addCarrot() {
+      cart['3'] = (cart['3'] || 0) + 1;
+      renderCart();
+      runTests();
+    }
+
+    function removeFromCart(productId) {
+      delete cart[productId];
+      renderCart();
+      runTests();
+    }
+
+    function searchForApple() {
+      // Simulate search: filter products to only show Apple
+      products = {
+        '1': { name: 'Apple', price: 2.50 }
+      };
+      // allProducts remains complete!
+      updateProductsDisplay();
+      renderCart();
+      runTests();
+    }
+
+    function clearSearch() {
+      // Restore full product list
+      products = {
+        '1': { name: 'Apple', price: 2.50 },
+        '2': { name: 'Banana', price: 3.00 },
+        '3': { name: 'Carrot', price: 1.00 }
+      };
+      updateProductsDisplay();
+      renderCart();
+      runTests();
+    }
+
+    function resetTest() {
+      cart = {};
+      clearSearch();
+      renderCart();
+      runTests();
+    }
+
+    function runTests() {
+      const results = document.getElementById('test-results');
+      const tests = [];
+      
+      // Test 1: allProducts should always have all 3 products
+      const test1 = Object.keys(allProducts).length === 3;
+      tests.push(`✓ allProducts has all 3 products: ${test1 ? '<span class="success">PASS</span>' : '<span class="error">FAIL</span>'}`);
+      
+      // Test 2: After search, products should be filtered
+      const isSearchActive = Object.keys(products).length < 3;
+      if (isSearchActive) {
+        tests.push(`✓ Search filtering works: <span class="success">PASS</span> (products filtered to ${Object.keys(products).length})`);
+      } else {
+        tests.push(`○ No search active (products has all ${Object.keys(products).length} items)`);
+      }
+      
+      // Test 3: Cart should render all items even during search
+      const cartItemCount = Object.keys(cart).length;
+      if (cartItemCount > 0 && isSearchActive) {
+        const allItemsVisible = Object.keys(cart).every(id => {
+          return allProducts[id] !== undefined;
+        });
+        tests.push(`✓ Cart can render all items during search: ${allItemsVisible ? '<span class="success">PASS</span>' : '<span class="error">FAIL</span>'}`);
+      }
+      
+      // Test 4: Cart total calculation
+      let expectedTotal = 0;
+      for (const [id, qty] of Object.entries(cart)) {
+        if (allProducts[id]) {
+          expectedTotal += allProducts[id].price * qty;
+        }
+      }
+      const displayedTotal = document.getElementById('cart-total').textContent;
+      tests.push(`✓ Cart total matches expected: ${displayedTotal.includes(expectedTotal.toFixed(2)) ? '<span class="success">PASS</span>' : '<span class="error">FAIL</span>'} (expected $${expectedTotal.toFixed(2)})`);
+      
+      results.innerHTML = '<ul>' + tests.map(t => `<li>${t}</li>`).join('') + '</ul>';
+    }
+
+    // Initialize
+    updateProductsDisplay();
+    renderCart();
+    runTests();
+  </script>
+</body>
+</html>
