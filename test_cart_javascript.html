@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cart JavaScript Test</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .category-toggle.active {
+      font-weight: bold;
+      color: #0d6efd;
+    }
+    .hidden-fade {
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid mt-4">
+    <h2 class="text-center mb-4">Cart & Filter JavaScript Test</h2>
+    
+    <div class="row">
+      <!-- Sidebar filters -->
+      <div class="col-md-3 mb-4">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Filter by Category</h5>
+            <ul class="list-group">
+              <li class="list-group-item">
+                <a href="#" class="category-clear text-primary" id="show-all-categories">
+                  <i class="bi bi-grid-3x3-gap-fill"></i> Show All
+                </a>
+              </li>
+              <li class="list-group-item">
+                <a href="#" class="category-toggle" data-category="fruits">Fruits</a>
+              </li>
+              <li class="list-group-item">
+                <a href="#" class="category-toggle" data-category="vegetables">Vegetables</a>
+              </li>
+              <li class="list-group-item">
+                <a href="#" class="category-toggle" data-category="dairy">Dairy</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        
+        <!-- Debug Panel -->
+        <div class="card mt-3">
+          <div class="card-body">
+            <h6>Debug Info</h6>
+            <div id="debug-info" class="small">
+              <div>Cart Items: <span id="cart-count">0</span></div>
+              <div>Active Filter: <span id="active-filter">None</span></div>
+              <div>LocalStorage Cart: <span id="ls-cart">Empty</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Product Grid -->
+      <div class="col-md-9">
+        <div class="category-section" data-category="fruits">
+          <h4 class="mt-4 mb-3">Fruits</h4>
+          <div class="row row-cols-2 row-cols-md-3 g-3">
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                  <h5 class="card-title">Apple</h5>
+                  <p class="card-text text-muted">$1.50</p>
+                  <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="1">
+                  <button class="btn btn-primary w-100 add-to-cart" data-product-id="1">Add to Cart</button>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                  <h5 class="card-title">Banana</h5>
+                  <p class="card-text text-muted">$0.75</p>
+                  <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="2">
+                  <button class="btn btn-primary w-100 add-to-cart" data-product-id="2">Add to Cart</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="category-section" data-category="vegetables">
+          <h4 class="mt-4 mb-3">Vegetables</h4>
+          <div class="row row-cols-2 row-cols-md-3 g-3">
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                  <h5 class="card-title">Carrot</h5>
+                  <p class="card-text text-muted">$1.25</p>
+                  <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="3">
+                  <button class="btn btn-primary w-100 add-to-cart" data-product-id="3">Add to Cart</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="category-section" data-category="dairy">
+          <h4 class="mt-4 mb-3">Dairy</h4>
+          <div class="row row-cols-2 row-cols-md-3 g-3">
+            <div class="col">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                  <h5 class="card-title">Milk</h5>
+                  <p class="card-text text-muted">$3.50</p>
+                  <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="4">
+                  <button class="btn btn-primary w-100 add-to-cart" data-product-id="4">Add to Cart</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky Cart Icon -->
+  <button id="cart-drawer-toggle" class="btn btn-primary position-fixed bottom-0 end-0 m-3 rounded-circle shadow" style="z-index: 1050;">
+    🛒 <span class="badge bg-danger" id="cart-badge">0</span>
+  </button>
+
+  <!-- Offcanvas Cart Drawer -->
+  <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileCartDrawer" aria-labelledby="mobileCartDrawerLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="mobileCartDrawerLabel">Your Cart</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column">
+      <ul id="mobile-cart-items" class="list-group mb-3"></ul>
+      <button class="btn btn-success mt-auto" id="mobile-submit-order">Submit Order (Test)</button>
+      <button class="btn btn-warning mt-2" id="clear-cart">Clear Cart</button>
+      <button class="btn btn-info mt-2" id="clear-storage">Clear LocalStorage</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // Mock data for testing
+    const products = {
+      "1": {"id": 1, "name": "Apple", "price": 1.50},
+      "2": {"id": 2, "name": "Banana", "price": 0.75},
+      "3": {"id": 3, "name": "Carrot", "price": 1.25},
+      "4": {"id": 4, "name": "Milk", "price": 3.50}
+    };
+    const sessionCart = {}; // Empty for testing
+
+    // Your actual cart JavaScript
+    (() => {
+      // ---------- CSRF & Cart Setup ----------
+      function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+          for (let cookie of document.cookie.split(';')) {
+            cookie = cookie.trim();
+            if (cookie.startsWith(name + '=')) {
+              cookieValue = decodeURIComponent(cookie.slice(name.length + 1));
+              break;
+            }
+          }
+        }
+        return cookieValue;
+      }
+
+      const csrftoken = getCookie('csrftoken');
+      
+      // Initialize cart - prioritize session cart over localStorage
+      let cart = initializeCart();
+
+      function initializeCart() {
+        // If session has a cart, use it (user may have come back from review page)
+        if (sessionCart && Object.keys(sessionCart).length > 0) {
+          localStorage.setItem('cart', JSON.stringify(sessionCart));
+          return sessionCart;
+        }
+        // Otherwise, load from localStorage
+        return loadCartFromStorage();
+      }
+
+      function saveCartToStorage() {
+        localStorage.setItem('cart', JSON.stringify(cart));
+        updateDebugInfo();
+      }
+
+      function loadCartFromStorage() {
+        try {
+          const stored = localStorage.getItem('cart');
+          return stored ? JSON.parse(stored) : {};
+        } catch (e) {
+          console.warn("Cart data in localStorage is invalid.");
+          return {};
+        }
+      }
+
+      // ---------- Filter State Management ----------
+      function saveFilterState(activeCategory) {
+        localStorage.setItem('activeCategory', activeCategory || '');
+        updateDebugInfo();
+      }
+
+      function loadFilterState() {
+        return localStorage.getItem('activeCategory') || null;
+      }
+
+      function applyFilterState() {
+        const activeCategory = loadFilterState();
+        if (activeCategory) {
+          // Highlight the active category in sidebar
+          document.querySelectorAll('.category-toggle').forEach(link => {
+            const cat = link.dataset.category;
+            if (cat === activeCategory) {
+              link.classList.add('active', 'fw-bold');
+              link.parentElement.classList.add('active');
+            } else {
+              link.classList.remove('active', 'fw-bold');
+              link.parentElement.classList.remove('active');
+            }
+          });
+
+          // Show only the active category section
+          document.querySelectorAll('.category-section').forEach(section => {
+            if (section.dataset.category === activeCategory) {
+              section.style.display = 'block';
+            } else {
+              section.style.display = 'none';
+            }
+          });
+        }
+      }
+
+      function clearFilter() {
+        saveFilterState(null);
+        // Remove active state from all filters
+        document.querySelectorAll('.category-toggle').forEach(link => {
+          link.classList.remove('active', 'fw-bold');
+          link.parentElement.classList.remove('active');
+        });
+        // Show all categories
+        document.querySelectorAll('.category-section').forEach(section => {
+          section.style.display = 'block';
+        });
+      }
+
+      // ---------- Cart Rendering ----------
+      function renderCart() {
+        const mobileCartList = document.getElementById('mobile-cart-items');
+        if (!mobileCartList) return;
+
+        mobileCartList.innerHTML = '';
+        let total = 0;
+        let itemCount = 0;
+
+        for (const [productId, quantity] of Object.entries(cart)) {
+          const product = products[productId];
+          if (!product) continue;
+
+          const subtotal = product.price * quantity;
+          total += subtotal;
+          itemCount += quantity;
+
+          const li = document.createElement('li');
+          li.className = 'list-group-item d-flex justify-content-between align-items-center';
+          li.innerHTML = `
+            <div>
+              <strong>${product.name}</strong><br>
+              <small>$${product.price.toFixed(2)} * ${quantity} = $${subtotal.toFixed(2)}</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
+              <i class="bi bi-trash"></i>
+            </button>
+          `;
+          mobileCartList.appendChild(li);
+        }
+
+        // Total row
+        const totalLi = document.createElement('li');
+        totalLi.className = 'list-group-item d-flex justify-content-between align-items-center fw-bold';
+        totalLi.innerHTML = `<span>Total</span><span>$${total.toFixed(2)}</span>`;
+        mobileCartList.appendChild(totalLi);
+
+        // Update badge
+        const badge = document.getElementById('cart-badge');
+        if (badge) badge.textContent = itemCount;
+
+        // Attach remove handlers
+        mobileCartList.querySelectorAll('.remove-item').forEach(button => {
+          button.onclick = () => {
+            const id = button.dataset.productId;
+            delete cart[id];
+            saveCartToStorage();
+            renderCart();
+          };
+        });
+
+        updateDebugInfo();
+      }
+
+      // ---------- Debug Info ----------
+      function updateDebugInfo() {
+        const cartCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+        const activeFilter = localStorage.getItem('activeCategory') || 'None';
+        const lsCart = localStorage.getItem('cart') || 'Empty';
+        
+        document.getElementById('cart-count').textContent = cartCount;
+        document.getElementById('active-filter').textContent = activeFilter;
+        document.getElementById('ls-cart').textContent = lsCart.substring(0, 50) + (lsCart.length > 50 ? '...' : '');
+      }
+
+      // ---------- Add to Cart ----------
+      document.querySelectorAll('.add-to-cart').forEach(button => {
+        button.addEventListener('click', () => {
+          const productId = button.dataset.productId;
+          const quantityInput = document.querySelector(`input[data-product-id="${productId}"]`);
+          const quantity = parseInt(quantityInput.value);
+
+          if (quantity > 0) {
+            cart[productId] = (cart[productId] || 0) + quantity;
+            saveCartToStorage();
+            quantityInput.value = 0;
+            renderCart();
+            console.log('Added to cart:', productId, 'Quantity:', quantity);
+          }
+        });
+      });
+
+      // ---------- Submit Order ----------
+      function submitOrder() {
+        // First, ensure cart is not empty
+        if (Object.keys(cart).length === 0) {
+          alert("Your cart is empty. Please add items before submitting.");
+          return;
+        }
+
+        console.log('Submit order clicked. Cart:', cart);
+        alert('Order submitted (test mode)!\nCart: ' + JSON.stringify(cart, null, 2));
+      }
+
+      const submitBtn = document.getElementById('mobile-submit-order');
+      if (submitBtn) submitBtn.addEventListener('click', submitOrder);
+
+      // ---------- Test Helpers ----------
+      const clearCartBtn = document.getElementById('clear-cart');
+      if (clearCartBtn) {
+        clearCartBtn.addEventListener('click', () => {
+          cart = {};
+          saveCartToStorage();
+          renderCart();
+          console.log('Cart cleared');
+        });
+      }
+
+      const clearStorageBtn = document.getElementById('clear-storage');
+      if (clearStorageBtn) {
+        clearStorageBtn.addEventListener('click', () => {
+          localStorage.clear();
+          cart = {};
+          renderCart();
+          console.log('LocalStorage cleared');
+        });
+      }
+
+      // ---------- Mobile Cart Drawer ----------
+      const drawerToggle = document.getElementById('cart-drawer-toggle');
+      if (drawerToggle) {
+        drawerToggle.addEventListener('click', () => {
+          const drawerEl = document.getElementById('mobileCartDrawer');
+          if (drawerEl) new bootstrap.Offcanvas(drawerEl).show();
+        });
+      }
+
+      // ---------- Category Toggle ----------
+      document.querySelectorAll('.category-toggle').forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          const cat = link.dataset.category;
+          
+          console.log('Category clicked:', cat);
+          
+          // Check if clicking the same category (toggle off)
+          if (link.classList.contains('active')) {
+            console.log('Toggling off category:', cat);
+            clearFilter();
+            return;
+          }
+
+          // Save filter state
+          saveFilterState(cat);
+
+          // Update UI - highlight active filter
+          document.querySelectorAll('.category-toggle').forEach(l => {
+            l.classList.remove('active', 'fw-bold');
+            l.parentElement.classList.remove('active');
+          });
+          link.classList.add('active', 'fw-bold');
+          link.parentElement.classList.add('active');
+
+          // Show only selected category
+          document.querySelectorAll('.category-section').forEach(section => {
+            if (section.dataset.category === cat) {
+              section.style.display = 'block';
+              section.classList.remove('d-none');
+              section.classList.add('hidden-fade');
+              section.parentNode.prepend(section);
+
+              requestAnimationFrame(() => {
+                section.classList.remove('hidden-fade');
+              });
+            } else {
+              section.style.display = 'none';
+            }
+          });
+        });
+      });
+
+      // "Show All" button handler
+      const showAllBtn = document.getElementById('show-all-categories');
+      if (showAllBtn) {
+        showAllBtn.addEventListener('click', e => {
+          e.preventDefault();
+          console.log('Show all clicked');
+          clearFilter();
+        });
+      }
+
+      // Initial render
+      renderCart();
+      applyFilterState(); // Restore filter state on page load
+      updateDebugInfo();
+      
+      console.log('Cart system initialized');
+      console.log('Products:', products);
+      console.log('Initial cart:', cart);
+    })();
+  </script>
+</body>
+</html>
