@@ -5,6 +5,17 @@
 <div id="content-main">
     <h1>Create Combined Order</h1>
     
+    <div style="background-color: #e8f4f8; border-left: 4px solid #2196F3; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+        <h3 style="margin-top: 0; color: #1976D2;">
+            <span style="font-size: 1.2em;">ℹ️</span> Instructions
+        </h3>
+        <ol style="margin-bottom: 0; line-height: 1.8;">
+            <li><strong>Specify the date range:</strong> Select the program, start date, and end date for the orders you want to combine.</li>
+            <li><strong>Create the combined order:</strong> Click "Create Combined Order" to generate a new combined order with a timestamp-based name.</li>
+            <li><strong>Download the PDF:</strong> After creation, you'll be redirected to the Combined Orders list. Select your newly created order and use the "Download Combined Order PDF" action.</li>
+        </ol>
+    </div>
+    
     {% if messages %}
         {% for message in messages %}
             <div class="alert alert-{{ message.tags }}">

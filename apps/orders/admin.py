@@ -88,8 +88,12 @@ class CombinedOrderAdmin(admin.ModelAdmin):
     """Admin for CombinedOrder with custom actions."""
     actions = ['download_combined_order_pdf']
     readonly_fields = ('display_orders', 'created_at', 'updated_at')
+    exclude = ('summarized_data', 'is_parent')
     change_list_template = "admin/orders/combinedorder/change_list.html"
-    list_display = ('program', 'created_at', 'updated_at', 'order_count')
+    change_form_template = "admin/orders/combinedorder/change_form.html"
+    list_display = (
+        'name', 'program', 'created_at', 'updated_at', 'order_count'
+    )
     
     def display_orders(self, obj):
         """Display orders in a readable format with links."""
@@ -183,16 +187,13 @@ class CombinedOrderAdmin(admin.ModelAdmin):
                         {'form': form}
                     )
                 
-                # Get or create the combined order for this program/week
-                # Get the current week's combined order or create new one
-                current_year = timezone.now().year
-                current_week = timezone.now().isocalendar()[1]
+                # Always create a new combined order with timestamp
+                timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+                order_name = f"Combined Order - {timestamp}"
                 
-                combined_order, created = CombinedOrder.objects.get_or_create(
+                combined_order = CombinedOrder.objects.create(
                     program=program,
-                    created_at__year=current_year,
-                    created_at__week=current_week,
-                    defaults={'program': program}
+                    name=order_name
                 )
                 
                 # Add orders to the combined order

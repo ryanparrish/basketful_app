@@ -10,8 +10,6 @@ from datetime import datetime
 # Django imports
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
-from django.db.models import UniqueConstraint, F
-from django.db.models.functions import ExtractWeek, ExtractYear
 # Local imports
 from apps.pantry.models import CategoryLimitValidator
 
@@ -305,6 +303,7 @@ class OrderItem(models.Model):
 
 class CombinedOrder(models.Model):
   
+    name = models.CharField(max_length=255, blank=True)
     program = models.ForeignKey("lifeskills.Program", on_delete=models.CASCADE, related_name="combined_orders")
     orders = models.ManyToManyField("Order", related_name="combined_orders", blank=True)
     # packed_by = models.ForeignKey("pantry.OrderPacker", on_delete=models.SET_NULL, null=True, blank=True, related_name="combined_orders")
@@ -330,14 +329,9 @@ class CombinedOrder(models.Model):
         return summary
 
     class Meta:
-        constraints = [
-            UniqueConstraint(
-                F("program"),
-                ExtractYear("created_at"),
-                ExtractWeek("created_at"),
-                name="unique_program_per_week",
-            )
-        ]
+        pass
 
     def __str__(self):
+        if self.name:
+            return f"{self.program.name} - {self.name}"
         return f"{self.program.name} Combined Order ({self.created_at and self.created_at.strftime('%Y-%m-%d')})"
