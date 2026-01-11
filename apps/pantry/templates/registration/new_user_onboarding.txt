@@ -1,10 +1,23 @@
 Welcome to Basketful, {{ user.first_name|default:user.username }}!
 
-We're excited to have you join our community. To get started, please set your password by visiting the following link:
+Love Your Neighbor Life Skills Program
 
+We're excited to have you join our community!
+
+========================================
+YOUR USERNAME: {{ user.username }}
+========================================
+(Save this - you'll need it to log in)
+
+Set your password here:
 {{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
 
-If you didn't request this account or believe this was a mistake, please ignore this email.
+Once your account is set up, you'll be able to:
+- Sign in to your account
+- Place your food orders
+- Access program resources
+
+If you didn't request this account, you can safely ignore this email.
 
 Thanks,
 The Basketful Team

@@ -26,8 +26,10 @@
             margin-bottom: 30px;
         }
         .logo {
-            font-size: 32px;
+            font-size: 28px;
             margin-bottom: 8px;
+            color: #3b82f6;
+            font-weight: bold;
         }
         h2 {
             color: #1f2937;
@@ -48,23 +50,68 @@
             font-size: 16px;
             margin: 0 0 16px 0;
         }
+        .username-box {
+            background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 28px 0;
+            text-align: center;
+        }
+        .username-label {
+            color: #6b7280;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 0 0 8px 0;
+            font-weight: 500;
+        }
+        .username-value {
+            color: #1e40af;
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            background: #ffffff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            display: inline-block;
+            border: 1px solid #bfdbfe;
+        }
+        .username-note {
+            color: #6b7280;
+            font-size: 13px;
+            margin: 12px 0 0 0;
+        }
         .btn-container {
             text-align: center;
             margin: 32px 0;
         }
         .btn {
             display: inline-block;
-            background-color: #22c55e;
+            background-color: #3b82f6;
             color: #ffffff !important;
             padding: 14px 32px;
             border-radius: 8px;
             text-decoration: none;
             font-weight: 600;
             font-size: 16px;
-            transition: background-color 0.2s;
         }
         .btn:hover {
-            background-color: #16a34a;
+            background-color: #2563eb;
+        }
+        .checklist {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin: 24px 0;
+        }
+        .checklist p {
+            margin: 0 0 8px 0;
+            color: #374151;
+        }
+        .checklist p:last-child {
+            margin-bottom: 0;
         }
         .footer {
             border-top: 1px solid #e5e7eb;
@@ -88,17 +135,23 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">🧺</div>
-            <h2>Welcome to Basketful, {{ user.first_name|default:user.username }}!</h2>
+            <div class="logo">🥕 Basketful</div>
+            <h2>Welcome, {{ user.first_name|default:user.username }}!</h2>
             <p class="subtitle">Love Your Neighbor Life Skills Program</p>
         </div>
 
         <div class="content">
-            <p>We're excited to have you join our community!</p>
-            
-            <p>This email is to help you get started with your Basketful account, where you'll place and manage your food orders.</p>
-            
-            <p>To begin, click the button below to set your password:</p>
+            <p>We're excited to have you join our community! Your Basketful account has been created where you'll place and manage your food orders.</p>
+        </div>
+
+        <div class="username-box">
+            <p class="username-label">Your Username</p>
+            <p class="username-value">{{ user.username }}</p>
+            <p class="username-note">📝 Save this! You'll need it to log in.</p>
+        </div>
+
+        <div class="content">
+            <p>To get started, click the button below to set your password:</p>
         </div>
 
         <div class="btn-container">
@@ -107,11 +160,10 @@
             </a>
         </div>
 
-        <div class="content">
-            <p>Once your account is set up, you'll be able to:</p>
-            <p>✓ Sign in to your account<br>
-               ✓ Place your food orders<br>
-               ✓ Access important program resources</p>
+        <div class="checklist">
+            <p>✓ Sign in to your account</p>
+            <p>✓ Place your food orders</p>
+            <p>✓ Access program resources</p>
         </div>
 
         <div class="footer">
