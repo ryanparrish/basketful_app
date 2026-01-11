@@ -256,6 +256,16 @@ CELERY_RESULT_BACKEND = env(
     'CELERY_RESULT_BACKEND', default='redis://localhost:6379/0'
 )
 
+# Redis connection retry settings for handling failovers
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'socket_timeout': 30,
+    'socket_connect_timeout': 30,
+    'retry_on_timeout': True,
+}
+
 CELERY_BEAT_SCHEDULE = {
     'create_weekly_combined_orders': {
         'task': 'orders.tasks.create_weekly_combined_orders',

@@ -7,4 +7,4 @@ class PantryConfig(AppConfig):
     label = 'pantry'
 
     def ready(self):
-        pass
+        import apps.pantry.signals  # noqa: F401
