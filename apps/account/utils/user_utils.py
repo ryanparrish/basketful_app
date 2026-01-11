@@ -50,7 +50,16 @@ def set_random_password_for_user(user: AbstractUser) -> str:
     return password
 
 def _create_user(
-    username: str, participant_name: str, full_name: str, is_staff: bool
+    *,
+    username: Optional[str] = None,
+    participant_name: Optional[str] = None,
+    full_name: Optional[str] = None,
+    first_name: str = "",
+    last_name: str = "",
+    email: str = "",
+    password: Optional[str] = None,
+    is_staff: bool = False,
+    is_superuser: bool = False,
 ) -> AbstractUser:
     """Create a user with a unique username."""
     base_name = (
@@ -65,8 +74,17 @@ def _create_user(
     )
     for _ in range(10):
         try:
-            username = next(generator)
-            user = User.objects.create_user(username=username)
+            generated_username = next(generator)
+            user = User.objects.create_user(
+                username=generated_username,
+                email=email,
+                password=password,
+            )
+            user.first_name = first_name
+            user.last_name = last_name
+            user.is_staff = is_staff
+            user.is_superuser = is_superuser
+            user.save()
             return user
         except IntegrityError:
             continue
@@ -101,14 +119,12 @@ def create_admin_user(
     """Create an admin user."""
     user = _create_user(
         username=username,
-        participant_name="",
         full_name=full_name,
+        email=email,
+        password=password,
         is_staff=True,
+        is_superuser=True,
     )
-    user.email = email
-    if password:
-        user.set_password(password)
-    user.is_staff = True
-    user.is_superuser = True
+    return user
     user.save()
     return user
