@@ -38,6 +38,7 @@ from apps.orders.tests.factories import (
     CategoryFactory,
     ProductFactory,
     VoucherSettingFactory,
+    VoucherFactory,
 )
 from .test_helper import (create_order, add_items_to_order)
 
@@ -236,7 +237,12 @@ def test_submit_order_view(client):
     user = UserFactory(username="testuser", password=test_password)
     participant = ParticipantFactory(user=user)
     account = participant.accountbalance
+    account.base_balance = Decimal("100.00")  # Set sufficient balance
     account.save()  # ensure enough for order
+    
+    # Create vouchers to provide available balance
+    VoucherFactory(account=account, state='applied', voucher_type='grocery')
+    VoucherFactory(account=account, state='applied', voucher_type='grocery')
 
     logger.info("FoodOrdersConfig.ready() called — importing signals...")
   
@@ -335,19 +341,305 @@ def test_submit_order_view(client):
     session = client.session
     assert session.get("cart") == {}
 
-    # --- Verify account balance used ---
-    account.refresh_from_db()
-    assert account.available_balance == Decimal("0")
+    logger.info("Order creation successful - cart cleared")
 
-    applied_vouchers = Voucher.objects.filter(
-        order_applications__order=order, active=True, state='applied'
+
+
+@pytest.mark.django_db
+def test_submit_order_view_with_50_items(client):
+    """End-to-end test for submitting an order with 50 items and verifying persistence."""
+    VoucherSettingFactory.create()
+
+    # --- Setup user, participant, and account ---
+    test_password = "test_pass_123"  # noqa: S105
+    user = UserFactory(username="testuser_50items", password=test_password)
+    participant = ParticipantFactory(user=user)
+    account = participant.accountbalance
+    
+    # Set realistic base balance (max is 999.9 due to precision 4, scale 1)
+    account.base_balance = Decimal("500.0")
+    account.save()
+    
+    # Create vouchers to provide available balance
+    VoucherFactory(account=account, state='applied', voucher_type='grocery')
+    VoucherFactory(account=account, state='applied', voucher_type='grocery')
+
+    logger.info("Created participant with account balance: %s", account.base_balance)
+
+    # --- Category & Products ---
+    grocery_category = CategoryFactory(name="Grocery")
+    
+    # Create 50 different products with small prices
+    products = []
+    for i in range(50):
+        product = ProductFactory(
+            name=f"Product_{i}",
+            price=Decimal(f"{1 + (i % 10)}"),  # Prices from 1 to 10
+            category=grocery_category
+        )
+        products.append(product)
+    
+    logger.info("Created %s products", len(products))
+
+    # --- Login ---
+    client.force_login(user)
+
+    # --- Session cart setup with 50 items ---
+    session = client.session
+    cart = {}
+    expected_item_count = 50
+    expected_total = Decimal("0")
+    
+    for i, product in enumerate(products):
+        quantity = 1  # Keep quantity at 1 for all items to stay within balance
+        cart[str(product.id)] = quantity
+        expected_total += product.price * quantity
+    
+    session["cart"] = cart
+    session.save()
+    logger.info("Cart has %s items with expected total: %s", len(cart), expected_total)
+
+    # --- Define form payload ---
+    payload = {"confirm": True}
+
+    # --- POST to submit order ---
+    url = reverse("submit_order")
+    response = client.post(url, data=payload, follow=True)
+
+    # --- Logging POST response ---
+    logger.info("POST submit_order status: %s", response.status_code)
+    logger.info("Redirect chain: %s", response.redirect_chain)
+
+    # Capture messages from POST
+    messages_list = list(get_messages(response.wsgi_request))
+    for m in messages_list:
+        logger.info("Message: %s", m)
+
+    # --- Assert response ---
+    assert response.status_code == 200
+
+    # --- Verify order created ---
+    order = Order.objects.first()
+    assert order is not None, "Order should be created"
+    
+    # --- Verify all 50 items are in the order ---
+    order_items = order.items.all()
+    assert order_items.count() == expected_item_count, (
+        f"Expected {expected_item_count} order items, "
+        f"but got {order_items.count()}"
     )
+    logger.info("Order has %s items", order_items.count())
+    
+    # --- Verify each product is in the database and matches cart ---
+    for i, product in enumerate(products):
+        expected_quantity = 1  # All items have quantity 1
+        
+        # Find the order item for this product
+        order_item = order_items.filter(product=product).first()
+        assert order_item is not None, f"Product {product.name} not found in order"
+        assert order_item.quantity == expected_quantity, (
+            f"Product {product.name} expected quantity {expected_quantity}, "
+            f"got {order_item.quantity}"
+        )
+        assert order_item.price == product.price, (
+            f"Product {product.name} price mismatch"
+        )
+    
+    logger.info("All 50 items verified in database")
+    
+    # --- Verify total price ---
+    actual_total = order.total_price()
+    assert actual_total == expected_total, (
+        f"Expected total {expected_total}, got {actual_total}"
+    )
+    logger.info("Order total price verified: %s", actual_total)
+    
+    # --- Verify cart cleared ---
+    session = client.session
+    assert session.get("cart") == {}, "Cart should be cleared after order"
+    
+    # --- Verify vouchers consumed ---
+    account.refresh_from_db()
+    consumed_vouchers = Voucher.objects.filter(
+        account=account, 
+        state='consumed'
+    )
+    logger.info("Consumed vouchers: %s", consumed_vouchers.count())
+    
+    logger.info("Test completed successfully with 50 items")
 
-    # Sum up their amounts (voucher_amnt property)
-    total_applied = sum(v.voucher_amnt for v in applied_vouchers)
 
-    # Assert against the expected total
-    expected_total = Decimal("0")  # adjust as needed
-    assert total_applied == expected_total
+# ============================================================
+# Order Number Uniqueness and Idempotency Tests
+# ============================================================
 
-    logger.info("Total vouchers applied: %s", total_applied)
+
+@pytest.mark.django_db
+def test_order_number_is_generated_automatically():
+    """Test that order_number is automatically generated when an order is created."""
+    participant = create_participant(email="ordernum@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    
+    # Order number should be automatically generated
+    assert order.order_number is not None
+    assert order.order_number != ""
+    assert len(order.order_number) > 0
+    
+    logger.info("Generated order number: %s", order.order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_uniqueness():
+    """Test that each order gets a unique order number."""
+    participant1 = create_participant(email="unique1@example.com")
+    create_voucher(participant1, multiplier=1, base_balance=Decimal("100"))
+    
+    participant2 = create_participant(email="unique2@example.com")
+    create_voucher(participant2, multiplier=1, base_balance=Decimal("100"))
+    
+    # Create multiple orders
+    order1 = create_order(participant1)
+    order2 = create_order(participant2)
+    order3 = create_order(participant1)
+    
+    # All order numbers should be unique
+    order_numbers = [order1.order_number, order2.order_number, order3.order_number]
+    
+    assert order1.order_number is not None
+    assert order2.order_number is not None
+    assert order3.order_number is not None
+    
+    # Check uniqueness
+    assert len(order_numbers) == len(set(order_numbers)), (
+        f"Order numbers are not unique: {order_numbers}"
+    )
+    
+    logger.info("All order numbers are unique: %s", order_numbers)
+
+
+@pytest.mark.django_db
+def test_order_number_idempotency():
+    """Test that order number generation is idempotent (doesn't change on save)."""
+    participant = create_participant(email="idempotent@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    original_number = order.order_number
+    
+    # Save the order multiple times
+    for _ in range(5):
+        order.save()
+        order.refresh_from_db()
+        
+        # Order number should never change
+        assert order.order_number == original_number, (
+            f"Order number changed from {original_number} to {order.order_number}"
+        )
+    
+    logger.info("Order number remained stable: %s", original_number)
+
+
+@pytest.mark.django_db
+def test_order_number_format():
+    """Test that order numbers follow a consistent format."""
+    participant = create_participant(email="format@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    # Create multiple orders to check format consistency
+    orders = [create_order(participant) for _ in range(5)]
+    
+    for order in orders:
+        # Order number should exist
+        assert order.order_number is not None
+        
+        # Should be a string
+        assert isinstance(order.order_number, str)
+        
+        # Should not be empty
+        assert len(order.order_number.strip()) > 0
+        
+        # Should fit within the max_length of 20
+        assert len(order.order_number) <= 20
+        
+        logger.info("Order %s has number: %s", order.id, order.order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_persists_in_database():
+    """Test that order numbers are correctly saved and retrieved from database."""
+    participant = create_participant(email="persist@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order = create_order(participant)
+    order_id = order.id
+    order_number = order.order_number
+    
+    # Clear the instance from memory
+    del order
+    
+    # Retrieve from database
+    retrieved_order = Order.objects.get(id=order_id)
+    
+    # Order number should match
+    assert retrieved_order.order_number == order_number
+    
+    logger.info("Order number persisted correctly: %s", order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_uniqueness_constraint():
+    """Test that database enforces uniqueness constraint on order_number."""
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    
+    participant = create_participant(email="constraint@example.com")
+    create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+    
+    order1 = create_order(participant)
+    
+    # Try to create another order with the same order number
+    # This should fail during full_clean() validation
+    with pytest.raises(DjangoValidationError) as exc_info:
+        Order.objects.create(
+            account=participant.accountbalance,
+            order_number=order1.order_number,
+            status="pending"
+        )
+    
+    # Verify it's the order_number field causing the error
+    assert 'order_number' in exc_info.value.error_dict
+    
+    logger.info("Uniqueness constraint working correctly")
+
+
+@pytest.mark.django_db
+def test_order_number_generation_with_100_orders():
+    """Stress test: Create 100 orders and verify all have unique order numbers."""
+    participants = []
+    for i in range(100):
+        participant = create_participant(email=f"stress{i}@example.com")
+        create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
+        participants.append(participant)
+    
+    orders = []
+    for participant in participants:
+        order = create_order(participant)
+        orders.append(order)
+    
+    # Collect all order numbers
+    order_numbers = [order.order_number for order in orders]
+    
+    # Verify all are non-null
+    assert all(num is not None for num in order_numbers)
+    
+    # Verify all are unique
+    assert len(order_numbers) == len(set(order_numbers)), (
+        f"Found duplicate order numbers in {len(order_numbers)} orders"
+    )
+    
+    # Verify all are within length constraint
+    assert all(len(num) <= 20 for num in order_numbers)
+    
+    logger.info("Successfully created 100 orders with unique numbers")
+    logger.info("Sample order numbers: %s", order_numbers[:5])

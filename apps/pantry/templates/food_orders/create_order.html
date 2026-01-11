@@ -28,6 +28,11 @@
         <div class="card-body">
           <h5 class="card-title">Filter by Category</h5>
           <ul class="list-group">
+            <li class="list-group-item">
+              <a href="#" class="category-clear text-primary" id="show-all-categories">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Show All
+              </a>
+            </li>
             {% for category, items in products_by_category.items %}
               <li class="list-group-item">
                 <a href="#" class="category-toggle" data-category="{{ category|slugify }}">{{ category }}</a>
@@ -82,13 +87,20 @@
   </div>
   <div class="offcanvas-body d-flex flex-column">
     <ul id="mobile-cart-items" class="list-group mb-3"></ul>
-    <button class="btn btn-success mt-auto" id="mobile-submit-order">Submit Order</button>
+    <div class="mt-auto">
+      <button class="btn btn-outline-danger w-100 mb-2" id="clear-cart-btn">
+        <i class="bi bi-trash"></i> Clear Cart
+      </button>
+      <button class="btn btn-success w-100" id="mobile-submit-order">Submit Order</button>
+    </div>
   </div>
 </div>
 
 <!-- Embed product data -->
 <script>
   const products = JSON.parse("{{ products_json|escapejs }}");
+  const allProducts = JSON.parse("{{ all_products_json|escapejs }}");
+  const sessionCart = JSON.parse("{{ session_cart|escapejs }}");
 </script>
 
 <!-- Cart + Filter JS -->
@@ -110,7 +122,19 @@
   }
 
   const csrftoken = getCookie('csrftoken');
-  let cart = loadCartFromStorage();
+  
+  // Initialize cart - prioritize session cart over localStorage
+  let cart = initializeCart();
+
+  function initializeCart() {
+    // If session has a cart, use it (user may have come back from review page)
+    if (sessionCart && Object.keys(sessionCart).length > 0) {
+      localStorage.setItem('cart', JSON.stringify(sessionCart));
+      return sessionCart;
+    }
+    // Otherwise, load from localStorage
+    return loadCartFromStorage();
+  }
 
   function saveCartToStorage() {
     localStorage.setItem('cart', JSON.stringify(cart));
@@ -126,6 +150,54 @@
     }
   }
 
+  // ---------- Filter State Management ----------
+  function saveFilterState(activeCategory) {
+    localStorage.setItem('activeCategory', activeCategory || '');
+  }
+
+  function loadFilterState() {
+    return localStorage.getItem('activeCategory') || null;
+  }
+
+  function applyFilterState() {
+    const activeCategory = loadFilterState();
+    if (activeCategory) {
+      // Highlight the active category in sidebar
+      document.querySelectorAll('.category-toggle').forEach(link => {
+        const cat = link.dataset.category;
+        if (cat === activeCategory) {
+          link.classList.add('active', 'fw-bold');
+          link.parentElement.classList.add('active');
+        } else {
+          link.classList.remove('active', 'fw-bold');
+          link.parentElement.classList.remove('active');
+        }
+      });
+
+      // Show only the active category section
+      document.querySelectorAll('.category-section').forEach(section => {
+        if (section.dataset.category === activeCategory) {
+          section.style.display = 'block';
+        } else {
+          section.style.display = 'none';
+        }
+      });
+    }
+  }
+
+  function clearFilter() {
+    saveFilterState(null);
+    // Remove active state from all filters
+    document.querySelectorAll('.category-toggle').forEach(link => {
+      link.classList.remove('active', 'fw-bold');
+      link.parentElement.classList.remove('active');
+    });
+    // Show all categories
+    document.querySelectorAll('.category-section').forEach(section => {
+      section.style.display = 'block';
+    });
+  }
+
   // ---------- Cart Rendering ----------
   function renderCart() {
     const mobileCartList = document.getElementById('mobile-cart-items');
@@ -135,7 +207,7 @@
     let total = 0;
 
     for (const [productId, quantity] of Object.entries(cart)) {
-      const product = products[productId];
+      const product = allProducts[productId];
       if (!product) continue;
 
       const subtotal = product.price * quantity;
@@ -190,6 +262,12 @@
 
   // ---------- Submit Order ----------
   function submitOrder() {
+    // First, ensure cart is not empty
+    if (Object.keys(cart).length === 0) {
+      alert("Your cart is empty. Please add items before submitting.");
+      return;
+    }
+
     fetch("{% url 'update_cart' %}", {
       method: "POST",
       headers: {
@@ -198,20 +276,40 @@
       },
       body: JSON.stringify(cart)
     })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.json();
+    })
     .then(data => {
       if (data.status === "ok") {
-        // Cart persists until user reaches the review/order page
+        // Cart has been saved to session, now redirect
         window.location.href = "{% url 'review_order' %}";
       } else {
-        alert("There was a problem submitting your cart.");
+        alert("There was a problem submitting your cart: " + (data.message || "Unknown error"));
       }
     })
-    .catch(() => alert("Error submitting order."));
+    .catch(error => {
+      console.error("Error submitting order:", error);
+      alert("Error submitting order. Please try again.");
+    });
   }
 
   const submitBtn = document.getElementById('mobile-submit-order');
   if (submitBtn) submitBtn.addEventListener('click', submitOrder);
+
+  // ---------- Clear Cart Button ----------
+  const clearCartBtn = document.getElementById('clear-cart-btn');
+  if (clearCartBtn) {
+    clearCartBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear your entire cart?')) {
+        cart = {};
+        saveCartToStorage();
+        renderCart();
+      }
+    });
+  }
 
   // ---------- Mobile Cart Drawer ----------
   const drawerToggle = document.getElementById('cart-drawer-toggle');
@@ -227,21 +325,54 @@
     link.addEventListener('click', e => {
       e.preventDefault();
       const cat = link.dataset.category;
-      const section = document.querySelector(`.category-section[data-category="${cat}"]`);
-      if (!section) return;
+      
+      // Check if clicking the same category (toggle off)
+      if (link.classList.contains('active')) {
+        clearFilter();
+        return;
+      }
 
-      section.classList.remove('d-none');
-      section.classList.add('hidden-fade');
-      section.parentNode.prepend(section);
+      // Save filter state
+      saveFilterState(cat);
 
-      requestAnimationFrame(() => {
-        section.classList.remove('hidden-fade');
+      // Update UI - highlight active filter
+      document.querySelectorAll('.category-toggle').forEach(l => {
+        l.classList.remove('active', 'fw-bold');
+        l.parentElement.classList.remove('active');
+      });
+      link.classList.add('active', 'fw-bold');
+      link.parentElement.classList.add('active');
+
+      // Show only selected category
+      document.querySelectorAll('.category-section').forEach(section => {
+        if (section.dataset.category === cat) {
+          section.style.display = 'block';
+          section.classList.remove('d-none');
+          section.classList.add('hidden-fade');
+          section.parentNode.prepend(section);
+
+          requestAnimationFrame(() => {
+            section.classList.remove('hidden-fade');
+          });
+        } else {
+          section.style.display = 'none';
+        }
       });
     });
   });
 
+  // "Show All" button handler
+  const showAllBtn = document.getElementById('show-all-categories');
+  if (showAllBtn) {
+    showAllBtn.addEventListener('click', e => {
+      e.preventDefault();
+      clearFilter();
+    });
+  }
+
   // Initial render
   renderCart();
+  applyFilterState(); // Restore filter state on page load
 })();
 </script>
 

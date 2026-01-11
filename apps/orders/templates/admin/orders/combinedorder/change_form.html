@@ -1,0 +1,19 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block field_sets %}
+<div id="combined-order-info" style="background-color: #e8f4f8; border-left: 4px solid #2196F3; padding: 15px; margin-bottom: 20px; border-radius: 4px; position: relative;">
+    <button type="button" onclick="document.getElementById('combined-order-info').style.display='none';" style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 20px; cursor: pointer; color: #666; padding: 0; width: 24px; height: 24px; line-height: 20px;">&times;</button>
+    <h3 style="margin-top: 0; color: #1976D2; padding-right: 30px;">
+        <span style="font-size: 1.2em;">ℹ️</span> How to Create and Download a Combined Order
+    </h3>
+    <ol style="margin-bottom: 0; line-height: 1.8;">
+        <li><strong>Specify the order details:</strong> Fill in the program and select the orders to include in this combined order.</li>
+        <li><strong>Save the combined order:</strong> Click the "Save" button to create the combined order.</li>
+        <li><strong>Return to the list page:</strong> After saving, navigate back to the Combined Orders list page.</li>
+        <li><strong>Download the PDF:</strong> Select your newly created combined order from the list and use the "Download Combined Order PDF" action from the actions dropdown.</li>
+    </ol>
+</div>
+
+{{ block.super }}
+{% endblock %}

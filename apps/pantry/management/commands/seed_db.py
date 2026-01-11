@@ -3,11 +3,11 @@
 import random
 from decimal import Decimal
 from django.core.management.base import BaseCommand
-from pantry.models import (
+from apps.pantry.models import (
     Category, Product
 )
 
-from pantry.tests.factories import (
+from apps.pantry.tests.factories import (
     ParticipantFactory, VoucherFactory, OrderFactory, OrderItemFactory
 )
 
@@ -107,15 +107,27 @@ class Command(BaseCommand):
         # Create participants
         self.stdout.write("Seeding participants...")
         participants = [ParticipantFactory() for _ in range(20)]
-        self.stdout.write(self.style.SUCCESS(f"{len(participants)} participants created."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"{len(participants)} participants created."
+            )
+        )
 
         # Create vouchers
         self.stdout.write("Seeding vouchers...")
         vouchers = []
         for participant in participants:
-            voucher = VoucherFactory(participant=participant, base_balance=random.randint(50, 200))
+            # Set the account balance
+            account = participant.accountbalance
+            account.base_balance = random.randint(50, 200)  # noqa: S311
+            account.save()
+            
+            # Create voucher linked to the account
+            voucher = VoucherFactory(account=account)
             vouchers.append(voucher)
-        self.stdout.write(self.style.SUCCESS(f"{len(vouchers)} vouchers created."))
+        self.stdout.write(
+            self.style.SUCCESS(f"{len(vouchers)} vouchers created.")
+        )
 
         # Create orders and order items
         self.stdout.write("Seeding orders...")

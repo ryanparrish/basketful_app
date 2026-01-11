@@ -6,6 +6,7 @@ import logging
 
 # Django core
 from django.contrib import messages
+from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
@@ -26,86 +27,133 @@ from .utils import get_active_vouchers
 logger = logging.getLogger(__name__)
 
 
+def get_base_products():
+    """Get base queryset of active products with categories."""
+    return Product.objects.filter(
+        category__isnull=False,
+        active=True
+    ).select_related('category').order_by("category", "name")
+
+
+def search_products(queryset, query):
+    """
+    Search products using fuzzy matching with trigram similarity.
+    Falls back to basic contains search if trigrams aren't available.
+    """
+    if not query:
+        return queryset
+    
+    try:
+        # Use trigram similarity for fuzzy search
+        queryset = queryset.annotate(
+            name_similarity=TrigramSimilarity('name', query),
+            desc_similarity=TrigramSimilarity('description', query),
+            cat_similarity=TrigramSimilarity('category__name', query),
+        ).filter(
+            Q(name_similarity__gt=0.1) |
+            Q(desc_similarity__gt=0.1) |
+            Q(cat_similarity__gt=0.1)
+        ).order_by('-name_similarity', '-desc_similarity', '-cat_similarity')
+    except Exception as e:
+        logger.warning(
+            f"Trigram search failed, using basic search: {e}"
+        )
+        # Fallback to basic case-insensitive search
+        queryset = queryset.filter(
+            Q(name__icontains=query) |
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)
+        )
+    
+    return queryset
+
+
+def group_products_by_category(products, all_products_for_cart=None):
+    """
+    Group products by category and prepare JSON data.
+    
+    Args:
+        products: Products to display (may be filtered by search)
+        all_products_for_cart: Optional complete product list for cart rendering
+        
+    Returns tuple of (products_by_category, products_json, all_products_json).
+    """
+    products_by_category = {}
+    display_products = {}
+    
+    for product in products:
+        category = product.category
+        products_by_category.setdefault(category, []).append(product)
+        display_products[product.id] = {
+            "name": product.name,
+            "price": float(product.price)
+        }
+    
+    # Use all_products_for_cart if provided, otherwise use display products
+    if all_products_for_cart is not None:
+        cart_products = {}
+        for product in all_products_for_cart:
+            cart_products[product.id] = {
+                "name": product.name,
+                "price": float(product.price)
+            }
+        all_products_json = mark_safe(json.dumps(cart_products))
+    else:
+        all_products_json = mark_safe(json.dumps(display_products))
+    
+    products_json = mark_safe(json.dumps(display_products))
+    return products_by_category, products_json, all_products_json
+
 
 @login_required
 def product_view(request):
     """Product selection page for creating a new order."""
     query = request.GET.get("q", "")
     
-    # Debug: Check total products
-    total_products = Product.objects.count()
-    logger.info(f"Total products in database: {total_products}")
+    # Get base products (all active products)
+    all_products = get_base_products()
+    logger.info(f"Base products count: {all_products.count()}")
     
-    products = Product.objects.filter(
-        category__isnull=False,
-        active=True
-    ).select_related('category').order_by("category", "name")
-    
-    logger.info(f"Products with categories: {products.count()}")
-    logger.info(f"SQL Query: {products.query}")
-    logger.info(f"Query parameter: '{query}'")
-
+    # Apply search if query exists
     if query:
-        products = products.filter(
-            Q(name__icontains=query)
-            | Q(description__icontains=query)
-            | Q(category__name__icontains=query)
-        )
-        logger.info(f"Products after query filter: {products.count()}")
-
+        filtered_products = search_products(all_products, query)
+        logger.info(f"Products after search '{query}': {filtered_products.count()}")
+    else:
+        filtered_products = all_products
+    
+    # Check for active vouchers
     participant = request.user.participant
     active_vouchers = get_active_vouchers(participant)
-    logger.info(f"Active vouchers for {participant}: {active_vouchers.count()}")
-    
-    logger.info(f"Products before voucher check: {products.count()}")
     
     if not active_vouchers.exists():
         messages.warning(
             request,
-            "You don't have any active vouchers. Please contact your coach."
+            "You don't have any active vouchers. "
+            "Please contact your coach."
         )
         return redirect("participant_dashboard")
     
-    logger.info(f"Products after voucher check: {products.count()}")
-
-    # Group products by category
-    products_by_category = {}
-    all_products = {}
+    # Group products and prepare data
+    # Pass all_products for cart rendering to fix search bug
+    products_by_category, products_json, all_products_json = group_products_by_category(
+        filtered_products,
+        all_products_for_cart=all_products
+    )
     
-    # Force evaluation of queryset to a list
-    logger.info(f"About to convert to list, products count: {products.count()}")
-    # Create a fresh queryset to avoid any caching issues
-    products_fresh = Product.objects.filter(
-        category__isnull=False,
-        active=True
-    ).select_related('category').order_by("category", "name")
-    products_list = list(products_fresh)
-    logger.info(f"Starting to process {len(products_list)} products")
+    # Get existing cart from session for persistence
+    session_cart = request.session.get("cart", {})
     
-    for idx, product in enumerate(products_list):
-        logger.info(
-            f"Processing product {idx + 1}: ID={product.id}, "
-            f"Name={product.name}, Category ID={product.category_id}"
-        )
-        category = product.category
-        products_by_category.setdefault(category, []).append(product)
-        all_products[product.id] = {
-            "name": product.name,
-            "price": float(product.price)
-        }
-        if idx == 0:
-            logger.info(f"First product processed successfully: {product.name}")
-
-    logger.info(f"Total products to display: {len(all_products)}")
-    products_json = mark_safe(json.dumps(all_products))
+    logger.info(f"Total products to display: {len(products_by_category)}")
 
     return render(
         request,
-        "food_orders/create_order.html",
+        "pantry/create_order.html",
         {
             "products_by_category": products_by_category,
             "products_json": products_json,
+            "all_products_json": all_products_json,
             "query": query,
+            "session_cart": json.dumps(session_cart),
         },
     )
 

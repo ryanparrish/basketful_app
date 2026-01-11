@@ -119,12 +119,28 @@ def assign_orders_to_packers(
 
 def create_child_combined_orders(program: Program, orders: List[Order], packer) -> List[CombinedOrder]:
     """Create child combined orders for a packer."""
+    from django.utils import timezone
+    
     child_orders = []
+    current_year = timezone.now().year
+    current_week = timezone.now().isocalendar()[1]
+    
     for order in orders:
-        combined_order = CombinedOrder.objects.create(
+        # Try to get existing combined order for this program/week
+        combined_order, created = CombinedOrder.objects.get_or_create(
             program=program,
-            packed_by=packer,
+            created_at__year=current_year,
+            created_at__week=current_week,
+            is_parent=False,
+            defaults={
+                'program': program,
+            }
         )
+        # Note: packed_by field is currently commented out in model
+        # if not created and packer:
+        #     combined_order.packed_by = packer
+        #     combined_order.save(update_fields=["packed_by"])
+        
         combined_order.orders.add(order)
         summarized = combined_order.summarized_items_by_category()
         combined_order.summarized_data = summarized
@@ -140,11 +156,28 @@ def create_child_combined_orders(program: Program, orders: List[Order], packer) 
 
 def create_parent_combined_order(program: Program, child_orders: List[CombinedOrder], packer=None) -> CombinedOrder:
     """Create parent combined order that aggregates all child orders."""
-    parent_order = CombinedOrder.objects.create(
+    from django.utils import timezone
+    
+    current_year = timezone.now().year
+    current_week = timezone.now().isocalendar()[1]
+    
+    # Get or create parent combined order for this program/week
+    parent_order, created = CombinedOrder.objects.get_or_create(
         program=program,
-        packed_by=packer,
+        created_at__year=current_year,
+        created_at__week=current_week,
         is_parent=True,
+        defaults={
+            'program': program,
+            'is_parent': True,
+        }
     )
+    
+    # Note: packed_by field is currently commented out in model
+    # if not created and packer:
+    #     parent_order.packed_by = packer
+    #     parent_order.save(update_fields=["packed_by"])
+    
     all_orders = Order.objects.filter(combined_orders__in=child_orders).distinct()
     parent_order.orders.set(all_orders)
     parent_order.summarized_data = parent_order.summarized_items_by_category()

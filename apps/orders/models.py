@@ -5,11 +5,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
+import secrets
+from datetime import datetime
 # Django imports
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
-from django.db.models import UniqueConstraint, F
-from django.db.models.functions import ExtractWeek, ExtractYear
+# Local imports
+from apps.pantry.models import CategoryLimitValidator
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,29 @@ class Order(models.Model):
         self.status = "confirmed"
         self.save()
 
+    @staticmethod
+    def _generate_order_number():
+        """Generate a unique order number with format: ORD-YYYYMMDD-XXXXXX."""
+        timestamp = datetime.now().strftime('%Y%m%d')
+        # Generate 6 random alphanumeric characters for uniqueness
+        random_part = secrets.token_hex(3).upper()  # 6 chars
+        return f'ORD-{timestamp}-{random_part}'
+
+    def _ensure_order_number(self):
+        """Ensure order has a unique order number, generating one if needed."""
+        if not self.order_number:
+            max_attempts = 10
+            for _ in range(max_attempts):
+                candidate = self._generate_order_number()
+                if not Order.objects.filter(order_number=candidate).exists():
+                    self.order_number = candidate
+                    return
+            # If we couldn't generate unique number after max_attempts,
+            # fall back to timestamp + pk (will be set after save)
+            raise ValidationError(
+                "Failed to generate unique order number after multiple attempts"
+            )
+
     def clean(self):
         """
         Validate order constraints:
@@ -89,6 +114,23 @@ class Order(models.Model):
 
         errors = []
 
+        # Check if order has been saved (has items)
+        if not self.pk:
+            # Order hasn't been saved yet, skip validation that requires items
+            return
+
+        # --- Available balance (food items) ---
+        food_items = [
+            item for item in self.items.select_related("product")
+            if getattr(item.product.category, "name", "").lower() != "hygiene"
+        ]
+        food_total = sum(item.total_price() for item in food_items)
+        available_balance = getattr(self.account, "available_balance", 0)
+        if food_total > available_balance:
+            errors.append(
+                f"Food balance exceeded: ${food_total} > ${available_balance}"
+            )
+
         # --- Hygiene balance ---
         hygiene_items = [
             item for item in self.items.select_related("product")
@@ -97,11 +139,17 @@ class Order(models.Model):
         hygiene_total = sum(item.total_price() for item in hygiene_items)
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
         if hygiene_total > hygiene_balance:
-            errors.append(f"Hygiene limit exceeded: {hygiene_total} > {hygiene_balance}")
+            errors.append(
+                f"Hygiene balance exceeded: "
+                f"${hygiene_total} > ${hygiene_balance}"
+            )
 
         # --- Category limits ---
         try:
-            self._validate_category_limits()
+            participant = getattr(self.account, "participant", None)
+            CategoryLimitValidator.validate_category_limits(
+                self.items.all(), participant
+            )
         except ValidationError as e:
             errors.extend(e.error_list if hasattr(e, "error_list") else [e])
 
@@ -115,62 +163,105 @@ class Order(models.Model):
 
         # --- Log errors and raise ---
         if errors:
+            from django.db import transaction
+            # Save logs in a separate transaction so they persist even if
+            # the main transaction is rolled back
             for msg in errors:
-                OrderValidationLog.objects.create(order=self, error_message=str(msg))
+                try:
+                    with transaction.atomic():
+                        OrderValidationLog.objects.create(
+                            order=self,
+                            error_message=str(msg)
+                        )
+                except Exception as log_error:
+                    # Don't let logging failures prevent validation errors
+                    logger.error(
+                        f"Failed to create OrderValidationLog: {log_error}"
+                    )
             raise ValidationError(errors)
 
+    def _consume_vouchers(self):
+        """
+        Consume vouchers when order is confirmed.
+        
+        Rules:
+        - If order total <= 1 voucher amount: consume 1 voucher
+        - If order total > 1 voucher amount: consume both vouchers
+        - Participants can have max 2 active vouchers
+        """
+        if self.status != "confirmed":
+            return
+        
+        from apps.voucher.models import Voucher
+        
+        order_total = self.total_price()
+        if order_total == 0:
+            return
+        
+        # Get active grocery vouchers for this account (max 2)
+        active_vouchers = list(Voucher.objects.filter(
+            account=self.account,
+            voucher_type='grocery',
+            active=True,
+            state='applied'
+        ).order_by('created_at')[:2])  # Limit to 2 vouchers max
+        
+        if not active_vouchers:
+            return
+        
+        # Calculate single voucher amount (they should all be the same)
+        single_voucher_amount = active_vouchers[0].voucher_amnt if active_vouchers else Decimal('0')
+        
+        # Determine how many vouchers to consume
+        if order_total <= single_voucher_amount:
+            # Order total is less than or equal to one voucher: consume 1
+            vouchers_to_consume = active_vouchers[:1]
+        else:
+            # Order total is greater than one voucher: consume all available (max 2)
+            vouchers_to_consume = active_vouchers
+        
+        # Mark vouchers as consumed
+        for voucher in vouchers_to_consume:
+            voucher.active = False
+            voucher.state = 'consumed'
+        
+        # Save all consumed vouchers
+        if vouchers_to_consume:
+            Voucher.objects.bulk_update(
+                vouchers_to_consume,
+                ['active', 'state'],
+                batch_size=100
+            )
+            logger.info(
+                f"Order {self.id}: Consumed {len(vouchers_to_consume)} voucher(s) "
+                f"for total ${order_total} (single voucher amount: ${single_voucher_amount})"
+            )
+
     def save(self, *args, **kwargs):
+        # Generate order number if this is a new order
+        if self.pk is None:
+            self._ensure_order_number()
+        
+        # Track if status is changing to confirmed
+        is_new = self.pk is None
+        old_status = None
+        
+        if not is_new:
+            try:
+                old_instance = Order.objects.get(pk=self.pk)
+                old_status = old_instance.status
+            except Order.DoesNotExist:
+                pass
+        
         with transaction.atomic():
-            self.full_clean()
+            # Skip validation if only updating specific fields
+            if 'update_fields' not in kwargs:
+                self.full_clean()
             super().save(*args, **kwargs)
-
-    # -----------------------------
-    # Private helpers
-    # -----------------------------
-    def _aggregate_category_data(self):
-        category_totals, category_units, category_products, category_objects = {}, {}, {}, {}
-        for item in self.items.all():
-            product = item.product
-            subcategory = getattr(product, "subcategory", None)
-            category = getattr(product, "category", None)
-            obj = subcategory or category
-            if not obj:
-                continue
-            cid = obj.id
-            category_totals[cid] = category_totals.get(cid, 0) + item.quantity
-            category_units[cid] = getattr(obj, "unit", "unit")
-            category_products.setdefault(cid, []).append(product)
-            category_objects[cid] = obj
-        return category_totals, category_units, category_products, category_objects
-
-    def _compute_allowed_quantity(self, product_manager, participant):
-        allowed = product_manager.limit
-        scope = product_manager.limit_scope
-        if scope == "per_adult":
-            allowed *= participant.adults
-        elif scope == "per_child":
-            allowed *= participant.children
-        elif scope == "per_infant":
-            allowed *= participant.diaper_count or 0
-        elif scope == "per_household":
-            allowed *= participant.household_size()
-        return allowed
-
-    def _validate_category_limits(self):
-        category_totals, _, category_products, category_objects = self._aggregate_category_data()
-        participant = getattr(self.account, "participant", None)
-        for cid, total in category_totals.items():
-            category = category_objects[cid]
-            pm = getattr(category, "product_manager", None)
-            if not pm or not pm.limit:
-                continue
-            allowed = self._compute_allowed_quantity(pm, participant)
-            if total > allowed:
-                product_names = ", ".join(p.name for p in category_products[cid])
-                raise ValidationError(
-                    f"Category limit exceeded for {category.name} "
-                    f"({total} > {allowed}). Products: {product_names}"
-                )
+            
+            # Consume vouchers if order is being confirmed
+            if self.status == "confirmed" and old_status != "confirmed":
+                self._consume_vouchers()
 
 
 class OrderItem(models.Model):
@@ -212,6 +303,7 @@ class OrderItem(models.Model):
 
 class CombinedOrder(models.Model):
   
+    name = models.CharField(max_length=255, blank=True)
     program = models.ForeignKey("lifeskills.Program", on_delete=models.CASCADE, related_name="combined_orders")
     orders = models.ManyToManyField("Order", related_name="combined_orders", blank=True)
     # packed_by = models.ForeignKey("pantry.OrderPacker", on_delete=models.SET_NULL, null=True, blank=True, related_name="combined_orders")
@@ -237,14 +329,9 @@ class CombinedOrder(models.Model):
         return summary
 
     class Meta:
-        constraints = [
-            UniqueConstraint(
-                F("program"),
-                ExtractYear("created_at"),
-                ExtractWeek("created_at"),
-                name="unique_program_per_week",
-            )
-        ]
+        pass
 
     def __str__(self):
+        if self.name:
+            return f"{self.program.name} - {self.name}"
         return f"{self.program.name} Combined Order ({self.created_at and self.created_at.strftime('%Y-%m-%d')})"

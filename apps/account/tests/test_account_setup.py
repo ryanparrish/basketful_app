@@ -188,20 +188,37 @@ class TestUserOnboardingSignals:
     onboarding emails.
     """
 
-    @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
-    def test_initialize_participant_creates_user_and_profile(self, voucher_setting_fixture, mocker):
+    @override_settings(
+        CELERY_TASK_ALWAYS_EAGER=True,
+        CELERY_TASK_EAGER_PROPAGATES=True,
+        CELERY_BROKER_BACKEND='memory',
+        CELERY_RESULT_BACKEND='cache',
+        CELERY_CACHE_BACKEND='memory'
+    )
+    def test_initialize_participant_creates_user_and_profile(
+        self, voucher_setting_fixture, mocker
+    ):
         """
         Tests that if `create_user=True`, the signal correctly calls the user
         creation utility, links the new user, and creates a UserProfile.
         """
         # --- ARRANGE ---
+        # --- Patch the email task to prevent Celery connection attempts ---
+        mocker.patch(
+            "apps.account.signals.send_new_user_onboarding_email.delay"
+        )
         # --- Use the `mocker` fixture to patch the user creation function ---
         # --- This isolates the test to the signal logic itself. ---
         mock_create_user = mocker.patch(
             "apps.account.signals.create_participant_user"
         )
-        mock_user = User(id=1, username="mocked")  # A mock User object
-        mock_create_user.return_value = mock_user # Make the patch return our mock user
+        # Create a real user in the database instead of mock
+        mock_user = User.objects.create(
+            username="mocked",
+            email="mocked@example.com"
+        )
+        # Make the patch return our real user
+        mock_create_user.return_value = mock_user
 
         # --- ACT ---
         # --- Create a participant with the flag to create a user ---
@@ -209,12 +226,14 @@ class TestUserOnboardingSignals:
         participant.refresh_from_db()
 
         # --- ASSERT ---
-        # --- Check that the participant is now linked to the user returned by the mock ---
+        # --- Check that participant is linked to user ---
         assert participant.user == mock_user
         # --- Check that a UserProfile was created for this user ---
-        self.assertTrue(UserProfile.objects.filter(user=mock_user).exists())
+        assert UserProfile.objects.filter(user=mock_user).exists()
 
-    def test_initialize_participant_triggers_onboarding_email(self, voucher_setting_fixture, mocker):
+    def test_initialize_participant_triggers_onboarding_email(
+        self, voucher_setting_fixture, mocker
+    ):
         """
         Tests that creating a participant with a new user also triggers the
         onboarding email task.
@@ -227,14 +246,18 @@ class TestUserOnboardingSignals:
         mock_send_email = mocker.patch(
             "apps.account.signals.send_new_user_onboarding_email.delay"
         )
-        mock_user = User(id=2, username="mocked2")
+        # Create a real user in the database instead of mock
+        mock_user = User.objects.create(
+            username="mocked2",
+            email="mocked2@example.com"
+        )
         mock_create_user.return_value = mock_user
 
         # --- ACT ---
         ParticipantFactory(create_user=True)
 
         # --- ASSERT ---
-        # --- Verify that the email task's `.delay()` method was called exactly once with the new user's ID ---
+        # --- Verify that the email task's `.delay()` method was called ---
         mock_send_email.assert_called_once_with(user_id=mock_user.id)
 
     def test_create_staff_user_triggers_onboarding(self, mocker):
@@ -346,3 +369,154 @@ class TestEmailTasks:
         # --- ASSERT ---
         # --- Verify that the email sending function was never called ---
         mock_send_email.assert_not_called()
+
+
+# ============================================================
+# Admin Action Tests
+# ============================================================
+
+
+@pytest.mark.django_db
+class TestParticipantAdminActions:
+    """Test admin actions for Participant model."""
+
+    def test_reset_password_and_send_email_action(self, mocker):
+        """
+        Test that the reset_password_and_send_email admin action:
+        1. Resets the user's password
+        2. Sets must_change_password flag
+        3. Sends password reset email
+        """
+        from apps.account.admin import ParticipantAdmin
+        from apps.orders.tests.factories import (
+            UserFactory,
+            ProgramFactory
+        )
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        # Mock the Celery task
+        mock_send_email_task = mocker.patch(
+            "apps.account.admin.send_password_reset_email.delay"
+        )
+        
+        # Mock the signal to prevent it from creating AccountBalance
+        mocker.patch("apps.account.signals.setup_account_and_vouchers")
+
+        # Create test data manually to avoid factory conflicts
+        user1 = UserFactory(email="user1@test.com")
+        user2 = UserFactory(email="user2@test.com")
+        program = ProgramFactory()
+        
+        participant1 = Participant.objects.create(
+            name="Test Participant 1",
+            email="participant1@test.com",
+            user=user1,
+            program=program
+        )
+        participant2 = Participant.objects.create(
+            name="Test Participant 2",
+            email="participant2@test.com",
+            user=user2,
+            program=program
+        )
+        
+        # Create AccountBalance records manually
+        # Use get_or_create in case signal already created them
+        AccountBalance.objects.get_or_create(
+            participant=participant1,
+            defaults={'base_balance': Decimal("100.00")}
+        )
+        AccountBalance.objects.get_or_create(
+            participant=participant2,
+            defaults={'base_balance': Decimal("100.00")}
+        )
+        
+        # Get original password hashes
+        original_hash1 = user1.password
+        original_hash2 = user2.password
+
+        # Setup admin
+        site = AdminSite()
+        admin = ParticipantAdmin(Participant, site)
+        
+        # Mock message_user to avoid middleware requirement
+        admin.message_user = mocker.Mock()
+        
+        request = RequestFactory().get('/')        # Create queryset
+        queryset = Participant.objects.filter(
+            id__in=[participant1.id, participant2.id]
+        )
+        
+        # Execute action
+        admin.reset_password_and_send_email(request, queryset)
+        
+        # Refresh users from database
+        user1.refresh_from_db()
+        user2.refresh_from_db()
+        
+        # Verify passwords were changed
+        assert user1.password != original_hash1
+        assert user2.password != original_hash2
+        
+        # Verify must_change_password flag is set
+        profile1 = UserProfile.objects.get(user=user1)
+        profile2 = UserProfile.objects.get(user=user2)
+        assert profile1.must_change_password is True
+        assert profile2.must_change_password is True
+        
+        # Verify email task was called for both users
+        assert mock_send_email_task.call_count == 2
+        mock_send_email_task.assert_any_call(user1.id)
+        mock_send_email_task.assert_any_call(user2.id)
+
+    def test_reset_password_skips_participants_without_user(self, mocker):
+        """
+        Test that participants without a user are skipped gracefully.
+        """
+        from apps.account.admin import ParticipantAdmin
+        from apps.orders.tests.factories import ProgramFactory
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        # Mock the Celery task
+        mock_send_email_task = mocker.patch(
+            "apps.account.admin.send_password_reset_email.delay"
+        )
+        
+        # Mock the signal to prevent it from creating AccountBalance
+        mocker.patch("apps.account.signals.setup_account_and_vouchers")
+
+        # Create participant manually without user
+        program = ProgramFactory()
+        participant = Participant.objects.create(
+            name="No User Participant",
+            email="nouser@test.com",
+            user=None,
+            program=program
+        )
+        
+        # Create AccountBalance manually
+        # Use get_or_create in case signal already created it
+        AccountBalance.objects.get_or_create(
+            participant=participant,
+            defaults={'base_balance': Decimal("100.00")}
+        )
+        
+        # Setup admin
+        site = AdminSite()
+        admin = ParticipantAdmin(Participant, site)
+        
+        # Mock message_user to avoid middleware requirement
+        admin.message_user = mocker.Mock()
+        
+        request = RequestFactory().get('/')
+        
+        # Create queryset
+        queryset = Participant.objects.filter(id=participant.id)
+        
+        # Execute action - should not crash
+        admin.reset_password_and_send_email(request, queryset)
+        
+        # Verify email task was not called
+        mock_send_email_task.assert_not_called()

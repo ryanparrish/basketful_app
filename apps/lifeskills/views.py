@@ -10,6 +10,8 @@ from apps.account.models import AccountBalance
 from apps.voucher.models import Voucher
 from apps.orders.models import Order
 from apps.orders.utils.order_services import encode_order_id
+from core.utils import can_place_order
+
 
 def get_active_vouchers(participant):
     """
@@ -22,7 +24,7 @@ def get_active_vouchers(participant):
     except ObjectDoesNotExist:
         return Voucher.active_vouchers.none()
     return Voucher.active_vouchers.filter(
-        account=account_balance, 
+        account=account_balance,
         state=Voucher.APPLIED
     )
 
@@ -47,6 +49,9 @@ def participant_dashboard(request):
     program = participant.program if participant.program else None
     has_vouchers = get_active_vouchers(participant).exists()
 
+    # Check order window
+    can_order, order_window_context = can_place_order(participant)
+
     for order in orders:
         order.hash = encode_order_id(order.id)
 
@@ -59,5 +64,7 @@ def participant_dashboard(request):
             "participant": participant,
             "program": program,
             "has_vouchers": has_vouchers,
+            "can_order": can_order,
+            "order_window": order_window_context,
         },
     )

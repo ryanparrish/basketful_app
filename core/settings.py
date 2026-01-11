@@ -162,7 +162,7 @@ INSTALLED_APPS = [
     'apps.lifeskills',
     'apps.voucher',
     'apps.account',
-    'apps.pantry',
+    'apps.pantry.apps.PantryConfig',
     'apps.orders',
     'core',
 ]

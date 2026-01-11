@@ -64,10 +64,12 @@ def participant(program):
 @pytest.fixture
 def account_balance(participant, voucher_setting):
     """Create an account balance for the participant."""
-    return AccountBalance.objects.create(
+    # Use get_or_create to avoid conflict with signal
+    balance, _ = AccountBalance.objects.get_or_create(
         participant=participant,
-        base_balance=Decimal('100.00')
+        defaults={'base_balance': Decimal('100.00')}
     )
+    return balance
 
 
 @pytest.fixture

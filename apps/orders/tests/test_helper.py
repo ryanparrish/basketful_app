@@ -22,12 +22,12 @@ def test_order_item_total_price(order_with_items_setup):
 
 @pytest.mark.django_db
 def test_order_total_price(order_with_items_setup):
-    """Checks that the `total_price` property on an Order correctly sums its items."""
+    """Checks that the `total_price` method on an Order correctly sums its items."""
     # --- ARRANGE ---
     order = order_with_items_setup["order"] # $7.50 + $6.00
 
     # --- ASSERT ---
-    assert order.total_price == Decimal("13.50")
+    assert order.total_price() == Decimal("13.50")
 
 
 def create_order(participant, status="pending"):

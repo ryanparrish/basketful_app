@@ -19,20 +19,23 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib.auth.views import LogoutView
 # First-party
 from apps.orders import views as order_views
 from apps.lifeskills import views as lifeskills_views
 from apps.account import views as account_views
 from apps.pantry import views as pantry_views
-from .views import index
+from .views import index, admin_logout_view
 
 admin.site.site_header = "BasketFul App"
 admin.site.site_title = "Love Your Neighbor - Basketful"
 admin.site.index_title = "Welcome to Your Admin"
 
+# Override admin logout URL
+admin.site.logout_template = None  # Use custom view instead
+
 urlpatterns = [
     path('', index, name='index'),
+    path('admin/logout/', admin_logout_view, name='admin_logout'),
     path('admin/', admin.site.urls),
     path(
         'login/',
@@ -78,7 +81,9 @@ urlpatterns = [
     ),
     path(
         'accounts/logout/',
-        auth_views.LogoutView.as_view(),
+        auth_views.LogoutView.as_view(
+            template_name='registration/logged_out.html'
+        ),
         name='logout',
     ),
     path(
@@ -90,18 +95,6 @@ urlpatterns = [
         "order/<str:order_hash>/",
         order_views.order_detail,
         name="order_detail",
-    ),
-    path(
-        'admin/logout/',
-        LogoutView.as_view(next_page='/admin/login/'),
-        name='admin_logout',
-    ),
-    path(
-        'accounts/logout/',
-        auth_views.LogoutView.as_view(
-            template_name='registration/logged_out.html'
-        ),
-        name='logout',
     ),
     path(
         'password_reset/',

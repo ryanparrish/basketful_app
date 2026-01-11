@@ -21,10 +21,14 @@
  
   </div>
 <div class="">
+  {% if can_order %}
   <form method="post" class="">
     {% csrf_token %}
     <button type="submit" name="duplicate_order" class="btn btn-md btn-secondary"> Copy Order to Cart</button>
   </form>
+  {% else %}
+  <button type="button" class="btn btn-md btn-secondary" disabled title="{{ window_message }}"> Copy Order to Cart</button>
+  {% endif %}
   </div>
 </div>
 </div>
