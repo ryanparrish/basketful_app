@@ -1,5 +1,5 @@
 # Django 5.x series
-Django>=5.2,<5.3
+Django>=5.2.10,<5.3
 django_environ==0.12.0
 django_recaptcha==4.1.0
 django_ulid==0.0.4
