@@ -207,24 +207,30 @@ class ParticipantAdmin(admin.ModelAdmin):
         Uses force=True to bypass the duplicate check.
         """
         sent_count = 0
-        skipped_count = 0
+        skipped_no_user = 0
+        skipped_no_email = 0
         
         for participant in queryset:
             if not participant.user:
-                skipped_count += 1
+                skipped_no_user += 1
                 continue
             
             if not participant.user.email:
-                skipped_count += 1
+                skipped_no_email += 1
                 continue
             
             send_new_user_onboarding_email.delay(participant.user.id, force=True)
             sent_count += 1
         
-        self.message_user(
-            request,
-            f"Queued {sent_count} onboarding email(s). Skipped {skipped_count}."
-        )
+        messages = []
+        if sent_count:
+            messages.append(f"Queued {sent_count} onboarding email(s). Check Log > Email Logs for delivery status.")
+        if skipped_no_user:
+            messages.append(f"Skipped {skipped_no_user} (no user account).")
+        if skipped_no_email:
+            messages.append(f"Skipped {skipped_no_email} (no email address).")
+        
+        self.message_user(request, " ".join(messages) or "No participants selected.")
     resend_onboarding_email.short_description = "Resend onboarding email"
 
     def resend_password_reset_email(self, request, queryset):
@@ -233,24 +239,30 @@ class ParticipantAdmin(admin.ModelAdmin):
         Uses force=True to bypass the duplicate check.
         """
         sent_count = 0
-        skipped_count = 0
+        skipped_no_user = 0
+        skipped_no_email = 0
         
         for participant in queryset:
             if not participant.user:
-                skipped_count += 1
+                skipped_no_user += 1
                 continue
             
             if not participant.user.email:
-                skipped_count += 1
+                skipped_no_email += 1
                 continue
             
             send_password_reset_email.delay(participant.user.id, force=True)
             sent_count += 1
         
-        self.message_user(
-            request,
-            f"Queued {sent_count} password reset email(s). Skipped {skipped_count}."
-        )
+        messages = []
+        if sent_count:
+            messages.append(f"Queued {sent_count} password reset email(s). Check Log > Email Logs for delivery status.")
+        if skipped_no_user:
+            messages.append(f"Skipped {skipped_no_user} (no user account).")
+        if skipped_no_email:
+            messages.append(f"Skipped {skipped_no_email} (no email address).")
+        
+        self.message_user(request, " ".join(messages) or "No participants selected.")
     resend_password_reset_email.short_description = "Resend password reset email"
 
 

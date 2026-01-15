@@ -157,6 +157,7 @@ INSTALLED_APPS = [
     'django.contrib.auth',
     'django_bootstrap5',
     'django_recaptcha',
+    'django_celery_beat',
     'storages',
     'tinymce',
     'apps.log',
