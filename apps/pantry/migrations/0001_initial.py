@@ -23,7 +23,6 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name_plural': 'Categories',
                 'db_table': 'food_orders_category',
-                'managed': False,
             },
         ),
         migrations.CreateModel(
@@ -43,7 +42,6 @@ class Migration(migrations.Migration):
             ],
             options={
                 'db_table': 'food_orders_product',
-                'managed': False,
             },
         ),
         migrations.CreateModel(

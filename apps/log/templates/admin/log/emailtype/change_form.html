@@ -1,0 +1,281 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .preview-modal {
+        display: none;
+        position: fixed;
+        z-index: 10000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+    }
+    
+    .preview-modal-content {
+        background-color: #fff;
+        margin: 2% auto;
+        padding: 0;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 900px;
+        height: 90%;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .preview-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #ddd;
+        background: #f8f9fa;
+        border-radius: 8px 8px 0 0;
+    }
+    
+    .preview-modal-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: #333;
+    }
+    
+    .preview-modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #666;
+        line-height: 1;
+    }
+    
+    .preview-modal-close:hover {
+        color: #333;
+    }
+    
+    .preview-tabs {
+        display: flex;
+        border-bottom: 1px solid #ddd;
+        background: #f8f9fa;
+    }
+    
+    .preview-tab {
+        padding: 12px 24px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 14px;
+        color: #666;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -1px;
+    }
+    
+    .preview-tab:hover {
+        color: #333;
+        background: #fff;
+    }
+    
+    .preview-tab.active {
+        color: #417690;
+        border-bottom-color: #417690;
+        background: #fff;
+        font-weight: 600;
+    }
+    
+    .preview-subject {
+        padding: 12px 20px;
+        background: #e9ecef;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .preview-subject strong {
+        color: #666;
+    }
+    
+    .preview-body {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+    }
+    
+    .preview-pane {
+        display: none;
+        width: 100%;
+        height: 100%;
+    }
+    
+    .preview-pane.active {
+        display: block;
+    }
+    
+    .preview-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+    
+    .preview-text {
+        width: 100%;
+        height: 100%;
+        padding: 20px;
+        margin: 0;
+        overflow: auto;
+        background: #fff;
+        font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .preview-error {
+        padding: 40px;
+        text-align: center;
+        color: #dc3545;
+    }
+    
+    .preview-loading {
+        padding: 40px;
+        text-align: center;
+        color: #666;
+    }
+    
+    .preview-btn {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #417690;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-left: 10px;
+    }
+    
+    .preview-btn:hover {
+        background: #205067;
+    }
+</style>
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+{{ block.super }}
+{% if original %}
+<div style="margin-top: 10px;">
+    <button type="button" class="preview-btn" onclick="openPreviewModal()">
+        👁️ Preview Email
+    </button>
+</div>
+{% endif %}
+
+<!-- Preview Modal -->
+<div id="previewModal" class="preview-modal">
+    <div class="preview-modal-content">
+        <div class="preview-modal-header">
+            <h2>📧 Email Preview: <span id="previewTitle">Loading...</span></h2>
+            <button class="preview-modal-close" onclick="closePreviewModal()">&times;</button>
+        </div>
+        
+        <div class="preview-tabs">
+            <button class="preview-tab active" data-tab="html" onclick="switchTab('html')">
+                HTML Preview
+            </button>
+            <button class="preview-tab" data-tab="text" onclick="switchTab('text')">
+                Plain Text
+            </button>
+        </div>
+        
+        <div class="preview-subject" id="previewSubject">
+            <strong>Subject:</strong> <span id="subjectText">Loading...</span>
+        </div>
+        
+        <div class="preview-body">
+            <div id="htmlPane" class="preview-pane active">
+                <iframe id="htmlPreview" class="preview-iframe"></iframe>
+            </div>
+            <div id="textPane" class="preview-pane">
+                <pre id="textPreview" class="preview-text">Loading...</pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openPreviewModal() {
+        const modal = document.getElementById('previewModal');
+        const emailTypeId = '{{ original.pk }}';
+        
+        modal.style.display = 'block';
+        document.getElementById('previewTitle').textContent = 'Loading...';
+        document.getElementById('subjectText').textContent = 'Loading...';
+        document.getElementById('textPreview').textContent = 'Loading...';
+        
+        // Fetch preview data
+        fetch(`/admin/log/emailtype/${emailTypeId}/preview/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('previewTitle').textContent = data.display_name;
+                    document.getElementById('subjectText').textContent = data.subject;
+                    
+                    // Set HTML content in iframe
+                    const iframe = document.getElementById('htmlPreview');
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    iframeDoc.open();
+                    iframeDoc.write(data.html || '<p style="padding: 20px; color: #666;">No HTML content available.</p>');
+                    iframeDoc.close();
+                    
+                    // Set text content
+                    document.getElementById('textPreview').textContent = 
+                        data.text || 'No plain text content available.';
+                } else {
+                    document.getElementById('previewTitle').textContent = 'Error';
+                    document.getElementById('subjectText').textContent = data.error || 'Unknown error';
+                }
+            })
+            .catch(error => {
+                document.getElementById('previewTitle').textContent = 'Error';
+                document.getElementById('subjectText').textContent = error.message;
+            });
+    }
+    
+    function closePreviewModal() {
+        document.getElementById('previewModal').style.display = 'none';
+    }
+    
+    function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.preview-tab').forEach(tab => {
+            tab.classList.remove('active');
+            if (tab.dataset.tab === tabName) {
+                tab.classList.add('active');
+            }
+        });
+        
+        // Update panes
+        document.querySelectorAll('.preview-pane').forEach(pane => {
+            pane.classList.remove('active');
+        });
+        document.getElementById(tabName + 'Pane').classList.add('active');
+    }
+    
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('previewModal');
+        if (event.target === modal) {
+            closePreviewModal();
+        }
+    }
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closePreviewModal();
+        }
+    });
+</script>
+{% endblock %}

@@ -158,6 +158,7 @@ INSTALLED_APPS = [
     'django_bootstrap5',
     'django_recaptcha',
     'storages',
+    'tinymce',
     'apps.log',
     'apps.lifeskills',
     'apps.voucher',
@@ -273,4 +274,20 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']
+
+# TinyMCE Configuration
+TINYMCE_DEFAULT_CONFIG = {
+    'height': 500,
+    'width': '100%',
+    'menubar': 'file edit view insert format tools table help',
+    'plugins': 'advlist autolink lists link image charmap preview anchor '
+               'searchreplace visualblocks code fullscreen insertdatetime '
+               'media table paste code help wordcount',
+    'toolbar': 'undo redo | formatselect | bold italic backcolor | '
+               'alignleft aligncenter alignright alignjustify | '
+               'bullist numlist outdent indent | removeformat | code | help',
+    'content_style': 'body { font-family: -apple-system, BlinkMacSystemFont, '
+                     '"Segoe UI", Roboto, Helvetica, Arial, sans-serif; '
+                     'font-size: 14px; }',
+}
 

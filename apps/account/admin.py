@@ -15,7 +15,7 @@ from .forms import CustomUserCreationForm, ParticipantAdminForm
 from .models import UserProfile, AccountBalance
 from .utils.user_utils import _generate_admin_username
 from .utils.balance_utils import calculate_base_balance
-from .tasks.email import send_password_reset_email
+from .tasks.email import send_password_reset_email, send_new_user_onboarding_email
 User = get_user_model()
 
 # Lazily load the Product model to avoid circular import issues
@@ -105,7 +105,7 @@ class ParticipantAdmin(admin.ModelAdmin):
         'hygiene_balance_display',
         'get_base_balance',
     )
-    actions = ['calculate_base_balance_action', 'reset_password_and_send_email']
+    actions = ['calculate_base_balance_action', 'reset_password_and_send_email', 'resend_onboarding_email', 'resend_password_reset_email']
 
     def full_balance_display(self, obj):
         """Display the full balance of the participant."""
@@ -200,5 +200,57 @@ class ParticipantAdmin(admin.ModelAdmin):
     reset_password_and_send_email.short_description = (
         "Reset password and send reset email"
     )
+
+    def resend_onboarding_email(self, request, queryset):
+        """
+        Resend onboarding email to selected participants.
+        Uses force=True to bypass the duplicate check.
+        """
+        sent_count = 0
+        skipped_count = 0
+        
+        for participant in queryset:
+            if not participant.user:
+                skipped_count += 1
+                continue
+            
+            if not participant.user.email:
+                skipped_count += 1
+                continue
+            
+            send_new_user_onboarding_email.delay(participant.user.id, force=True)
+            sent_count += 1
+        
+        self.message_user(
+            request,
+            f"Queued {sent_count} onboarding email(s). Skipped {skipped_count}."
+        )
+    resend_onboarding_email.short_description = "Resend onboarding email"
+
+    def resend_password_reset_email(self, request, queryset):
+        """
+        Resend password reset email to selected participants.
+        Uses force=True to bypass the duplicate check.
+        """
+        sent_count = 0
+        skipped_count = 0
+        
+        for participant in queryset:
+            if not participant.user:
+                skipped_count += 1
+                continue
+            
+            if not participant.user.email:
+                skipped_count += 1
+                continue
+            
+            send_password_reset_email.delay(participant.user.id, force=True)
+            sent_count += 1
+        
+        self.message_user(
+            request,
+            f"Queued {sent_count} password reset email(s). Skipped {skipped_count}."
+        )
+    resend_password_reset_email.short_description = "Resend password reset email"
 
 

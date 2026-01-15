@@ -1,6 +1,6 @@
 """Admin configuration for core app."""
 from django.contrib import admin
-from .models import OrderWindowSettings
+from .models import OrderWindowSettings, EmailSettings
 
 
 @admin.register(OrderWindowSettings)
@@ -117,6 +117,38 @@ class OrderWindowSettingsAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         """Prevent adding multiple instances (singleton)."""
         return not OrderWindowSettings.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of the settings."""
+        return False
+
+
+@admin.register(EmailSettings)
+class EmailSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Email Settings (singleton)."""
+    
+    list_display = ['from_email_default', 'reply_to_default', 'updated_at']
+    
+    fieldsets = (
+        ('Default Email Addresses', {
+            'fields': ('from_email_default', 'reply_to_default'),
+            'description': (
+                '<p><strong>Configure global default email addresses.</strong></p>'
+                '<p>These defaults are used when individual Email Types do not '
+                'specify their own from/reply-to addresses.</p>'
+                '<ul>'
+                '<li><strong>From Email:</strong> Leave blank to use Django\'s '
+                'DEFAULT_FROM_EMAIL setting.</li>'
+                '<li><strong>Reply-To:</strong> The default reply-to address '
+                'for all outgoing emails.</li>'
+                '</ul>'
+            ),
+        }),
+    )
+    
+    def has_add_permission(self, request):
+        """Prevent adding multiple instances (singleton)."""
+        return not EmailSettings.objects.exists()
     
     def has_delete_permission(self, request, obj=None):
         """Prevent deletion of the settings."""
