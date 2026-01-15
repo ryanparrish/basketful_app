@@ -4,10 +4,18 @@ on:
   push:
     branches:
       - main
+  workflow_run:
+    workflows: ["CI - Test and Lint"]
+    types:
+      - completed
+    branches:
+      - main
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    # Only run if tests passed
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
 
     steps:
       - name: Checkout code

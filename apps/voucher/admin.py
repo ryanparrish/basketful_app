@@ -27,11 +27,8 @@ class VoucherAdmin(admin.ModelAdmin):
     )
     actions = [mark_as_applied]
 
-    # Make some fields read-only
-    readonly_fields = ('voucher_amnt', 'notes')
-    
-    # Fields to hide from the admin form entirely
-    exclude = ('program_pause_flag', 'multiplier')
+    # Make some fields read-only to show metadata
+    readonly_fields = ('voucher_amnt', 'notes', 'program_pause_flag', 'multiplier', 'created_at', 'updated_at')
     
     # Add filters in the right sidebar
     list_filter = ('voucher_type', 'account', 'state', 'created_at')

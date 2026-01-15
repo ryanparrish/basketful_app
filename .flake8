@@ -1,0 +1,26 @@
+[flake8]
+# Ignore whitespace and line length
+# F401: imported but unused (common in __init__.py files)
+# F841: local variable assigned but never used (common in tests)
+# W293: blank line contains whitespace
+# W291: trailing whitespace
+# W292: no newline at end of file
+# W391: blank line at end of file
+# E501: line too long
+ignore = E501,W503,W504,E203,W293,W291,W292,W391,F401,F841
+max-line-length = 200
+exclude = 
+    .git,
+    __pycache__,
+    */migrations/*,
+    .venv,
+    venv,
+    env,
+    */staticfiles/*,
+    */static/*,
+    node_modules,
+    coverage,
+    htmlcov,
+    .pytest_cache,
+    *.pyc,
+    .DS_Store

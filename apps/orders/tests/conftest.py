@@ -1,9 +1,6 @@
 import pytest
 from decimal import Decimal
 from django.core.management import call_command
-from apps.orders.models import Order, OrderItem
-from apps.pantry.models import Category, Product
-from apps.account.models import Participant, AccountBalance
 
 
 @pytest.fixture(scope='session')
@@ -37,6 +34,10 @@ def order_with_items_setup(db):
         - item1: OrderItem instance (3 * $2.50 = $7.50)
         - item2: OrderItem instance (2 * $3.00 = $6.00)
     """
+    from apps.orders.models import Order, OrderItem
+    from apps.pantry.models import Category, Product
+    from apps.account.models import Participant, AccountBalance
+    
     # Create participant and account
     participant = Participant.objects.create(
         name="Test Participant",

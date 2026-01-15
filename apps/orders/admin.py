@@ -29,7 +29,7 @@ class OrderAdmin(admin.ModelAdmin):
 
     def display_total_price(self, obj):
         """Display the total price of the order."""
-        return obj.total_price
+        return f"${obj.total_price():.2f}"
     display_total_price.short_description = "Total Price"
 
     class Media:
@@ -75,7 +75,7 @@ class OrderAdmin(admin.ModelAdmin):
                 "Cannot confirm order: no active vouchers available."
             )
 
-        if not order.paid and order.total_price > 0:
+        if not order.paid and order.total_price() > 0:
             used = order.use_voucher()
 
         if used:

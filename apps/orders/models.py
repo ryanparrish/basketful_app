@@ -212,6 +212,21 @@ class Order(models.Model):
         # Calculate single voucher amount (they should all be the same)
         single_voucher_amount = active_vouchers[0].voucher_amnt if active_vouchers else Decimal('0')
         
+        # Calculate total available voucher balance
+        total_voucher_balance = sum(v.voucher_amnt for v in active_vouchers)
+        
+        # Validate order doesn't exceed voucher balance
+        if order_total > total_voucher_balance:
+            participant = getattr(self.account, 'participant', None)
+            logger.error(
+                f"Order {self.id}: Order total ${order_total} exceeds available "
+                f"voucher balance ${total_voucher_balance}"
+            )
+            raise ValidationError(
+                f"Order total ${order_total:.2f} exceeds available voucher balance "
+                f"${total_voucher_balance:.2f} for {participant}"
+            )
+        
         # Determine how many vouchers to consume
         if order_total <= single_voucher_amount:
             # Order total is less than or equal to one voucher: consume 1
@@ -220,16 +235,32 @@ class Order(models.Model):
             # Order total is greater than one voucher: consume all available (max 2)
             vouchers_to_consume = active_vouchers
         
-        # Mark vouchers as consumed
+        # Mark vouchers as consumed and create OrderVoucher records
+        from apps.voucher.models import OrderVoucher
+        
+        remaining = order_total
         for voucher in vouchers_to_consume:
+            # Calculate amount applied from this voucher
+            applied_amount = min(voucher.voucher_amnt, remaining)
+            remaining -= applied_amount
+            
+            # Mark voucher as consumed
             voucher.active = False
             voucher.state = 'consumed'
+            voucher.notes = (voucher.notes or "") + f"Used on order {self.id} for ${applied_amount:.2f}; "
+            
+            # Create OrderVoucher record to track application
+            OrderVoucher.objects.create(
+                order=self,
+                voucher=voucher,
+                applied_amount=applied_amount
+            )
         
         # Save all consumed vouchers
         if vouchers_to_consume:
             Voucher.objects.bulk_update(
                 vouchers_to_consume,
-                ['active', 'state'],
+                ['active', 'state', 'notes'],
                 batch_size=100
             )
             logger.info(
