@@ -253,6 +253,37 @@ def seed_email_types(apps, schema_editor):
     )
 
 
+def migrate_email_type_to_fk(apps, schema_editor):
+    """
+    Migrate existing EmailLog records from string email_type_old to FK email_type.
+    """
+    EmailLog = apps.get_model('log', 'EmailLog')
+    EmailType = apps.get_model('log', 'EmailType')
+    
+    # Build lookup of email type name -> id
+    email_type_map = {et.name: et.id for et in EmailType.objects.all()}
+    
+    # Update each EmailLog to set the new FK field
+    for log in EmailLog.objects.all():
+        old_type = log.email_type_old
+        if old_type and old_type in email_type_map:
+            log.email_type_id = email_type_map[old_type]
+            log.save(update_fields=['email_type_id'])
+
+
+def reverse_migrate_email_type(apps, schema_editor):
+    """Reverse: copy FK back to string field."""
+    EmailLog = apps.get_model('log', 'EmailLog')
+    EmailType = apps.get_model('log', 'EmailType')
+    
+    email_type_map = {et.id: et.name for et in EmailType.objects.all()}
+    
+    for log in EmailLog.objects.all():
+        if log.email_type_id and log.email_type_id in email_type_map:
+            log.email_type_old = email_type_map[log.email_type_id]
+            log.save(update_fields=['email_type_old'])
+
+
 def reverse_seed(apps, schema_editor):
     """Remove seeded EmailType records."""
     EmailType = apps.get_model('log', 'EmailType')
@@ -268,5 +299,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Step 1: Seed EmailType records
         migrations.RunPython(seed_email_types, reverse_seed),
+        # Step 2: Migrate existing EmailLog data from string to FK
+        migrations.RunPython(migrate_email_type_to_fk, reverse_migrate_email_type),
     ]

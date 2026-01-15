@@ -5,6 +5,38 @@ import tinymce.models
 from django.db import migrations, models
 
 
+def migrate_email_type_to_fk(apps, schema_editor):
+    """
+    Migrate existing EmailLog records from string email_type to FK.
+    This runs after EmailType records are created by 0005_seed_email_types.
+    """
+    EmailLog = apps.get_model('log', 'EmailLog')
+    EmailType = apps.get_model('log', 'EmailType')
+    
+    # Build lookup of email type name -> id
+    email_type_map = {et.name: et.id for et in EmailType.objects.all()}
+    
+    # Update each EmailLog to set the new FK field
+    for log in EmailLog.objects.all():
+        old_type = log.email_type_old
+        if old_type and old_type in email_type_map:
+            log.email_type_id = email_type_map[old_type]
+            log.save(update_fields=['email_type_id'])
+
+
+def reverse_migrate_email_type(apps, schema_editor):
+    """Reverse: copy FK back to string field."""
+    EmailLog = apps.get_model('log', 'EmailLog')
+    EmailType = apps.get_model('log', 'EmailType')
+    
+    email_type_map = {et.id: et.name for et in EmailType.objects.all()}
+    
+    for log in EmailLog.objects.all():
+        if log.email_type_id and log.email_type_id in email_type_map:
+            log.email_type_old = email_type_map[log.email_type_id]
+            log.save(update_fields=['email_type_old'])
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +44,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Step 1: Create EmailType model
         migrations.CreateModel(
             name='EmailType',
             fields=[
@@ -37,10 +70,14 @@ class Migration(migrations.Migration):
                 'ordering': ['display_name'],
             },
         ),
+        
+        # Step 2: Update EmailLog model options
         migrations.AlterModelOptions(
             name='emaillog',
             options={'ordering': ['-sent_at'], 'verbose_name': 'Email Log', 'verbose_name_plural': 'Email Logs'},
         ),
+        
+        # Step 3: Add new fields to EmailLog
         migrations.AddField(
             model_name='emaillog',
             name='error_message',
@@ -56,9 +93,25 @@ class Migration(migrations.Migration):
             name='subject',
             field=models.CharField(blank=True, help_text='The rendered subject at time of sending', max_length=255),
         ),
-        migrations.AlterField(
+        
+        # Step 4: Rename old email_type column to preserve data
+        migrations.RenameField(
+            model_name='emaillog',
+            old_name='email_type',
+            new_name='email_type_old',
+        ),
+        
+        # Step 5: Add new FK field (nullable initially)
+        migrations.AddField(
             model_name='emaillog',
             name='email_type',
-            field=models.ForeignKey(help_text='The type of email that was sent', on_delete=django.db.models.deletion.PROTECT, related_name='logs', to='log.emailtype'),
+            field=models.ForeignKey(
+                null=True,  # Allow null temporarily during migration
+                blank=True,
+                help_text='The type of email that was sent',
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='logs',
+                to='log.emailtype'
+            ),
         ),
     ]
