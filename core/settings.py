@@ -45,13 +45,13 @@ environ.Env.read_env()  # reads from .env
 # Set defaults based on environment
 if ENVIRONMENT == 'prod':
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = env('EMAIL_HOST')
-    EMAIL_PORT = env('EMAIL_PORT')
-    EMAIL_USE_TLS = env('EMAIL_USE_TLS')
-    EMAIL_HOST_USER = env('EMAIL_HOST_USER')
-    EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
-    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+    # Use Mailgun HTTP API (bypasses SMTP port restrictions)
+    EMAIL_BACKEND = 'anymail.backends.mailgun.EmailBackend'
+    ANYMAIL = {
+        'MAILGUN_API_KEY': env('MAILGUN_API_KEY'),
+        'MAILGUN_SENDER_DOMAIN': env('MAILGUN_SENDER_DOMAIN', default='mg.lovewm.org'),
+    }
+    DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='hello@lovewm.org')
 else:  # dev/local
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
@@ -158,6 +158,7 @@ INSTALLED_APPS = [
     'django_bootstrap5',
     'django_recaptcha',
     'django_celery_beat',
+    'anymail',
     'storages',
     'tinymce',
     'apps.log',
