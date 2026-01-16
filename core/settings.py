@@ -28,8 +28,8 @@ if os.path.exists(env_path):
     env.read_env(env_path)
 
 SECRET_KEY = env('SECRET_KEY')
-DOMAIN_NAME = env('DOMAIN_NAME')
-HASHIDS_SALT = env('HASHIDS_SALT')
+DOMAIN_NAME = env('DOMAIN_NAME', default='localhost')
+HASHIDS_SALT = env('HASHIDS_SALT', default='default-salt-change-in-production')
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')

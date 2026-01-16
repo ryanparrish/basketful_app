@@ -61,9 +61,12 @@ jobs:
 
       - name: Run migrations
         env:
+          DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-for-ci
           DEBUG: 'True'
           ALLOWED_HOSTS: localhost,127.0.0.1
           CELERY_TASK_ALWAYS_EAGER: 'True'
@@ -72,9 +75,12 @@ jobs:
 
       - name: Run tests
         env:
+          DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-for-ci
           DEBUG: 'True'
           ALLOWED_HOSTS: localhost,127.0.0.1
           CELERY_TASK_ALWAYS_EAGER: 'True'
@@ -87,9 +93,12 @@ jobs:
       - name: Generate coverage report
         if: always()
         env:
+          DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-for-ci
           DEBUG: 'True'
           ALLOWED_HOSTS: localhost,127.0.0.1
           CELERY_TASK_ALWAYS_EAGER: 'True'
