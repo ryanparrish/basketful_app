@@ -50,7 +50,7 @@ def setup_account_and_vouchers(
 
     # --- Create initial vouchers ---
     vouchers = [
-        Voucher(account=account, voucher_type=voucher_type, active=True)
+        Voucher(account=account, voucher_type=voucher_type, active=True, state="applied")
         for _ in range(initial_vouchers)
     ]
     Voucher.objects.bulk_create(vouchers)

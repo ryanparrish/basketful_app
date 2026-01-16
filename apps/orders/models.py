@@ -255,14 +255,12 @@ class Order(models.Model):
                 voucher=voucher,
                 applied_amount=applied_amount
             )
+            
+            # Save voucher immediately to ensure changes persist
+            voucher.save(update_fields=['active', 'state', 'notes'])
         
-        # Save all consumed vouchers
+        # Log the consumption
         if vouchers_to_consume:
-            Voucher.objects.bulk_update(
-                vouchers_to_consume,
-                ['active', 'state', 'notes'],
-                batch_size=100
-            )
             logger.info(
                 f"Order {self.id}: Consumed {len(vouchers_to_consume)} voucher(s) "
                 f"for total ${order_total} (single voucher amount: ${single_voucher_amount})"

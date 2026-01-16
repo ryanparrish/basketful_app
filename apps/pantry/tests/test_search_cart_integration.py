@@ -41,13 +41,13 @@ class SearchCartIntegrationTest(TestCase):
         
         # Create categories
         self.fruit_category = Category.objects.create(
-            name='Fruits', active=True
+            name='Fruits'
         )
         self.veggie_category = Category.objects.create(
-            name='Vegetables', active=True
+            name='Vegetables'
         )
         self.dairy_category = Category.objects.create(
-            name='Dairy', active=True
+            name='Dairy'
         )
         
         # Create products
@@ -56,37 +56,36 @@ class SearchCartIntegrationTest(TestCase):
             description='Fresh apple',
             price=2.50,
             category=self.fruit_category,
-            active=True
+            quantity_in_stock=100
         )
         self.banana = Product.objects.create(
             name='Banana',
             description='Fresh banana',
             price=3.00,
             category=self.fruit_category,
-            active=True
+            quantity_in_stock=100
         )
         self.carrot = Product.objects.create(
             name='Carrot',
             description='Fresh carrot',
             price=1.00,
             category=self.veggie_category,
-            active=True
+            quantity_in_stock=100
         )
         self.milk = Product.objects.create(
             name='Milk',
             description='Fresh milk',
             price=4.50,
             category=self.dairy_category,
-            active=True
+            quantity_in_stock=100
         )
         
         # Create active voucher
         self.voucher = Voucher.objects.create(
-            participant=self.participant,
-            voucher_code='TEST123',
-            amount=50.00,
-            expiration_date=timezone.now() + timedelta(days=30),
-            active=True
+            account=self.participant.accountbalance,
+            voucher_type='grocery',
+            active=True,
+            state='applied'
         )
         
         # Login

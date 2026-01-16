@@ -118,6 +118,7 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
     class Meta:
         # --- Link this factory to the Participant Django model ---
         model = Participant
+        skip_postgeneration_save = True
 
     # --- Use `factory.Faker` to generate realistic fake data ---
     # 'name' will generate a random person's name (e.g., "John Doe").

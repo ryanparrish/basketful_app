@@ -45,6 +45,7 @@ class AccountBalanceFactory(factory.django.DjangoModelFactory):
 class ParticipantFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Participant
+        skip_postgeneration_save = True
 
     name = factory.Sequence(lambda n: f'Participant {n}')
     email = factory.LazyAttribute(
