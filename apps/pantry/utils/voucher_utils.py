@@ -97,6 +97,7 @@ def consume_voucher(voucher, order, applied_amount):
         remaining=None
     )
 
+
 def apply_vouchers_to_order(order, max_vouchers: int = 2) -> bool:
     """
     Apply eligible grocery vouchers to an order.

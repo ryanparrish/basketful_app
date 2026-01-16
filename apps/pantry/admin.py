@@ -87,7 +87,6 @@ class TagAdmin(admin.ModelAdmin):
     
     product_count.short_description = 'Products'
 
- 
 
 admin.site.register(OrderPacker)
 

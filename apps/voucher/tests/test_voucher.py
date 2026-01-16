@@ -161,6 +161,7 @@ def test_grocery_voucher_with_infant(
     assert first_grocery_voucher is not None, "No grocery voucher assigned"
     assert first_grocery_voucher.voucher_amnt == expected_final
 
+
 @pytest.mark.django_db
 def test_life_voucher_returns_zero_balance(account_fixture):
     """
@@ -183,6 +184,7 @@ def test_life_voucher_returns_zero_balance(account_fixture):
     # --- Assert that it exists and its amount is zero ---
     assert life_voucher is not None, "No life voucher was assigned"
     assert life_voucher.voucher_amnt == 0
+
 
 @pytest.mark.django_db
 def test_use_multiple_vouchers_for_large_order(account_fixture):
@@ -231,6 +233,7 @@ def test_use_multiple_vouchers_for_large_order(account_fixture):
     assert not grocery_vouchers[0].active, "First grocery voucher should be inactive"
     assert not grocery_vouchers[1].active, "Second grocery voucher should be inactive"
 
+
 @pytest.mark.django_db
 def test_use_one_voucher_when_order_is_less_than_voucher_value(
     account_fixture
@@ -272,7 +275,6 @@ def test_use_one_voucher_when_order_is_less_than_voucher_value(
     assert len(inactive_vouchers) == 1, "Expected exactly one voucher to be used"
     # --- Assert that at least one other voucher remains active ---
     assert len(active_vouchers) >= 1, "Expected at least one voucher to remain active"
-
 
 
 @pytest.mark.django_db
@@ -324,6 +326,7 @@ def test_voucher_cannot_be_reused(account_fixture):
         "Voucher should not be reactivated for a second order"
     )
 
+
 # ============================================================
 # Placeholder for Voucher Pause Tests
 # ============================================================
@@ -332,6 +335,7 @@ The original test file included a `VoucherPauseTest` class with only a `setUp`.
 Below is how you would structure that setup as a pytest fixture and a placeholder
 test to demonstrate its use.
 """
+
 
 @pytest.fixture
 def paused_test_setup_fixture():
@@ -347,6 +351,7 @@ def paused_test_setup_fixture():
     participant = ParticipantFactory(adults=1, children=1, diaper_count=1)
     # --- Return the participant and their account for use in tests ---
     return participant, participant.accountbalance
+
 
 @pytest.mark.django_db
 def test_placeholder_for_voucher_pause_logic(paused_test_setup_fixture):

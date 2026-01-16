@@ -67,6 +67,7 @@ def log_voucher_application_task(
         log_type=VoucherLog.INFO,
     )
 
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def update_voucher_flag_task(
     self, voucher_ids, multiplier=1, activate=False, program_pause_id=None

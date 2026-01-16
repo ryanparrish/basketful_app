@@ -23,7 +23,6 @@ class Category(models.Model):
         """Meta options for Category."""
         verbose_name_plural = "Categories"
         db_table = 'food_orders_category'
-        
 
 
 class Subcategory(models.Model):
@@ -124,8 +123,7 @@ class Product(models.Model):
 
     class Meta:
         db_table = 'food_orders_product'
-        
-  
+
 
 class ProductLimit(models.Model):
     """Model to manage product limits per category or subcategory."""
@@ -177,8 +175,9 @@ class ProductLimit(models.Model):
     class Meta:
         db_table = 'food_orders_product_limit'
 
+
 class OrderPacker(models.Model):
-    
+
     name = models.CharField(max_length=100)
     programs = models.ManyToManyField(
         'lifeskills.Program', related_name='packers', blank=True
@@ -188,6 +187,7 @@ class OrderPacker(models.Model):
 
     def __str__(self) -> str:
         return str(self.name)
+
     class Meta:
         db_table = 'food_orders_order_packer'
 

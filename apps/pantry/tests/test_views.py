@@ -27,6 +27,7 @@ def enable_trigram_extension(django_db_setup, django_db_blocker):
         with connection.cursor() as cursor:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
 
+
 User = get_user_model()
 
 

@@ -30,12 +30,13 @@ from apps.pantry.tests.factories import (
     OrderItemFactory,
     ProductLimitFactory,
 )
-
+from apps.account.models import Participant, AccountBalance
+from apps.voucher.models import Voucher, VoucherSetting
 from apps.pantry.models import Product
-from apps.voucher.models import VoucherSetting
 # ============================================================
 # Voucher and Participant Fixtures
 # ============================================================
+
 
 @pytest.fixture
 def voucher_setting_fixture():
@@ -52,6 +53,7 @@ def voucher_setting_fixture():
         active=True,
     )
 
+
 @pytest.fixture
 def participant_fixture(voucher_setting_fixture):
     """
@@ -63,6 +65,7 @@ def participant_fixture(voucher_setting_fixture):
     """
     participant = ParticipantFactory(adults=2, children=3, email="test@test.com")
     return participant
+
 
 @pytest.fixture
 def account_fixture(participant_fixture):
@@ -81,6 +84,7 @@ def account_fixture(participant_fixture):
 # User Fixtures
 # ============================================================
 
+
 @pytest.fixture
 def test_user_fixture():
     """
@@ -95,6 +99,7 @@ def test_user_fixture():
 # ============================================================
 # Order and Product Fixtures
 # ============================================================
+
 
 @pytest.fixture
 def order_formset_setup():
@@ -124,6 +129,7 @@ def order_formset_setup():
         "order": order,
     }
 
+
 @pytest.fixture
 def order_with_items_setup():
     """
@@ -143,6 +149,7 @@ def order_with_items_setup():
         quantity=2,
     )
     return {"order": order, "item1": item1, "item2": item2}
+
 
 @pytest.fixture
 def meat_product_with_manager(db):
@@ -173,6 +180,8 @@ def meat_product_with_manager(db):
         "product_limit": product_limit,
         "meat_product": meat_product,
     }
+
+
 @pytest.fixture
 def participant_with_vouchers(db):
     """

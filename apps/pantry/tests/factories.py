@@ -31,6 +31,7 @@ across all test files within the application.
 from decimal import Decimal
 # --- Third-Party Imports ---
 import factory  # The core library for building model factories.
+from django.contrib.auth.models import User
 
 # --- Local Application Imports ---
 # Import all the models that we will be creating factories for.
@@ -57,6 +58,8 @@ data that is both consistent and easy to read.
 """
 
 # --- Factory for the Category Model ---
+
+
 class CategoryFactory(factory.django.DjangoModelFactory):
     """
     Creates Category model instances.
@@ -74,6 +77,8 @@ class CategoryFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Category {n}")
 
 # --- Factory for the Product Model ---
+
+
 class ProductFactory(factory.django.DjangoModelFactory):
     """
     Creates Product model instances.
@@ -151,6 +156,7 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
 
 # --- Factory for the Voucher Model ---
 
+
 class VoucherSettingFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = VoucherSetting
@@ -159,6 +165,7 @@ class VoucherSettingFactory(factory.django.DjangoModelFactory):
     adult_amount = Decimal("20.00")
     child_amount = Decimal("12.50")
     infant_modifier = Decimal("2.50")  # e.g., multiplier for diapers
+
 
 class VoucherFactory(factory.django.DjangoModelFactory):
     """
@@ -198,6 +205,8 @@ class VoucherFactory(factory.django.DjangoModelFactory):
             self.account.save()
 
 # --- Factory for the Order Model ---
+
+
 class OrderFactory(factory.django.DjangoModelFactory):
     """
     Creates Order model instances.
@@ -208,11 +217,12 @@ class OrderFactory(factory.django.DjangoModelFactory):
         # --- Link this factory to the Order Django model ---
         model = Order
 
-
     # --- Set a default status for newly created orders ---
     status = "pending"
 
 # --- Factory for the OrderItem Model ---
+
+
 class OrderItemFactory(factory.django.DjangoModelFactory):
     """
     Creates OrderItem model instances.
@@ -230,6 +240,8 @@ class OrderItemFactory(factory.django.DjangoModelFactory):
 
     # --- Set a default quantity for the order item ---
     quantity = 1
+
+
 class ProgramFactory(factory.django.DjangoModelFactory):
     """Factory for creating Program model instances."""
     class Meta:
@@ -239,11 +251,13 @@ class ProgramFactory(factory.django.DjangoModelFactory):
     MeetingDay = "Wednesday"
     meeting_time = "10:00:00"
 
+
 class CategoryFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Category
 
     name = factory.Sequence(lambda n: f"Category {n}")
+
 
 class SubcategoryFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -251,6 +265,7 @@ class SubcategoryFactory(factory.django.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f"Subcategory {n}")
     category = factory.SubFactory(CategoryFactory)
+
 
 class ProductLimitFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -263,7 +278,6 @@ class ProductLimitFactory(factory.django.DjangoModelFactory):
     limit = 2
     limit_scope = "per_household"
 
-from django.contrib.auth.models import User
 
 class UserFactory(factory.django.DjangoModelFactory):
     class Meta:

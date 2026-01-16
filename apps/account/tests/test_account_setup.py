@@ -167,7 +167,7 @@ class TestParticipantCreationSignals:
         # --- ACT ---
         # --- `setattr` dynamically sets the attribute based on the parametrized field name ---
         setattr(participant, field_to_change, new_value)
-        participant.save() # This save triggers the signal that updates the balance.
+        participant.save()  # This save triggers the signal that updates the balance.
 
         # --- Refresh the account balance object from the database to get the new value ---
         account_balance.refresh_from_db()
@@ -327,7 +327,7 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         mock_send_message = mocker.patch(
-        "apps.account.tasks.email.send_email_message"
+            "apps.account.tasks.email.send_email_message"
         )   
         
         # --- ACT (First Call) ---

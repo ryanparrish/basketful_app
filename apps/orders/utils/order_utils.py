@@ -1,4 +1,4 @@
-#food_orders.utils.order_utils.py 
+# food_orders.utils.order_utils.py
 """Utility functions for managing food orders."""
 import logging
 from typing import List
@@ -49,7 +49,7 @@ class OrderOrchestration:
         ]
 
         if not items_bulk:
-            raise ValidationError(f"Order must have at least one valid item.")
+            raise ValidationError("Order must have at least one valid item.")
 
         OrderItem.objects.bulk_create(items_bulk)
         return order

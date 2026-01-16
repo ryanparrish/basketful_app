@@ -17,6 +17,7 @@ PARTICIPANT_NOUNS = [
     "anchor", "guide",
 ]
 
+
 def _generate_memorable_password() -> str:
     """Generate a secure and memorable password."""
     return (
@@ -25,12 +26,14 @@ def _generate_memorable_password() -> str:
         f"{secrets.randbelow(900) + 100}"
     )
 
+
 def _generate_admin_username(base_name: str) -> Generator[str, None, None]:
     """Generate admin usernames."""
     max_length = User._meta.get_field("username").max_length - 5
     base_username = base_name[:max_length]
     while True:
         yield f"{base_username}-{secrets.choice(PARTICIPANT_NOUNS)}"
+
 
 def _generate_participant_username(base_name: str) -> Generator[str, None, None]:
     """Generate participant usernames."""
@@ -42,12 +45,15 @@ def _generate_participant_username(base_name: str) -> Generator[str, None, None]
 # ============================================================
 # User Services
 # ============================================================
+
+
 def set_random_password_for_user(user: AbstractUser) -> str:
     """Set a secure random password for the user."""
     password = _generate_memorable_password()
     user.set_password(password)
     user.save()
     return password
+
 
 def _create_user(
     *,
@@ -92,6 +98,7 @@ def _create_user(
         "Could not generate a unique username after multiple attempts."
     )
 
+
 def create_participant_user(
     *,
     first_name: str = "",
@@ -112,6 +119,7 @@ def create_participant_user(
         is_staff=False,
         is_superuser=False,
     )
+
 
 def create_admin_user(
     username: str, full_name: str, email: str, password: str = None

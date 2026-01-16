@@ -10,6 +10,7 @@ from apps.voucher.models import Voucher
 
 _logged_once = False  # Module-level flag to print header only once per test run
 
+
 def log_vouchers_for_account(account, context: str = "", order=None):
     """
     Logs all vouchers associated with an account in a clean, readable format.
@@ -32,9 +33,9 @@ def log_vouchers_for_account(account, context: str = "", order=None):
 
     # --- Print header once per test run ---
     if not _logged_once:
-        print("\n" + "="*40)
+        print("\n" + "=" * 40)
         print("=== Starting Voucher Logging ===")
-        print("="*40 + "\n")
+        print("=" * 40 + "\n")
         _logged_once = True
 
     # --- Context info ---

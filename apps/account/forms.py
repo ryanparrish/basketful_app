@@ -1,11 +1,10 @@
 # apps/account/forms.py
 """Forms for account app including custom login and participant forms."""
-#Django imports
+# Django imports
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django_recaptcha.fields import ReCaptchaField
 from django.contrib.auth import get_user_model
-from django import forms
 # First-party imports
 from apps.account.models import Participant
 
@@ -18,6 +17,8 @@ class CustomLoginForm(AuthenticationForm):
         
         if use_captcha:
             self.fields['captcha'] = ReCaptchaField()
+
+
 User = get_user_model()
 
 
@@ -26,7 +27,6 @@ class CustomUserCreationForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ('first_name', 'last_name', 'email')  # no username or password here
-
 
 
 class ParticipantAdminForm(forms.ModelForm):

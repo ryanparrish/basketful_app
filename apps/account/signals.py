@@ -26,6 +26,7 @@ def update_base_balance_on_change(instance, created, **kwargs):
     account_balance.base_balance = calculate_base_balance(instance)
     account_balance.save(update_fields=["base_balance"])
 
+
 @receiver(post_save, sender=Participant)
 def initialize_participant(instance: Participant, created, **kwargs):
     """
@@ -39,7 +40,7 @@ def initialize_participant(instance: Participant, created, **kwargs):
 
     if not created:
         return
-    elif create_user_flag == True:
+    elif create_user_flag is True:
         user = create_participant_user(
             first_name=instance.name,
             email=instance.email,

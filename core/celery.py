@@ -4,6 +4,7 @@ from decimal import Decimal
 from celery import Celery
 from kombu.serialization import register
 from kombu.utils.json import JSONEncoder
+import ulid
 
 # --- Django settings module ---
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
@@ -13,6 +14,8 @@ app = Celery("core")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # --- Custom JSON encoder for ULID + Decimal ---
+
+
 class ExtendedJSONEncoder(JSONEncoder):
     def default(self, o):
         if isinstance(o, ulid.ULID):

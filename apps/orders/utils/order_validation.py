@@ -1,4 +1,4 @@
-#food_orders.utils.order_validation.py 
+# food_orders.utils.order_validation.py
 """Utilities for validating orders and order items."""
 from django.core.exceptions import ValidationError
 from typing import List, Any

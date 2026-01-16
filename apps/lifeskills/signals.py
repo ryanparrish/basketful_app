@@ -9,9 +9,12 @@ from django.dispatch import receiver
 # First-party imports
 from voucher.models import Voucher
 from voucher.tasks.voucher_scheduling import schedule_voucher_tasks
+from apps.log.logging import VoucherLogger
 # Local imports
 from .models import ProgramPause
+
 logger = logging.getLogger(__name__)
+
 
 @receiver(post_save, sender=ProgramPause)
 def handle_program_pause(sender, instance, created, **kwargs):

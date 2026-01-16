@@ -1,6 +1,7 @@
 from django.db.models import F, Value, IntegerField, Case, When, BooleanField, CharField, ExpressionWrapper
 from django.db.models.functions import Coalesce, Concat, Now, Extract
 
+
 def program_pause_annotations(queryset):
     today = Now()
     base_reason = Coalesce(F("reason"), Value("Unnamed pause"))

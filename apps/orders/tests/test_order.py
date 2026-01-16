@@ -344,7 +344,6 @@ def test_submit_order_view(client):
     logger.info("Order creation successful - cart cleared")
 
 
-
 @pytest.mark.django_db
 def test_submit_order_view_with_50_items(client):
     """End-to-end test for submitting an order with 50 items and verifying persistence."""

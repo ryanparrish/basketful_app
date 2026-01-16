@@ -87,6 +87,8 @@ MEAT_CATEGORIES = {
 # -------------------------------
 # Management Command
 # -------------------------------
+
+
 class Command(BaseCommand):
     help = "Seed the database with products, categories, participants, vouchers, and orders"
 

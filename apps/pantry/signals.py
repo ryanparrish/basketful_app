@@ -19,6 +19,7 @@ User = get_user_model()
 # Participant Signals
 # ============================================================
 
+
 @receiver(post_save, sender=Participant)
 def ensure_account_and_vouchers(instance, created, **kwargs):
     """
@@ -49,7 +50,7 @@ def create_staff_user_profile_and_onboarding(
         # Ensure UserProfile exists
         UserProfile.objects.get_or_create(user=instance)
 
-        logger.debug("Triggering onboarding email for new staff user %s",instance.id)
+        logger.debug("Triggering onboarding email for new staff user %s", instance.id)
         send_new_user_onboarding_email.delay(user_id=instance.id)
 
 
