@@ -411,6 +411,14 @@ class TestAvailableBalanceCalculation:
 
     def test_available_balance_only_pending_vouchers(self, account_balance, voucher_setting):
         """Test available balance with only pending vouchers."""
+        # Create vouchers with pending state
+        Voucher.objects.create(
+            account=account_balance,
+            voucher_type='grocery',
+            state='pending',
+            multiplier=1,
+            active=True
+        )
         Voucher.objects.create(
             account=account_balance,
             voucher_type='grocery',
@@ -419,6 +427,20 @@ class TestAvailableBalanceCalculation:
             active=True
         )
 
+        # Pending vouchers should not be included in available balance
+        result = calculate_available_balance(account_balance, limit=2)
+        # However, the account was created with vouchers in setup_account_and_vouchers
+        # which now creates them as 'applied'. So we expect those to be counted.
+        # This test should verify only pending state vouchers are excluded.
+        # Delete all existing vouchers first to test only pending behavior
+        account_balance.vouchers.all().delete()
+        Voucher.objects.create(
+            account=account_balance,
+            voucher_type='grocery',
+            state='pending',
+            multiplier=1,
+            active=True
+        )
         result = calculate_available_balance(account_balance, limit=2)
         assert result == Decimal('0')
 
@@ -451,7 +473,8 @@ class TestHygieneBalanceCalculation:
 
     def test_hygiene_balance_with_zero_available(self, account_balance):
         """Test hygiene balance when available balance is zero."""
-        # No vouchers = zero available balance
+        # Delete vouchers created by setup to ensure zero balance
+        account_balance.vouchers.all().delete()
         hygiene = calculate_hygiene_balance(account_balance)
         assert hygiene == Decimal('0')
 

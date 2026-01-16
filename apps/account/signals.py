@@ -21,6 +21,13 @@ def update_base_balance_on_change(instance, created, **kwargs):
     """
     if created:
         return  # skip new participants
+    
+    # Skip if update_fields is specified and doesn't include balance-affecting fields
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None:
+        balance_fields = {'adults', 'children', 'diaper_count'}
+        if not balance_fields.intersection(set(update_fields)):
+            return  # skip if no balance-affecting fields were updated
 
     account_balance = AccountBalance.objects.get(participant=instance)
     account_balance.base_balance = calculate_base_balance(instance)
@@ -47,6 +54,7 @@ def initialize_participant(instance: Participant, created, **kwargs):
             participant_name=instance.name,
         )
         instance.user = user
+        instance.save(update_fields=['user'])
        
     # Ensure UserProfile exists
     if instance.user:

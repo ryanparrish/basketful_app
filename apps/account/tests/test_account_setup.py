@@ -222,7 +222,12 @@ class TestUserOnboardingSignals:
 
         # --- ACT ---
         # --- Create a participant with the flag to create a user ---
-        participant = ParticipantFactory(create_user=True)
+        # Build the participant without saving
+        participant = ParticipantFactory.build()
+        # Set the create_user flag
+        participant.create_user = True
+        # Save to trigger the signal with create_user=True
+        participant.save()
         participant.refresh_from_db()
 
         # --- ASSERT ---
@@ -254,7 +259,12 @@ class TestUserOnboardingSignals:
         mock_create_user.return_value = mock_user
 
         # --- ACT ---
-        ParticipantFactory(create_user=True)
+        # Build the participant without saving
+        participant = ParticipantFactory.build()
+        # Set the create_user flag
+        participant.create_user = True
+        # Save to trigger the signal with create_user=True
+        participant.save()
 
         # --- ASSERT ---
         # --- Verify that the email task's `.delay()` method was called ---
