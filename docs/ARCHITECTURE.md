@@ -16,4 +16,174 @@ Important notes:
 
 Migrations live under each app's `migrations/` directory. Tests are under each app's `tests/` directory and use `pytest-django`.
 
-If you want an ER diagram or class-level diagrams, I can generate them next.
+Diagrams
+--------
+
+Embedded below are Mermaid-format diagrams (ER and class diagrams) you can preview in VS Code or at https://mermaid.live.
+
+ER diagram:
+
+```mermaid
+erDiagram
+	USER {
+		int id PK
+		string username
+		string email
+	}
+	ACCOUNTBALANCE {
+		int id PK
+		int account_id FK
+		decimal balance
+		datetime last_updated
+	}
+	CATEGORY {
+		int id PK
+		string name
+		string slug
+	}
+	PRODUCT {
+		int id PK
+		string name
+		decimal price
+		int category_id FK
+	}
+	TAG {
+		int id PK
+		string name
+		string slug
+	}
+	ORDER {
+		int id PK
+		int user_id FK
+		string status
+		decimal total
+		datetime created_at
+	}
+	ORDERITEM {
+		int id PK
+		int order_id FK
+		int product_id FK
+		int quantity
+		decimal price
+	}
+	VOUCHER {
+		int id PK
+		string code
+		decimal amount
+		datetime expires_at
+		bool active
+	}
+	ORDERVOUCHER {
+		int id PK
+		int order_id FK
+		int voucher_id FK
+		decimal applied_amount
+	}
+	ORDERVALIDATIONLOG {
+		int id PK
+		int order_id FK
+		string status
+		string message
+		datetime created_at
+	}
+
+	USER ||--o{ ORDER : places
+	USER ||--|| ACCOUNTBALANCE : has
+
+	CATEGORY ||--o{ PRODUCT : contains
+	PRODUCT }o--o{ TAG : tagged_with
+
+	ORDER ||--o{ ORDERITEM : contains
+	ORDERITEM }o--|| PRODUCT : "for"
+
+	ORDER ||--o{ ORDERVOUCHER : uses
+	ORDERVOUCHER }o--|| VOUCHER : applies
+
+	ORDER ||--o{ ORDERVALIDATIONLOG : logs
+```
+
+Class diagram:
+
+```mermaid
+classDiagram
+	class User {
+		+int id
+		+String username
+		+String email
+	}
+	class AccountBalance {
+		+int id
+		+int account_id
+		+Decimal balance
+		+DateTime last_updated
+	}
+	class Category {
+		+int id
+		+String name
+		+String slug
+	}
+	class Product {
+		+int id
+		+String name
+		+Decimal price
+		+int category_id
+	}
+	class Tag {
+		+int id
+		+String name
+		+String slug
+	}
+	class Order {
+		+int id
+		+int user_id
+		+String status
+		+Decimal total
+		+DateTime created_at
+	}
+	class OrderItem {
+		+int id
+		+int order_id
+		+int product_id
+		+int quantity
+		+Decimal price
+	}
+	class Voucher {
+		+int id
+		+String code
+		+Decimal amount
+		+DateTime expires_at
+		+bool active
+	}
+	class OrderVoucher {
+		+int id
+		+int order_id
+		+int voucher_id
+		+Decimal applied_amount
+	}
+	class OrderValidationLog {
+		+int id
+		+int order_id
+		+String status
+		+String message
+		+DateTime created_at
+	}
+
+	User "1" -- "0..*" Order : places
+	User "1" -- "1" AccountBalance : has
+	Category "1" -- "0..*" Product : contains
+	Product "*" -- "*" Tag : tagged_with
+	Order "1" -- "0..*" OrderItem : contains
+	OrderItem "*" -- "1" Product : for
+	Order "1" -- "0..*" OrderVoucher : uses
+	OrderVoucher "*" -- "1" Voucher : applies
+	Order "1" -- "0..*" OrderValidationLog : logs
+```
+
+You can also find source `.mmd` files in `docs/diagrams/` and instructions for rendering in `docs/diagrams/README.md`.
+
+Rendered diagrams
+-----------------
+
+This document embeds Mermaid diagrams directly (see the blocks above). Modern GitHub Markdown and many Markdown renderers support Mermaid, so the `.mmd` sources in `docs/diagrams/` will be rendered inline on supported viewers.
+
+If your renderer does not support Mermaid, view the diagrams at https://mermaid.live or install a Mermaid preview extension in your editor.

@@ -1,0 +1,77 @@
+%% Mermaid ER diagram for Basketful app
+erDiagram
+    USER {
+        int id PK
+        string username
+        string email
+    }
+    ACCOUNTBALANCE {
+        int id PK
+        int account_id FK
+        decimal balance
+        datetime last_updated
+    }
+    CATEGORY {
+        int id PK
+        string name
+        string slug
+    }
+    PRODUCT {
+        int id PK
+        string name
+        decimal price
+        int category_id FK
+    }
+    TAG {
+        int id PK
+        string name
+        string slug
+    }
+    ORDER {
+        int id PK
+        int user_id FK
+        string status
+        decimal total
+        datetime created_at
+    }
+    ORDERITEM {
+        int id PK
+        int order_id FK
+        int product_id FK
+        int quantity
+        decimal price
+    }
+    VOUCHER {
+        int id PK
+        string code
+        decimal amount
+        datetime expires_at
+        bool active
+    }
+    ORDERVOUCHER {
+        int id PK
+        int order_id FK
+        int voucher_id FK
+        decimal applied_amount
+    }
+    ORDERVALIDATIONLOG {
+        int id PK
+        int order_id FK
+        string status
+        string message
+        datetime created_at
+    }
+
+    USER ||--o{ ORDER : places
+    USER ||--|| ACCOUNTBALANCE : has
+
+    CATEGORY ||--o{ PRODUCT : contains
+    PRODUCT }o--o{ TAG : tagged_with
+
+    ORDER ||--o{ ORDERITEM : contains
+    ORDERITEM }o--|| PRODUCT : "for"
+
+    ORDER ||--o{ ORDERVOUCHER : uses
+    ORDERVOUCHER }o--|| VOUCHER : applies
+
+    ORDER ||--o{ ORDERVALIDATIONLOG : logs

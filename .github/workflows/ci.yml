@@ -54,6 +54,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Setup Node.js for Mermaid validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Validate Mermaid diagrams
+        continue-on-error: true
+        run: |
+          echo "Validating Mermaid diagrams in docs/diagrams (optional step)"
+          npm install -g @mermaid-js/mermaid-cli || true
+          mkdir -p /tmp/mermaid-validate
+          set -e
+          found=0
+          for f in docs/diagrams/*.mmd; do
+            if [ -f "$f" ]; then
+              found=1
+              echo "Rendering $f"
+              npx --yes @mermaid-js/mermaid-cli -i "$f" -o "/tmp/mermaid-validate/$(basename "$f").png" || {
+                echo "Warning: Mermaid render failed for $f"; continue
+              }
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "No .mmd files found; skipping"
+          fi
+
       - name: Run flake8
         run: |
           flake8 apps/ core/ --count --show-source --statistics

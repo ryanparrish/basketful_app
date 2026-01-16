@@ -1,0 +1,39 @@
+digraph ER {
+  rankdir=LR;
+  node [shape=record, fontname="Helvetica"];
+
+  User [label="{User|id: PK\nusername\nemail}"];
+
+  AccountBalance [label="{AccountBalance|id: PK\naccount (FK->User)\nbalance\nlast_updated}"];
+
+  Category [label="{Category|id: PK\nname\nslug}"];
+
+  Product [label="{Product|id: PK\nname\nprice\ncategory (FK)\n--tags(M2M)--}"];
+
+  Tag [label="{Tag|id: PK\nname\nslug}"];
+
+  Order [label="{Order|id: PK\nuser (FK->User)\nstatus\ntotal\ncreated_at}"];
+
+  OrderItem [label="{OrderItem|id: PK\norder (FK)\nproduct (FK)\nquantity\nprice}"];
+
+  Voucher [label="{Voucher|id: PK\ncode\namount\nexpires_at\nactive}"];
+
+  OrderVoucher [label="{OrderVoucher|id: PK\norder (FK)\nvoucher (FK)\napplied_amount}"];
+
+  OrderValidationLog [label="{OrderValidationLog|id: PK\norder (FK)\nstatus\nmessage\ncreated_at}"];
+
+  // Relationships
+  User -> AccountBalance [label="1..1", arrowhead=none];
+  User -> Order [label="0..*", arrowhead=vee];
+
+  Category -> Product [label="1..*", arrowhead=vee];
+  Product -> Tag [label="M..N", arrowhead=vee];
+
+  Order -> OrderItem [label="1..*", arrowhead=vee];
+  OrderItem -> Product [label="*..1", arrowhead=vee];
+
+  Order -> OrderVoucher [label="0..*", arrowhead=vee];
+  OrderVoucher -> Voucher [label="*..1", arrowhead=vee];
+
+  Order -> OrderValidationLog [label="0..*", arrowhead=vee];
+}
