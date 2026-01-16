@@ -240,14 +240,19 @@ class Order(models.Model):
         
         remaining = order_total
         for voucher in vouchers_to_consume:
-            # Calculate amount applied from this voucher
+            # Mark voucher as consumed - use update() to bypass editable=False
             applied_amount = min(voucher.voucher_amnt, remaining)
             remaining -= applied_amount
             
-            # Mark voucher as consumed
-            voucher.active = False
-            voucher.state = 'consumed'
-            voucher.notes = (voucher.notes or "") + f"Used on order {self.id} for ${applied_amount:.2f}; "
+            notes_update = (voucher.notes or "") + f"Used on order {self.id} for ${applied_amount:.2f}; "
+            
+            # Use queryset update to bypass model field restrictions
+            Voucher.objects.filter(pk=voucher.pk).update(
+                active=False,
+                state='consumed',
+                notes=notes_update,
+                updated_at=timezone.now()
+            )
             
             # Create OrderVoucher record to track application
             OrderVoucher.objects.create(
@@ -256,8 +261,7 @@ class Order(models.Model):
                 applied_amount=applied_amount
             )
             
-            # Save voucher immediately to ensure changes persist
-            voucher.save(update_fields=['active', 'state', 'notes'])
+            logger.debug(f"Voucher {voucher.id} marked as consumed via queryset update")
         
         # Log the consumption
         if vouchers_to_consume:
@@ -286,11 +290,15 @@ class Order(models.Model):
             # Skip validation if only updating specific fields
             if 'update_fields' not in kwargs:
                 self.full_clean()
+            logger.debug(f"About to save Order {self.pk or 'NEW'} with status={self.status}")
             super().save(*args, **kwargs)
+            logger.debug(f"Order {self.id} saved successfully")
             
             # Consume vouchers if order is being confirmed
             if self.status == "confirmed" and old_status != "confirmed":
+                logger.debug(f"Order {self.id} status changed to confirmed, consuming vouchers...")
                 self._consume_vouchers()
+                logger.debug(f"Order {self.id} vouchers consumed, transaction will commit")
 
 
 class OrderItem(models.Model):
@@ -344,8 +352,9 @@ class CombinedOrder(models.Model):
     year = models.IntegerField(editable=False, null=True, blank=True)
     
     def save(self, *args, **kwargs):
-        """Auto-populate week and year from created_at."""
-        if self.created_at:
+        """Auto-populate week and year from created_at on creation only."""
+        # Only set week/year on initial creation to avoid unique constraint violations on update
+        if self.pk is None and self.created_at:
             self.week = self.created_at.isocalendar()[1]
             self.year = self.created_at.year
         super().save(*args, **kwargs)
