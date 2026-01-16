@@ -311,7 +311,7 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         mock_send_email = mocker.patch(
-            "apps.account.tasks.email.send_email"
+            "apps.account.tasks.email.send_email_by_type"
         )
 
         # --- ACT ---
@@ -319,14 +319,11 @@ class TestEmailTasks:
         send_password_reset_email(user.id)
 
         # --- ASSERT ---
-        # --- Verify `send_email` was called with the expected context ---
+        # --- Verify `send_email_by_type` was called with the expected args ---
         mock_send_email.assert_called_once_with(
-            user=user,
-            subject="Set Your Password",
-            html_template="registration/password_reset_email.html",
-            text_template="registration/password_reset_email.txt",
-            email_type="password_reset",
-            reply_to="it@loveyourneighbor.org",
+            user.id,
+            "password_reset",
+            force=False
         )
 
     def test_email_tasks_create_log_and_prevent_duplicates(self, test_user_fixture, mocker):
@@ -347,7 +344,7 @@ class TestEmailTasks:
         # --- Check that the email was sent the first time ---
         assert mock_send_message.call_count == 1
         # --- Check that a log was created in the database ---
-        assert EmailLog.objects.filter(user=user, email_type="onboarding").exists()
+        assert EmailLog.objects.filter(user=user, email_type__name="onboarding").exists()
 
         # --- Debugging: Print EmailLog entries after the first call
         logger.debug(EmailLog.objects.all())
@@ -367,7 +364,7 @@ class TestEmailTasks:
         """
         # --- ARRANGE ---
         mock_send_email = mocker.patch(
-            "apps.account.tasks.email.send_email"
+            "apps.account.tasks.email.send_email_by_type"
         )
         non_existent_user_id = 999999
 

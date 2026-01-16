@@ -12,7 +12,7 @@ import pytest
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 from apps.log.models import OrderValidationLog
 from apps.orders.models import Order
 from apps.account.models import Participant, AccountBalance
@@ -339,6 +339,7 @@ class TestMiddlewareLogging:
 
 
 @pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestVoucherUtilsLogging:
     """Tests for OrderValidationLog creation in voucher_utils."""
 

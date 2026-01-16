@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
 from apps.log.admin import EmailLogAdmin, OrderValidationLog
 from apps.log.models import EmailLog
@@ -14,6 +14,7 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestEmailLogAdmin:
     """Tests for EmailLogAdmin configuration."""
 
