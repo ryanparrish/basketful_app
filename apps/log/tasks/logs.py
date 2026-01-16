@@ -48,11 +48,11 @@ def log_voucher_application_task(
     remaining = float(remaining or 0.0)
 
     # Determine note type
-    note_type = "Fully" if applied_amount == voucher.voucher_amnt else "Partially"
+    note_type = "Fully used" if applied_amount == voucher.voucher_amnt else "Partially used"
 
     # Build log message
     message = (
-        f"{note_type} used voucher {voucher.id} "
+        f"{note_type} voucher {voucher.id} "
         f"for ${applied_amount:.2f}, remaining amount needed: ${remaining:.2f}"
     )
 

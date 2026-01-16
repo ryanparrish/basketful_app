@@ -342,6 +342,15 @@ class CombinedOrder(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     summarized_data = models.JSONField(default=dict, blank=True)
     is_parent = models.BooleanField(default=False)
+    week = models.IntegerField(editable=False, null=True, blank=True)
+    year = models.IntegerField(editable=False, null=True, blank=True)
+    
+    def save(self, *args, **kwargs):
+        """Auto-populate week and year from created_at."""
+        if self.created_at:
+            self.week = self.created_at.isocalendar()[1]
+            self.year = self.created_at.year
+        super().save(*args, **kwargs)
 
     def summarized_items_by_category(self):
         
@@ -360,7 +369,12 @@ class CombinedOrder(models.Model):
         return summary
 
     class Meta:
-        pass
+        constraints = [
+            models.UniqueConstraint(
+                fields=['program', 'week', 'year'],
+                name='unique_program_per_week'
+            )
+        ]
 
     def __str__(self):
         if self.name:

@@ -22,7 +22,7 @@ class TestEmailLogAdmin:
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         
-        expected_fields = ('id', 'user', 'sent_at', 'email_type')
+        expected_fields = ('id', 'user', 'email_type', 'subject', 'status', 'sent_at')
         assert admin.list_display == expected_fields
 
     def test_readonly_fields(self):
@@ -30,7 +30,7 @@ class TestEmailLogAdmin:
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         
-        expected_fields = ('user', 'email_type', 'sent_at')
+        expected_fields = ('user', 'email_type', 'subject', 'status', 'error_message', 'sent_at', 'message_id')
         assert admin.readonly_fields == expected_fields
 
     def test_search_fields(self):
@@ -38,7 +38,7 @@ class TestEmailLogAdmin:
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         
-        expected_fields = ('user', 'email_type', 'sent_at')
+        expected_fields = ('user__email', 'user__username', 'subject')
         assert admin.search_fields == expected_fields
 
     def test_list_filter(self):
@@ -46,7 +46,7 @@ class TestEmailLogAdmin:
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         
-        expected_fields = ('user', 'email_type')
+        expected_fields = ('status', 'email_type', 'sent_at')
         assert admin.list_filter == expected_fields
 
     def test_has_add_permission_returns_false(self):
@@ -59,6 +59,8 @@ class TestEmailLogAdmin:
 
     def test_has_delete_permission_returns_false(self):
         """Verify delete permission is disabled."""
+        from apps.log.models import EmailType
+        
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         request = RequestFactory().get('/')
@@ -68,23 +70,27 @@ class TestEmailLogAdmin:
         
         # Test with obj
         user = UserFactory()
+        email_type = EmailType.objects.create(
+            name='onboarding',
+            display_name='Onboarding Email',
+            subject='Welcome',
+            is_active=True
+        )
         email_log = EmailLog.objects.create(
             user=user,
-            email_type='onboarding'
+            email_type=email_type
         )
         assert admin.has_delete_permission(request, email_log) is False
 
-    @patch('apps.pantry.tasks.email.send_new_user_onboarding_email.delay')
-    def test_has_change_permission_returns_true(self, mock_email):
-        """Verify change permission is enabled (default behavior)."""
+    def test_has_change_permission_returns_true(self):
+        """Verify change permission returns False (logs are read-only)."""
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         request = RequestFactory().get('/')
         request.user = UserFactory(is_staff=True, is_superuser=True)
         
-        # By default, has_change_permission should return True
-        # This allows viewing/reading the logs
-        assert admin.has_change_permission(request) is True
+        # EmailLog should be read-only, so has_change_permission should return False
+        assert admin.has_change_permission(request) is False
 
 
 @pytest.mark.django_db

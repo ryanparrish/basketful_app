@@ -20,15 +20,10 @@ class SearchCartIntegrationTest(TestCase):
         self.client = Client()
         
         # Create coach
-        coach_user = User.objects.create_user(
-            username='coach',
-            password='test_password_123',
-            email='coach@test.com'
-        )
         self.coach = LifeskillsCoach.objects.create(
-            user=coach_user,
-            first_name='Test',
-            last_name='Coach'
+            name='Test Coach',
+            email='coach@test.com',
+            phone_number='555-1234'
         )
         
         # Create participant

@@ -184,7 +184,7 @@ class TestGroupProductsByCategory:
     def test_groups_products_correctly(self, products, categories):
         """Products should be grouped by their category."""
         queryset = get_base_products()
-        grouped, json_data = group_products_by_category(queryset)
+        grouped, json_data, all_products_json = group_products_by_category(queryset)
         
         assert len(grouped) == 3
         assert categories['fruits'] in grouped
@@ -201,7 +201,7 @@ class TestGroupProductsByCategory:
     def test_json_data_structure(self, products):
         """JSON data should contain product info."""
         queryset = get_base_products()
-        grouped, json_data = group_products_by_category(queryset)
+        grouped, json_data, all_products_json = group_products_by_category(queryset)
         
         # JSON data should be a string
         assert isinstance(json_data, str)
@@ -212,7 +212,7 @@ class TestGroupProductsByCategory:
     def test_empty_queryset(self):
         """Should handle empty queryset."""
         queryset = get_base_products()
-        grouped, json_data = group_products_by_category(queryset)
+        grouped, json_data, all_products_json = group_products_by_category(queryset)
         
         assert grouped == {}
         assert json_data == '{}'
