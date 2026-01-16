@@ -49,11 +49,18 @@ def search_products(queryset, query):
             name_similarity=TrigramSimilarity('name', query),
             desc_similarity=TrigramSimilarity('description', query),
             cat_similarity=TrigramSimilarity('category__name', query),
+            tag_similarity=TrigramSimilarity('tags__name', query),
         ).filter(
             Q(name_similarity__gt=0.1) |
             Q(desc_similarity__gt=0.1) |
-            Q(cat_similarity__gt=0.1)
-        ).order_by('-name_similarity', '-desc_similarity', '-cat_similarity')
+            Q(cat_similarity__gt=0.1) |
+            Q(tag_similarity__gt=0.1)
+        ).order_by(
+            '-name_similarity', 
+            '-desc_similarity', 
+            '-cat_similarity',
+            '-tag_similarity'
+        ).distinct()
     except Exception as e:
         logger.warning(
             f"Trigram search failed, using basic search: {e}"
@@ -62,8 +69,9 @@ def search_products(queryset, query):
         queryset = queryset.filter(
             Q(name__icontains=query) |
             Q(description__icontains=query) |
-            Q(category__name__icontains=query)
-        )
+            Q(category__name__icontains=query) |
+            Q(tags__name__icontains=query)
+        ).distinct()
     
     return queryset
 

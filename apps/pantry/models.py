@@ -40,6 +40,25 @@ class Subcategory(models.Model):
 
     class Meta:
         db_table = 'food_orders_subcategory'
+
+
+class Tag(models.Model):
+    """Model representing a product tag for search enhancement."""
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = 'food_orders_tag'
+        ordering = ['name']
+        verbose_name = 'Tag'
+        verbose_name_plural = 'Tags'
+
     
 # Class to represent a product in inventory
 
@@ -66,6 +85,12 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     active = models.BooleanField(default=True)
+    tags = models.ManyToManyField(
+        'pantry.Tag',
+        related_name='products',
+        blank=True,
+        help_text='Tags for search enhancement (e.g., "beef", "chicken", "gluten-free")'
+    )
 
     @staticmethod
     def get_limit_for_product(product):

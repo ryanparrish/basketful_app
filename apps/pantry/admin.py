@@ -10,7 +10,7 @@ from apps.orders.tasks.weekly_orders import create_weekly_combined_orders
 from apps.pantry.models import (
     Product, Category,
     Subcategory, OrderPacker,
-    ProductLimit
+    ProductLimit, Tag
 )
 
 
@@ -46,10 +46,17 @@ class SubcategoryAdmin(admin.ModelAdmin):
 class ProductAdmin(admin.ModelAdmin):
     """Admin for Product model with image preview."""
     readonly_fields = ['image_preview']
-    search_fields = ['name', 'description', 'category__name']
-    list_display = ('name', 'category', 'subcategory', 'price', 'active')
-    list_filter = ('category', 'subcategory', 'active')
+    search_fields = ['name', 'description', 'category__name', 'tags__name']
+    list_display = ('name', 'category', 'subcategory', 'price', 'active', 'display_tags')
+    list_filter = ('category', 'subcategory', 'active', 'tags')
+    filter_horizontal = ('tags',)
     ordering = ('category__name', 'subcategory__name', 'name')
+
+    def display_tags(self, obj):
+        """Display tags as comma-separated list."""
+        return ", ".join([tag.name for tag in obj.tags.all()[:5]])
+    
+    display_tags.short_description = 'Tags'
 
     def image_preview(self, obj):
         """Display a preview of the product image."""
@@ -63,6 +70,22 @@ class ProductAdmin(admin.ModelAdmin):
     class Media:
         """Media class to include custom JS for image preview."""
         js = ('food_orders/js/admin_image_preview.js',)
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    """Admin for Tag model with product count."""
+    list_display = ('name', 'slug', 'product_count', 'created_at')
+    search_fields = ('name', 'description')
+    prepopulated_fields = {'slug': ('name',)}
+    ordering = ('name',)
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def product_count(self, obj):
+        """Display count of products with this tag."""
+        return obj.products.count()
+    
+    product_count.short_description = 'Products'
 
  
 

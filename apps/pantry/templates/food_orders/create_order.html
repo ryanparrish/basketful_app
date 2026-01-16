@@ -5,25 +5,52 @@
 {% load static %}
 {% block content %}
 
-<nav aria-label="breadcrumb">
+<nav aria-label="breadcrumb" class="d-none d-md-block">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="{% url 'participant_dashboard' %}">Home</a></li>
     <li class="breadcrumb-item active" aria-current="page">Create Order</li>
   </ol>
 </nav>
-<div class="row">
-  <form method="get" class="d-flex mb-4">
-    <input type="text" name="q" placeholder="Search products..." value="{{ query }}" class="form-control me-2 w-25">
-    <button type="submit" class="btn btn-primary">Search</button>
-  </form>
+
+<!-- Sticky Search Header -->
+<div class="sticky-top bg-white shadow-sm" style="top: 0; z-index: 1040;" id="search-header">
+  <div class="container-fluid px-3 py-3">
+    <form method="get" class="d-flex gap-2">
+      <input type="text" name="q" placeholder="Search products..." value="{{ query }}" class="form-control" autocomplete="off" id="search-input">
+      <button type="submit" class="btn btn-primary" style="white-space: nowrap;">Search</button>
+    </form>
+  </div>
+
+  <!-- Mobile Category Filter Button -->
+  <div class="d-md-none container-fluid px-3 pb-2">
+    <button class="btn btn-outline-primary w-100 d-flex align-items-center justify-content-between" 
+            type="button" 
+            data-bs-toggle="offcanvas" 
+            data-bs-target="#categoryFilterDrawer" 
+            aria-controls="categoryFilterDrawer">
+      <span>
+        <i class="bi bi-funnel"></i> Filter by Category
+      </span>
+      <i class="bi bi-list fs-4"></i>
+    </button>
+  </div>
+
+  <!-- Active Category Chip -->
+  <div id="active-category-chip" class="container-fluid px-3 pb-2" style="display: none;">
+    <div class="d-inline-flex align-items-center gap-2 bg-primary text-white px-3 py-2 rounded-pill">
+      <span id="active-category-name"></span>
+      <button type="button" class="btn-close btn-close-white btn-sm" id="clear-category-chip" aria-label="Clear filter" style="font-size: 0.7rem;"></button>
+    </div>
+  </div>
 </div>
-<div class="d-flex justify-content-center">
+
+<div class="d-flex justify-content-center mt-3">
   <h2 class="mb-4">Create Order</h2>
 </div>
 <div class="container-fluid">
   <div class="row">
-    <!-- Sidebar filters -->
-    <div class="col-md-3 mb-4">
+    <!-- Desktop Sidebar filters -->
+    <div class="col-md-3 mb-4 d-none d-md-block">
       <div class="card">
         <div class="card-body">
           <h5 class="card-title">Filter by Category</h5>
@@ -43,26 +70,56 @@
       </div>
     </div>
 
-    <!-- Product Grid -->
-    <div class="col-md-9">
+    <!-- Product Grid with Pull-to-Refresh -->
+    <div class="col-md-9" id="product-container">
+      <div id="pull-to-refresh-indicator" class="text-center py-3" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+      
       {% for category, items in products_by_category.items %}
         <div class="category-section" data-category="{{ category|slugify }}">
           <h4 class="mt-4 mb-3">{{ category }}</h4>
-          <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-3">
+          <div class="row row-cols-2 row-cols-sm-3 row-cols-md-3 row-cols-lg-4 g-2 g-sm-3">
             {% for product in items %}
               <div class="col">
-                <div class="card h-100 shadow-sm">
-                  <div class="card-body text-center">
-                    <h5 class="card-title">{{ product.name }}</h5>
-                    <p class="card-text text-muted">${{ product.price }}</p>
+                <div class="card h-100 shadow-sm product-card" data-product-id="{{ product.id }}" style="touch-action: pan-y; user-select: none;">
+                  <div class="card-body text-center p-2 p-sm-3 position-relative">
+                    <!-- Quick View Button -->
+                    <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-1 quick-view-btn" 
+                            data-product-id="{{ product.id }}"
+                            data-product-name="{{ product.name }}"
+                            data-product-price="{{ product.price }}"
+                            data-product-description="{{ product.description }}"
+                            data-product-image="{% if product.image %}{{ product.image.url }}{% endif %}"
+                            style="opacity: 0.7; z-index: 10;">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    
+                    <h6 class="card-title fs-6 fs-sm-5">{{ product.name }}</h6>
+                    <p class="card-text text-muted fw-bold mb-2">${{ product.price }}</p>
                     {% if product.image %}
-                    <img src="{{ product.image.url }}" alt="{{ product.name }}" class="img-fluid">
+                    <img src="{{ product.image.url }}" alt="{{ product.name }}" class="img-fluid rounded mb-2" style="max-height: 100px; object-fit: contain;">
                     {% else %}
-                    <p>No image available</p>
-                       {% endif %}
-                    <p class="card-text">{{ product.description }}</p>
-                    <input type="number" min="0" value="0" class="form-control quantity-input mb-2" data-product-id="{{ product.id }}">
-                    <button class="btn btn-primary w-100 add-to-cart" data-product-id="{{ product.id }}">Add to Cart</button>
+                    <div class="text-muted small mb-2">No image</div>
+                    {% endif %}
+                    <p class="card-text small d-none d-sm-block">{{ product.description|truncatewords:10 }}</p>
+                    
+                    <!-- Quantity Controls -->
+                    <div class="d-flex gap-1 mb-2">
+                      <button class="btn btn-outline-primary btn-sm flex-fill quick-add-btn" data-product-id="{{ product.id }}">
+                        <i class="bi bi-plus-lg"></i> 1
+                      </button>
+                      <input type="number" min="0" value="0" class="form-control form-control-sm quantity-input" data-product-id="{{ product.id }}" style="max-width: 60px;">
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm w-100 add-to-cart" data-product-id="{{ product.id }}">Add to Cart</button>
+                    
+                    <!-- Swipe Indicator -->
+                    <div class="swipe-indicator position-absolute top-50 start-50 translate-middle" style="display: none; pointer-events: none;">
+                      <i class="bi bi-arrow-right-circle-fill text-success fs-1"></i>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -74,24 +131,96 @@
   </div>
 </div>
 
+<!-- Mobile Offcanvas Category Filter -->
+<div class="offcanvas offcanvas-start" tabindex="-1" id="categoryFilterDrawer" aria-labelledby="categoryFilterDrawerLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="categoryFilterDrawerLabel">
+      <i class="bi bi-funnel"></i> Filter by Category
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-0">
+    <ul class="list-group list-group-flush">
+      <li class="list-group-item">
+        <a href="#" class="category-clear text-primary d-block py-2" id="show-all-categories-mobile">
+          <i class="bi bi-grid-3x3-gap-fill"></i> Show All
+        </a>
+      </li>
+      {% for category, items in products_by_category.items %}
+        <li class="list-group-item">
+          <a href="#" class="category-toggle-mobile d-block py-2" data-category="{{ category|slugify }}">{{ category }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<!-- Product Quick View Modal -->
+<div class="modal fade" id="productQuickViewModal" tabindex="-1" aria-labelledby="productQuickViewLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="productQuickViewLabel"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="modal-product-image" src="" alt="" class="img-fluid mb-3 rounded" style="max-height: 200px;">
+        <p class="fs-4 fw-bold text-primary mb-3" id="modal-product-price"></p>
+        <p id="modal-product-description" class="text-muted"></p>
+        <div class="d-flex gap-2 justify-content-center align-items-center mt-4">
+          <button class="btn btn-outline-secondary" id="modal-decrease-qty">
+            <i class="bi bi-dash-lg"></i>
+          </button>
+          <input type="number" min="0" value="1" class="form-control text-center" id="modal-quantity-input" style="max-width: 80px;">
+          <button class="btn btn-outline-secondary" id="modal-increase-qty">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="modal-add-to-cart">Add to Cart</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sticky Cart Icon (All Viewports) -->
 <button id="cart-drawer-toggle" class="btn btn-primary position-fixed bottom-0 end-0 m-3 rounded-circle shadow" style="z-index: 1050;">
   🛒
 </button>
 
 <!-- Offcanvas Cart Drawer -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="mobileCartDrawer" aria-labelledby="mobileCartDrawerLabel">
-  <div class="offcanvas-header">
-    <h5 class="offcanvas-title" id="mobileCartDrawerLabel">Your Cart</h5>
+<div class="offcanvas offcanvas-end" tabindex="-1" id="mobileCartDrawer" aria-labelledby="mobileCartDrawerLabel" data-bs-backdrop="true" data-bs-keyboard="true">
+  <!-- Pull Handle Indicator -->
+  <div class="text-center py-2 bg-light" style="cursor: pointer;">
+    <div style="width: 40px; height: 4px; background: #ccc; border-radius: 2px; margin: 0 auto;"></div>
+  </div>
+  
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title" id="mobileCartDrawerLabel">
+      <i class="bi bi-cart3"></i> Your Cart
+    </h5>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
   </div>
+  
+  <!-- Hint on first use -->
+  <div id="cart-hint" class="alert alert-info mx-3 mt-2 small" style="display: none;">
+    💡 Tip: Swipe down or tap outside to close
+  </div>
+  
   <div class="offcanvas-body d-flex flex-column">
-    <ul id="mobile-cart-items" class="list-group mb-3"></ul>
-    <div class="mt-auto">
+    <ul id="mobile-cart-items" class="list-group mb-3 flex-grow-1"></ul>
+    <div class="mt-auto border-top pt-3">
+      <button class="btn btn-outline-secondary w-100 mb-2" data-bs-dismiss="offcanvas">
+        <i class="bi bi-arrow-left"></i> Continue Shopping
+      </button>
       <button class="btn btn-outline-danger w-100 mb-2" id="clear-cart-btn">
         <i class="bi bi-trash"></i> Clear Cart
       </button>
-      <button class="btn btn-success w-100" id="mobile-submit-order">Submit Order</button>
+      <button class="btn btn-success w-100" id="mobile-submit-order">
+        <i class="bi bi-check-circle"></i> Submit Order
+      </button>
     </div>
   </div>
 </div>
@@ -162,8 +291,11 @@
   function applyFilterState() {
     const activeCategory = loadFilterState();
     if (activeCategory) {
+      // Update floating chip
+      updateCategoryChip(activeCategory);
+      
       // Highlight the active category in sidebar
-      document.querySelectorAll('.category-toggle').forEach(link => {
+      document.querySelectorAll('.category-toggle, .category-toggle-mobile').forEach(link => {
         const cat = link.dataset.category;
         if (cat === activeCategory) {
           link.classList.add('active', 'fw-bold');
@@ -185,10 +317,28 @@
     }
   }
 
+  function updateCategoryChip(category) {
+    const chip = document.getElementById('active-category-chip');
+    const chipName = document.getElementById('active-category-name');
+    
+    if (category) {
+      // Find category display name
+      const categoryLink = document.querySelector(`[data-category="${category}"]`);
+      const displayName = categoryLink ? categoryLink.textContent.trim() : category;
+      
+      chipName.textContent = displayName;
+      chip.style.display = 'block';
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+
   function clearFilter() {
     saveFilterState(null);
+    updateCategoryChip(null);
+    
     // Remove active state from all filters
-    document.querySelectorAll('.category-toggle').forEach(link => {
+    document.querySelectorAll('.category-toggle, .category-toggle-mobile').forEach(link => {
       link.classList.remove('active', 'fw-bold');
       link.parentElement.classList.remove('active');
     });
@@ -299,6 +449,70 @@
   const submitBtn = document.getElementById('mobile-submit-order');
   if (submitBtn) submitBtn.addEventListener('click', submitOrder);
 
+  // ---------- Cart Drawer Enhancements ----------
+  const cartDrawer = document.getElementById('mobileCartDrawer');
+  const cartToggle = document.getElementById('cart-drawer-toggle');
+  const cartHint = document.getElementById('cart-hint');
+  let cartSwipeStartY = 0;
+  let isCartSwiping = false;
+
+  // Show hint on first cart open (localStorage tracking)
+  if (!localStorage.getItem('cartHintShown')) {
+    cartToggle.addEventListener('click', () => {
+      setTimeout(() => {
+        cartHint.style.display = 'block';
+        setTimeout(() => {
+          cartHint.style.display = 'none';
+          localStorage.setItem('cartHintShown', 'true');
+        }, 4000);
+      }, 300);
+    }, { once: true });
+  }
+
+  // Swipe down to dismiss cart drawer
+  cartDrawer.addEventListener('touchstart', (e) => {
+    cartSwipeStartY = e.touches[0].clientY;
+    isCartSwiping = true;
+  });
+
+  cartDrawer.addEventListener('touchmove', (e) => {
+    if (!isCartSwiping) return;
+    
+    const touchY = e.touches[0].clientY;
+    const swipeDistance = touchY - cartSwipeStartY;
+    
+    // Only allow downward swipes and prevent negative translation
+    if (swipeDistance > 0) {
+      cartDrawer.style.transform = `translateY(${swipeDistance}px)`;
+      cartDrawer.style.transition = 'none';
+    }
+  });
+
+  cartDrawer.addEventListener('touchend', (e) => {
+    if (!isCartSwiping) return;
+    
+    const touchY = e.changedTouches[0].clientY;
+    const swipeDistance = touchY - cartSwipeStartY;
+    
+    // Reset transform
+    cartDrawer.style.transition = 'transform 0.3s ease';
+    cartDrawer.style.transform = 'translateY(0)';
+    
+    // If swiped down more than 100px, dismiss the drawer
+    if (swipeDistance > 100) {
+      const bsOffcanvas = bootstrap.Offcanvas.getInstance(cartDrawer);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+    
+    isCartSwiping = false;
+  });
+
+  // Reset transform when drawer is hidden
+  cartDrawer.addEventListener('hidden.bs.offcanvas', () => {
+    cartDrawer.style.transform = 'translateY(0)';
+    cartDrawer.style.transition = '';
+  });
+
   // ---------- Clear Cart Button ----------
   const clearCartBtn = document.getElementById('clear-cart-btn');
   if (clearCartBtn) {
@@ -320,22 +534,20 @@
     });
   }
 
-  // ---------- Category Toggle ----------
+  // ---------- Category Toggle (Desktop) ----------
   document.querySelectorAll('.category-toggle').forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const cat = link.dataset.category;
       
-      // Check if clicking the same category (toggle off)
       if (link.classList.contains('active')) {
         clearFilter();
         return;
       }
 
-      // Save filter state
       saveFilterState(cat);
+      updateCategoryChip(cat);
 
-      // Update UI - highlight active filter
       document.querySelectorAll('.category-toggle').forEach(l => {
         l.classList.remove('active', 'fw-bold');
         l.parentElement.classList.remove('active');
@@ -343,25 +555,41 @@
       link.classList.add('active', 'fw-bold');
       link.parentElement.classList.add('active');
 
-      // Show only selected category
       document.querySelectorAll('.category-section').forEach(section => {
-        if (section.dataset.category === cat) {
-          section.style.display = 'block';
-          section.classList.remove('d-none');
-          section.classList.add('hidden-fade');
-          section.parentNode.prepend(section);
-
-          requestAnimationFrame(() => {
-            section.classList.remove('hidden-fade');
-          });
-        } else {
-          section.style.display = 'none';
-        }
+        section.style.display = section.dataset.category === cat ? 'block' : 'none';
       });
     });
   });
 
-  // "Show All" button handler
+  // ---------- Category Toggle (Mobile) ----------
+  document.querySelectorAll('.category-toggle-mobile').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const cat = link.dataset.category;
+      
+      saveFilterState(cat);
+      updateCategoryChip(cat);
+
+      document.querySelectorAll('.category-toggle-mobile').forEach(l => {
+        l.classList.remove('active', 'fw-bold');
+        l.parentElement.classList.remove('active');
+      });
+      link.classList.add('active', 'fw-bold');
+      link.parentElement.classList.add('active');
+
+      document.querySelectorAll('.category-section').forEach(section => {
+        section.style.display = section.dataset.category === cat ? 'block' : 'none';
+      });
+
+      const drawerEl = document.getElementById('categoryFilterDrawer');
+      if (drawerEl) {
+        const offcanvas = bootstrap.Offcanvas.getInstance(drawerEl);
+        if (offcanvas) offcanvas.hide();
+      }
+    });
+  });
+
+  // "Show All" button handlers
   const showAllBtn = document.getElementById('show-all-categories');
   if (showAllBtn) {
     showAllBtn.addEventListener('click', e => {
@@ -369,6 +597,191 @@
       clearFilter();
     });
   }
+
+  const showAllBtnMobile = document.getElementById('show-all-categories-mobile');
+  if (showAllBtnMobile) {
+    showAllBtnMobile.addEventListener('click', e => {
+      e.preventDefault();
+      clearFilter();
+      
+      const drawerEl = document.getElementById('categoryFilterDrawer');
+      if (drawerEl) {
+        const offcanvas = bootstrap.Offcanvas.getInstance(drawerEl);
+        if (offcanvas) offcanvas.hide();
+      }
+    });
+  }
+
+  // ---------- Clear Category Chip ----------
+  const clearChipBtn = document.getElementById('clear-category-chip');
+  if (clearChipBtn) {
+    clearChipBtn.addEventListener('click', () => {
+      clearFilter();
+    });
+  }
+
+  // ---------- Quick Add Buttons ----------
+  document.querySelectorAll('.quick-add-btn').forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const productId = button.dataset.productId;
+      cart[productId] = (cart[productId] || 0) + 1;
+      saveCartToStorage();
+      renderCart();
+      
+      // Visual feedback
+      button.innerHTML = '<i class="bi bi-check-lg"></i> Added';
+      setTimeout(() => {
+        button.innerHTML = '<i class="bi bi-plus-lg"></i> 1';
+      }, 1000);
+    });
+  });
+
+  // ---------- Product Quick View Modal ----------
+  let currentModalProductId = null;
+  
+  document.querySelectorAll('.quick-view-btn').forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const productId = button.dataset.productId;
+      const name = button.dataset.productName;
+      const price = button.dataset.productPrice;
+      const description = button.dataset.productDescription;
+      const image = button.dataset.productImage;
+      
+      currentModalProductId = productId;
+      
+      document.getElementById('productQuickViewLabel').textContent = name;
+      document.getElementById('modal-product-price').textContent = `$${parseFloat(price).toFixed(2)}`;
+      document.getElementById('modal-product-description').textContent = description;
+      
+      const modalImage = document.getElementById('modal-product-image');
+      if (image) {
+        modalImage.src = image;
+        modalImage.style.display = 'block';
+      } else {
+        modalImage.style.display = 'none';
+      }
+      
+      document.getElementById('modal-quantity-input').value = 1;
+      
+      const modal = new bootstrap.Modal(document.getElementById('productQuickViewModal'));
+      modal.show();
+    });
+  });
+
+  // Modal quantity controls
+  document.getElementById('modal-decrease-qty').addEventListener('click', () => {
+    const input = document.getElementById('modal-quantity-input');
+    if (input.value > 0) input.value = parseInt(input.value) - 1;
+  });
+
+  document.getElementById('modal-increase-qty').addEventListener('click', () => {
+    const input = document.getElementById('modal-quantity-input');
+    input.value = parseInt(input.value) + 1;
+  });
+
+  document.getElementById('modal-add-to-cart').addEventListener('click', () => {
+    const quantity = parseInt(document.getElementById('modal-quantity-input').value);
+    if (quantity > 0 && currentModalProductId) {
+      cart[currentModalProductId] = (cart[currentModalProductId] || 0) + quantity;
+      saveCartToStorage();
+      renderCart();
+      
+      bootstrap.Modal.getInstance(document.getElementById('productQuickViewModal')).hide();
+    }
+  });
+
+  // ---------- Pull to Refresh ----------
+  let touchStartY = 0;
+  let isPulling = false;
+  
+  const productContainer = document.getElementById('product-container');
+  const refreshIndicator = document.getElementById('pull-to-refresh-indicator');
+  
+  productContainer.addEventListener('touchstart', (e) => {
+    if (window.scrollY === 0) {
+      touchStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  });
+
+  productContainer.addEventListener('touchmove', (e) => {
+    if (!isPulling) return;
+    
+    const touchY = e.touches[0].clientY;
+    const pullDistance = touchY - touchStartY;
+    
+    if (pullDistance > 80 && window.scrollY === 0) {
+      refreshIndicator.style.display = 'block';
+    }
+  });
+
+  productContainer.addEventListener('touchend', (e) => {
+    if (!isPulling) return;
+    
+    const touchY = e.changedTouches[0].clientY;
+    const pullDistance = touchY - touchStartY;
+    
+    if (pullDistance > 80 && window.scrollY === 0) {
+      // Reload the page
+      window.location.reload();
+    } else {
+      refreshIndicator.style.display = 'none';
+    }
+    
+    isPulling = false;
+  });
+
+  // ---------- Swipe Gestures on Product Cards ----------
+  document.querySelectorAll('.product-card').forEach(card => {
+    let startX = 0;
+    let currentX = 0;
+    let isSwiping = false;
+    const swipeIndicator = card.querySelector('.swipe-indicator');
+    
+    card.addEventListener('touchstart', (e) => {
+      startX = e.touches[0].clientX;
+      isSwiping = true;
+    });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!isSwiping) return;
+      
+      currentX = e.touches[0].clientX;
+      const diff = currentX - startX;
+      
+      if (diff > 50) {
+        swipeIndicator.style.display = 'block';
+      } else {
+        swipeIndicator.style.display = 'none';
+      }
+    });
+
+    card.addEventListener('touchend', (e) => {
+      if (!isSwiping) return;
+      
+      const diff = currentX - startX;
+      
+      if (diff > 100) {
+        // Swipe right detected - quick add
+        const productId = card.dataset.productId;
+        cart[productId] = (cart[productId] || 0) + 1;
+        saveCartToStorage();
+        renderCart();
+        
+        // Visual feedback
+        card.style.transform = 'translateX(20px)';
+        setTimeout(() => {
+          card.style.transform = '';
+        }, 300);
+      }
+      
+      swipeIndicator.style.display = 'none';
+      isSwiping = false;
+      currentX = 0;
+    });
+  });
 
   // Initial render
   renderCart();
