@@ -60,21 +60,23 @@ class TestEmailLogAdmin:
     def test_has_delete_permission_returns_false(self):
         """Verify delete permission is disabled."""
         from apps.log.models import EmailType
-        
+
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         request = RequestFactory().get('/')
-        
+
         # Test without obj
         assert admin.has_delete_permission(request) is False
-        
+
         # Test with obj
         user = UserFactory()
-        email_type = EmailType.objects.create(
+        email_type, _ = EmailType.objects.get_or_create(
             name='onboarding',
-            display_name='Onboarding Email',
-            subject='Welcome',
-            is_active=True
+            defaults={
+                'display_name': 'Onboarding Email',
+                'subject': 'Welcome',
+                'is_active': True
+            }
         )
         email_log = EmailLog.objects.create(
             user=user,

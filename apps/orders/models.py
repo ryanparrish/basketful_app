@@ -250,8 +250,7 @@ class Order(models.Model):
             Voucher.objects.filter(pk=voucher.pk).update(
                 active=False,
                 state='consumed',
-                notes=notes_update,
-                updated_at=timezone.now()
+                notes=notes_update
             )
             
             # Create OrderVoucher record to track application
@@ -260,8 +259,6 @@ class Order(models.Model):
                 voucher=voucher,
                 applied_amount=applied_amount
             )
-            
-            logger.debug(f"Voucher {voucher.id} marked as consumed via queryset update")
         
         # Log the consumption
         if vouchers_to_consume:
@@ -290,15 +287,11 @@ class Order(models.Model):
             # Skip validation if only updating specific fields
             if 'update_fields' not in kwargs:
                 self.full_clean()
-            logger.debug(f"About to save Order {self.pk or 'NEW'} with status={self.status}")
             super().save(*args, **kwargs)
-            logger.debug(f"Order {self.id} saved successfully")
             
             # Consume vouchers if order is being confirmed
             if self.status == "confirmed" and old_status != "confirmed":
-                logger.debug(f"Order {self.id} status changed to confirmed, consuming vouchers...")
                 self._consume_vouchers()
-                logger.debug(f"Order {self.id} vouchers consumed, transaction will commit")
 
 
 class OrderItem(models.Model):
