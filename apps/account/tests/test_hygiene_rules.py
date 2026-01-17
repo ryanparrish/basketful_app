@@ -92,6 +92,13 @@ class TestHygieneRules:
         quantity = 3
         order_item_data = OrderItemData(product=product, quantity=quantity)
 
+        # Debug: Check actual balances
+        print(f"\nDEBUG: Base balance: {account_balance.base_balance}")
+        print(f"DEBUG: Available balance: {account_balance.available_balance}")
+        print(f"DEBUG: Hygiene balance: {account_balance.hygiene_balance}")
+        print(f"DEBUG: Order total: {quantity * product.price}")
+        print(f"DEBUG: Voucher amount: {voucher.voucher_amnt}")
+
         validator = OrderValidation()
         with pytest.raises(ValidationError) as exc_info:
             validator.validate_order_items(

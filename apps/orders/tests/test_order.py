@@ -282,10 +282,7 @@ def test_submit_order_view(client):
     logger.debug("Initial total applied vouchers: %s", total_applied)
     logger.debug("Account available balance: %s", account.available_balance)
 
-    # --- Login ---
-    client.force_login(user)
-
-    # --- Session cart setup ---
+    # --- Session cart setup (must happen BEFORE login) ---
     session = client.session
     session["cart"] = {
         str(product1.id): 2,  # 2 * 10 = 20
@@ -293,6 +290,9 @@ def test_submit_order_view(client):
     }
     session.save()
     logger.debug("Cart session: %s", session["cart"])
+
+    # --- Login (AFTER session setup) ---
+    client.force_login(user)
 
     # --- Define form payload ---
     payload = {"confirm": True}
@@ -380,10 +380,7 @@ def test_submit_order_view_with_50_items(client):
     
     logger.info("Created %s products", len(products))
 
-    # --- Login ---
-    client.force_login(user)
-
-    # --- Session cart setup with 50 items ---
+    # --- Session cart setup with 50 items (must happen BEFORE login) ---
     session = client.session
     cart = {}
     expected_item_count = 50
@@ -397,6 +394,9 @@ def test_submit_order_view_with_50_items(client):
     session["cart"] = cart
     session.save()
     logger.info("Cart has %s items with expected total: %s", len(cart), expected_total)
+
+    # --- Login (AFTER session setup) ---
+    client.force_login(user)
 
     # --- Define form payload ---
     payload = {"confirm": True}

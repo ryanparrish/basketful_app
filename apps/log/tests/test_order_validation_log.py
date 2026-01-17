@@ -378,6 +378,10 @@ class TestVoucherUtilsLogging:
         voucher1.delete()
         voucher2.delete()
         
+        # Verify vouchers are deleted
+        remaining_vouchers = account.vouchers.filter(state='applied', active=True).count()
+        assert remaining_vouchers == 0, f"Expected 0 vouchers after deletion, found {remaining_vouchers}"
+        
         # Clear existing logs
         OrderValidationLog.objects.all().delete()
         
@@ -385,7 +389,17 @@ class TestVoucherUtilsLogging:
         with patch('apps.pantry.utils.voucher_utils.log_voucher_application_task.delay'):
             # Apply vouchers (none available after deletion)
             # The function will log internally when no vouchers are found
+            # Debug: verify account and participant linkage
+            print(f"\\nDEBUG: Account: {account}, Participant: {account.participant}")
+            print(f"DEBUG: Order account: {order.account}, Order status: {order.status}")
             result = apply_vouchers_to_order(order)
+            print(f"DEBUG: Result: {result}")
+        
+        # Debug: Check if log was created
+        all_logs = OrderValidationLog.objects.all()
+        print(f"DEBUG: Total logs: {all_logs.count()}")
+        for log in all_logs:
+            print(f"DEBUG: Log - Participant: {log.participant}, Message: {log.message}")
         
         # Verify log was created
         logs = OrderValidationLog.objects.filter(participant=participant)

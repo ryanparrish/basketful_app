@@ -88,10 +88,13 @@ class TestOrderSuccessView:
         user = user_with_order['user']
         order = user_with_order['order']
         
-        client.force_login(user)
+        # Set session BEFORE login
         session = client.session
         session['last_order_id'] = order.id
         session.save()
+        
+        # Login AFTER session setup
+        client.force_login(user)
         
         response = client.get(reverse('order_success'))
         
