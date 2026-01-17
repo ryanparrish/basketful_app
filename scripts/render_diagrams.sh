@@ -10,9 +10,9 @@ mkdir -p "$OUT_DIR"
 echo "Rendering Mermaid diagrams to $OUT_DIR"
 
 # Render ER diagram
-npx --yes @mermaid-js/mermaid-cli -i "$DIAGRAM_DIR/ER_diagram.mmd" -o "$OUT_DIR/ER_diagram.png"
+npx --yes @mermaid-js/mermaid-cli -i "$DIAGRAM_DIR/ER_diagram.mmd" -o "$OUT_DIR/ER_diagram.png" -p puppeteer.config.json
 
 # Render class diagram
-npx --yes @mermaid-js/mermaid-cli -i "$DIAGRAM_DIR/class_diagram.mmd" -o "$OUT_DIR/class_diagram.png"
+npx --yes @mermaid-js/mermaid-cli -i "$DIAGRAM_DIR/class_diagram.mmd" -o "$OUT_DIR/class_diagram.png" -p puppeteer.config.json
 
 echo "Rendering complete."
