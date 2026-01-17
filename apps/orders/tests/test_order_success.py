@@ -144,10 +144,9 @@ class TestOrderSuccessView:
         # Login first to create authenticated session
         client.force_login(user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = 99999  # Non-existent ID
-        session.save()
         
         response = client.get(reverse('order_success'))
         
@@ -169,10 +168,9 @@ class TestOrderSuccessView:
         # Login first to create authenticated session
         client.force_login(other_user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = order.id
-        session.save()
         
         response = client.get(reverse('order_success'))
         
@@ -192,10 +190,9 @@ class TestOrderSuccessView:
         # Login first to create authenticated session
         client.force_login(user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = order.id
-        session.save()
         
         # Mock save to raise ValidationError
         with patch.object(Order, 'save') as mock_save:
@@ -217,10 +214,9 @@ class TestOrderSuccessView:
         # Login first to create authenticated session
         client.force_login(user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = order.id
-        session.save()
         
         # Mock save to raise unexpected error
         with patch.object(Order, 'save') as mock_save:
@@ -325,10 +321,9 @@ class TestOrderValidationEdgeCases:
         # Login first to create authenticated session
         client.force_login(user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = order2.id
-        session.save()
         
         response = client.get(reverse('order_success'))
         
@@ -434,10 +429,9 @@ class TestVoucherConsumptionEdgeCases:
         # Login first to create authenticated session
         client.force_login(user)
         
-        # Then set session data in the authenticated session
+        # Set session data (no need to save, Django handles it)
         session = client.session
         session['last_order_id'] = order.id
-        session.save()
         
         response = client.get(reverse('order_success'))
         
