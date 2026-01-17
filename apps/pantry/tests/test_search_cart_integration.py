@@ -4,7 +4,7 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from apps.account.models import Participant
-from apps.lifeskills.models import Lifeskills Coach
+from apps.lifeskills.models import LifeskillsCoach
 from apps.pantry.models import Product, Category
 from apps.voucher.models import Voucher
 from datetime import timedelta
