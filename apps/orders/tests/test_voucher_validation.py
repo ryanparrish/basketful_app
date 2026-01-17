@@ -34,6 +34,9 @@ class TestVoucherValidation:
         participant.accountbalance.base_balance = Decimal("50.00")
         participant.accountbalance.save()
         
+        # Delete all existing vouchers (signals create 2 by default)
+        participant.accountbalance.vouchers.all().delete()
+        
         # Create ONE voucher with $50 balance
         voucher = VoucherFactory.create(
             account=participant.accountbalance,
