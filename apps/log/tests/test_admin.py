@@ -85,7 +85,7 @@ class TestEmailLogAdmin:
         assert admin.has_delete_permission(request, email_log) is False
 
     def test_has_change_permission_returns_true(self):
-        """Verify change permission returns False (logs are read-only).""
+        """Verify change permission returns False (logs are read-only)."""
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         request = RequestFactory().get('/')
