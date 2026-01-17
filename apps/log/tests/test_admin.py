@@ -14,13 +14,9 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
+@pytest.mark.override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestEmailLogAdmin:
     """Tests for EmailLogAdmin configuration."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, settings):
-        settings.CELERY_TASK_ALWAYS_EAGER = True
-        settings.CELERY_TASK_EAGER_PROPAGATES = True
 
     def test_list_display_fields(self):
         """Verify list_display contains expected fields."""

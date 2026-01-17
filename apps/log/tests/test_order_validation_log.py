@@ -339,13 +339,9 @@ class TestMiddlewareLogging:
 
 
 @pytest.mark.django_db
+@pytest.mark.override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestVoucherUtilsLogging:
     """Tests for OrderValidationLog creation in voucher_utils."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, settings):
-        settings.CELERY_TASK_ALWAYS_EAGER = True
-        settings.CELERY_TASK_EAGER_PROPAGATES = True
 
     def test_log_created_when_no_vouchers_available(self):
         """Test that log is created when no vouchers are available for order.
