@@ -187,7 +187,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_empty_search_shows_all_products_in_both_lists(self):
         """Test that empty search returns all products in both lists."""
-        response = self.client.get('/pantry/products/?q=')
+        response = self.client.get(reverse('create_order') + '?q=')
         
         products_json = response.context['products_json']
         products = json.loads(products_json)
