@@ -142,7 +142,7 @@ def validate_customer_number(customer_number: str) -> Tuple[bool, str]:
         return False, f"Invalid prefix: must be 'C', got '{prefix}'"
     
     if len(code) != 3:
-        return False, f"Invalid code length: must be 3 characters"
+        return False, "Invalid code length: must be 3 characters"
     
     invalid_chars = [c for c in code.upper() if c not in SAFE_CHARS]
     if invalid_chars:
