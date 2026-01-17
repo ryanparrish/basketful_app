@@ -281,3 +281,57 @@ class OrderValidationLog(BaseLog):
             f"{self.message}"
         )
 
+
+class UserLoginLog(models.Model):
+    """Track user login and logout activity."""
+    LOGIN = 'login'
+    LOGOUT = 'logout'
+    FAILED_LOGIN = 'failed_login'
+    
+    ACTION_CHOICES = [
+        (LOGIN, 'Login'),
+        (LOGOUT, 'Logout'),
+        (FAILED_LOGIN, 'Failed Login'),
+    ]
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='login_logs',
+        null=True,
+        blank=True
+    )
+    username_attempted = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="Username used in login attempt (for failed logins)"
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    participant = models.ForeignKey(
+        'account.Participant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='login_logs'
+    )
+    
+    class Meta:
+        app_label = 'log'
+        ordering = ['-timestamp']
+        verbose_name = "User Login Log"
+        verbose_name_plural = "User Login Logs"
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['user', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        user_display = self.user.username if self.user else self.username_attempted
+        return f"{user_display} - {self.get_action_display()} at {self.timestamp}"
+

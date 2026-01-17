@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path
 from django.utils.html import format_html
-from .models import EmailLog, EmailType, OrderValidationLog
+from .models import EmailLog, EmailType, OrderValidationLog, UserLoginLog
 
 
 @admin.register(EmailType)
@@ -138,6 +138,70 @@ class EmailLogAdmin(admin.ModelAdmin):
     
     def has_change_permission(self, request, obj=None):
         """Prevent editing of email logs."""
+        return False
+
+
+@admin.register(UserLoginLog)
+class UserLoginLogAdmin(admin.ModelAdmin):
+    """Admin for viewing user login/logout activity."""
+    list_display = [
+        'timestamp',
+        'user_display',
+        'action_display',
+        'participant_display',
+        'ip_address',
+    ]
+    list_filter = ['action', 'timestamp']
+    search_fields = ['user__username', 'user__email', 'username_attempted', 'ip_address']
+    readonly_fields = [
+        'user',
+        'username_attempted',
+        'action',
+        'ip_address',
+        'user_agent',
+        'timestamp',
+        'participant',
+    ]
+    date_hierarchy = 'timestamp'
+    
+    def user_display(self, obj):
+        """Display user or attempted username."""
+        if obj.user:
+            return f"{obj.user.username} ({obj.user.email})"
+        return obj.username_attempted or "Unknown"
+    user_display.short_description = "User"
+    user_display.admin_order_field = 'user__username'
+    
+    def action_display(self, obj):
+        """Colorize action status."""
+        colors = {
+            'login': 'green',
+            'logout': 'gray',
+            'failed_login': 'red',
+        }
+        color = colors.get(obj.action, 'black')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            obj.get_action_display()
+        )
+    action_display.short_description = "Action"
+    action_display.admin_order_field = 'action'
+    
+    def participant_display(self, obj):
+        """Display participant if exists."""
+        if obj.participant:
+            return f"{obj.participant.name} ({obj.participant.customer_number})"
+        return "-"
+    participant_display.short_description = "Participant"
+    participant_display.admin_order_field = 'participant__name'
+    
+    def has_add_permission(self, request):
+        """Prevent manual creation."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion - audit trail."""
         return False
 
 
