@@ -86,10 +86,12 @@ class TestHygieneRules:
         voucher = create_test_voucher(participant, multiplier=1)
         participant.refresh_from_db()
 
-        # Hygiene balance = 1/3 of voucher balance, assume 30 for test purposes
-        # Exceeding it intentionally (3 * 15 = 45, which exceeds typical hygiene balance)
+        # Hygiene balance = 1/3 of voucher balance
+        # With base_balance=100 and 1 voucher: hygiene_balance = 100/3 = 33.33
+        # But participant gets 2 vouchers by default via signal, so available = 200, hygiene = 66.67
+        # To exceed: 5 * 15 = 75 > 66.67
         account_balance = participant.accountbalance
-        quantity = 3
+        quantity = 5  # Changed from 3 to 5 to exceed hygiene balance
         order_item_data = OrderItemData(product=product, quantity=quantity)
 
         # Debug: Check actual balances

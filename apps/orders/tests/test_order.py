@@ -234,7 +234,9 @@ def test_submit_order_view(client):
 
     # --- Setup user, participant, and account ---
     test_password = "test_pass_123"  # noqa: S105
-    user = UserFactory(username="testuser", password=test_password)
+    user = UserFactory(username="testuser")
+    user.set_password(test_password)
+    user.save()
     participant = ParticipantFactory(user=user)
     account = participant.accountbalance
     account.base_balance = Decimal("100.00")  # Set sufficient balance
@@ -291,8 +293,8 @@ def test_submit_order_view(client):
     session.save()
     logger.debug("Cart session: %s", session["cart"])
 
-    # --- Login (AFTER session setup) ---
-    client.force_login(user)
+    # --- Login using credentials (preserves session) ---
+    client.login(username="testuser", password=test_password)
 
     # --- Define form payload ---
     payload = {"confirm": True}
@@ -351,7 +353,9 @@ def test_submit_order_view_with_50_items(client):
 
     # --- Setup user, participant, and account ---
     test_password = "test_pass_123"  # noqa: S105
-    user = UserFactory(username="testuser_50items", password=test_password)
+    user = UserFactory(username="testuser_50items")
+    user.set_password(test_password)
+    user.save()
     participant = ParticipantFactory(user=user)
     account = participant.accountbalance
     
@@ -395,8 +399,8 @@ def test_submit_order_view_with_50_items(client):
     session.save()
     logger.info("Cart has %s items with expected total: %s", len(cart), expected_total)
 
-    # --- Login (AFTER session setup) ---
-    client.force_login(user)
+    # --- Login using credentials (preserves session) ---
+    client.login(username="testuser_50items", password=test_password)
 
     # --- Define form payload ---
     payload = {"confirm": True}

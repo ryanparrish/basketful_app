@@ -359,10 +359,6 @@ class TestVoucherUtilsLogging:
         account.base_balance = Decimal("100.00")
         account.save()
         
-        # Create vouchers to provide available balance (so validation passes)
-        voucher1 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
-        voucher2 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
-        
         order = OrderFactory(
             account=account,
             status="pending"  # Start as pending to avoid validation
@@ -373,6 +369,10 @@ class TestVoucherUtilsLogging:
         # Update to confirmed after items exist
         order.status = "confirmed"
         order.save()
+        
+        # Create vouchers AFTER order is confirmed (to prevent auto-consumption)
+        voucher1 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
+        voucher2 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
         
         # Now delete the vouchers so apply_vouchers_to_order finds none
         voucher1.delete()
