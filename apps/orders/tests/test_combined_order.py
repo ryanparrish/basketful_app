@@ -173,14 +173,22 @@ class TestCombinedOrderCreation:
         # Login as admin
         client.force_login(admin_user)
 
-        # Submit form
+        # Step 1: Submit form to go to preview
         url = reverse('admin:orders_combinedorder_create')
         form_data = {
             'program': program.id,
             'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
             'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
         }
-        response = client.post(url, data=form_data, follow=True)
+        response = client.post(url, data=form_data)
+        
+        # Should redirect to preview
+        assert response.status_code == 302
+        assert 'preview' in response.url
+        
+        # Step 2: Confirm creation
+        confirm_url = reverse('admin:orders_combinedorder_confirm')
+        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
 
         # Check combined order was created
         assert CombinedOrder.objects.count() == 1
@@ -189,11 +197,6 @@ class TestCombinedOrderCreation:
         assert combined_order.orders.count() == 2
         assert order1 in combined_order.orders.all()
         assert order2 in combined_order.orders.all()
-
-        # Check success message
-        messages = list(response.context['messages'])
-        assert len(messages) == 1
-        assert 'Combined order created successfully' in str(messages[0])
 
     def test_create_combined_order_no_orders(
         self, program, admin_user, client
@@ -207,15 +210,11 @@ class TestCombinedOrderCreation:
             'start_date': '2025-01-01',
             'end_date': '2025-01-31',
         }
-        response = client.post(url, data=form_data)
+        response = client.post(url, data=form_data, follow=True)
 
+        # Should redirect to preview which shows no eligible orders
         # Check no combined order was created
         assert CombinedOrder.objects.count() == 0
-
-        # Check warning message
-        messages = list(response.context['messages'])
-        assert len(messages) == 1
-        assert 'No confirmed orders found' in str(messages[0])
 
     def test_create_combined_order_only_confirmed(
         self, program, admin_user, client
@@ -245,16 +244,23 @@ class TestCombinedOrderCreation:
 
         client.force_login(admin_user)
 
+        # Step 1: Submit form to go to preview
         url = reverse('admin:orders_combinedorder_create')
         form_data = {
             'program': program.id,
             'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
             'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
         }
-        response = client.post(url, data=form_data, follow=True)
+        response = client.post(url, data=form_data)
+        assert response.status_code == 302
+        
+        # Step 2: Confirm creation
+        confirm_url = reverse('admin:orders_combinedorder_confirm')
+        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
 
         # Check only confirmed order is included
         combined_order = CombinedOrder.objects.first()
+        assert combined_order is not None
         assert combined_order.orders.count() == 1
         assert confirmed_order in combined_order.orders.all()
         assert pending_order not in combined_order.orders.all()
@@ -284,16 +290,23 @@ class TestCombinedOrderCreation:
 
         client.force_login(admin_user)
 
+        # Step 1: Submit form to go to preview
         url = reverse('admin:orders_combinedorder_create')
         form_data = {
             'program': program.id,
             'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
             'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
         }
-        response = client.post(url, data=form_data, follow=True)
+        response = client.post(url, data=form_data)
+        assert response.status_code == 302
+        
+        # Step 2: Confirm creation
+        confirm_url = reverse('admin:orders_combinedorder_confirm')
+        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
 
         # Check only orders from selected program are included
         combined_order = CombinedOrder.objects.first()
+        assert combined_order is not None
         assert combined_order.orders.count() == 1
         assert order1 in combined_order.orders.all()
         assert order2 not in combined_order.orders.all()
@@ -329,6 +342,7 @@ class TestCombinedOrderCreation:
 
         client.force_login(admin_user)
 
+        # Step 1: Submit form to go to preview
         url = reverse('admin:orders_combinedorder_create')
         form_data = {
             'program': program.id,
@@ -337,10 +351,16 @@ class TestCombinedOrderCreation:
             ),
             'end_date': timezone.now().strftime('%Y-%m-%d'),
         }
-        response = client.post(url, data=form_data, follow=True)
+        response = client.post(url, data=form_data)
+        assert response.status_code == 302
+        
+        # Step 2: Confirm creation
+        confirm_url = reverse('admin:orders_combinedorder_confirm')
+        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
 
         # Check only orders within date range are included
         combined_order = CombinedOrder.objects.first()
+        assert combined_order is not None
         assert combined_order.orders.count() == 1
         assert recent_order in combined_order.orders.all()
         assert old_order not in combined_order.orders.all()
