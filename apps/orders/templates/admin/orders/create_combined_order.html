@@ -7,19 +7,19 @@
     
     <div style="background-color: #e8f4f8; border-left: 4px solid #2196F3; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
         <h3 style="margin-top: 0; color: #1976D2;">
-            <span style="font-size: 1.2em;">ℹ️</span> Instructions
+            <span style="font-size: 1.2em;">ℹ️</span> How to Create a Combined Order
         </h3>
         <ol style="margin-bottom: 0; line-height: 1.8;">
-            <li><strong>Specify the date range:</strong> Select the program, start date, and end date for the orders you want to combine.</li>
-            <li><strong>Create the combined order:</strong> Click "Create Combined Order" to generate a new combined order with a timestamp-based name.</li>
-            <li><strong>Download the PDF:</strong> After creation, you'll be redirected to the Combined Orders list. Select your newly created order and use the "Download Combined Order PDF" action.</li>
+            <li><strong>Select Program & Dates:</strong> Choose the program and date range for orders to combine.</li>
+            <li><strong>Preview:</strong> Review eligible orders, totals, and packing split before confirming.</li>
+            <li><strong>Confirm:</strong> Create the combined order and download PDFs.</li>
         </ol>
     </div>
     
     {% if messages %}
         {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">
-                {{ message }}
+            <div class="messagelist">
+                <li class="{{ message.tags }}">{{ message }}</li>
             </div>
         {% endfor %}
     {% endif %}
@@ -28,7 +28,7 @@
         {% csrf_token %}
         
         <fieldset class="module aligned">
-            <h2>Select Program and Time Frame</h2>
+            <h2>Step 1: Select Program and Time Frame</h2>
             
             <div class="form-row">
                 {{ form.program.errors }}
@@ -64,46 +64,31 @@
             </div>
             
             {% if form.non_field_errors %}
-                <div class="form-row">
+                <div class="form-row errors">
                     {{ form.non_field_errors }}
                 </div>
             {% endif %}
         </fieldset>
         
+        <fieldset class="module aligned collapse">
+            <h2>Advanced Options</h2>
+            
+            <div class="form-row">
+                {{ form.split_strategy_override.errors }}
+                <div>
+                    <label for="{{ form.split_strategy_override.id_for_label }}">{{ form.split_strategy_override.label }}:</label>
+                    {{ form.split_strategy_override }}
+                    {% if form.split_strategy_override.help_text %}
+                        <p class="help">{{ form.split_strategy_override.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </fieldset>
+        
         <div class="submit-row">
-            <input type="submit" value="Create Combined Order" class="default">
+            <input type="submit" value="Preview Orders →" class="default">
             <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button cancel-link">Cancel</a>
         </div>
     </form>
-
-    {% if preview_orders %}
-        <div class="module">
-            <h2>Preview: Orders to be Combined ({{ preview_orders|length }})</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Order Number</th>
-                        <th>Date</th>
-                        <th>Participant</th>
-                        <th>Total Price</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in preview_orders %}
-                        <tr>
-                            <td>{{ order.order_number }}</td>
-                            <td>{{ order.order_date|date:"Y-m-d" }}</td>
-                            <td>{{ order.account.participant }}</td>
-                            <td>${{ order.total_price }}</td>
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="4">No orders found for the selected criteria.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% endif %}
 </div>
 {% endblock %}

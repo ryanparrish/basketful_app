@@ -65,6 +65,10 @@ class Order(models.Model):
         default="pending",
     )
     paid = models.BooleanField(default=False)
+    is_combined = models.BooleanField(
+        default=False,
+        help_text="Whether this order has been included in a combined order"
+    )
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -332,11 +336,39 @@ class OrderItem(models.Model):
 
 
 class CombinedOrder(models.Model):
-  
+    """
+    Combined order for warehouse ordering and packing.
+    
+    For single-packer programs, this serves as both the warehouse order
+    and the packing list. For multi-packer programs, PackingList records
+    are created to split the work among packers.
+    """
+    
+    # Split strategy choices (mirrors Program.SPLIT_STRATEGY_CHOICES)
+    SPLIT_STRATEGY_CHOICES = [
+        ('none', 'None (Single Packer)'),
+        ('fifty_fifty', '50/50 Split'),
+        ('round_robin', 'Round Robin'),
+        ('by_category', 'By Category'),
+    ]
+    
     name = models.CharField(max_length=255, blank=True)
-    program = models.ForeignKey("lifeskills.Program", on_delete=models.CASCADE, related_name="combined_orders")
-    orders = models.ManyToManyField("Order", related_name="combined_orders", blank=True)
-    # packed_by = models.ForeignKey("pantry.OrderPacker", on_delete=models.SET_NULL, null=True, blank=True, related_name="combined_orders")
+    program = models.ForeignKey(
+        "lifeskills.Program",
+        on_delete=models.CASCADE,
+        related_name="combined_orders"
+    )
+    orders = models.ManyToManyField(
+        "Order",
+        related_name="combined_orders",
+        blank=True
+    )
+    split_strategy = models.CharField(
+        max_length=20,
+        choices=SPLIT_STRATEGY_CHOICES,
+        default='none',
+        help_text="Strategy used to split this combined order among packers"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     summarized_data = models.JSONField(default=dict, blank=True)
@@ -383,3 +415,125 @@ class CombinedOrder(models.Model):
         if self.name:
             return f"{self.program.name} - {self.name}"
         return f"{self.program.name} Combined Order ({self.created_at and self.created_at.strftime('%Y-%m-%d')})"
+
+
+class PackingSplitRule(models.Model):
+    """
+    Predefined rules for splitting orders by category among packers.
+    
+    Used when a program's split_strategy is 'by_category'. Each rule
+    assigns specific categories/subcategories to a packer.
+    """
+    program = models.ForeignKey(
+        "lifeskills.Program",
+        on_delete=models.CASCADE,
+        related_name="packing_split_rules"
+    )
+    packer = models.ForeignKey(
+        "pantry.OrderPacker",
+        on_delete=models.CASCADE,
+        related_name="split_rules"
+    )
+    categories = models.ManyToManyField(
+        "pantry.Category",
+        related_name="split_rules",
+        blank=True,
+        help_text="Categories this packer is responsible for"
+    )
+    subcategories = models.ManyToManyField(
+        "pantry.Subcategory",
+        related_name="split_rules",
+        blank=True,
+        help_text="Subcategories this packer is responsible for (overrides category)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'orders_packing_split_rule'
+        unique_together = [['program', 'packer']]
+        verbose_name = "Packing Split Rule"
+        verbose_name_plural = "Packing Split Rules"
+
+    def __str__(self):
+        category_names = ", ".join(c.name for c in self.categories.all()[:3])
+        if self.categories.count() > 3:
+            category_names += "..."
+        return f"{self.program.name} - {self.packer.name}: {category_names or 'No categories'}"
+
+
+class PackingList(models.Model):
+    """
+    A packing list for a specific packer from a combined order.
+    
+    Only created when a combined order has multiple packers.
+    For single-packer programs, the CombinedOrder itself serves as the packing list.
+    """
+    combined_order = models.ForeignKey(
+        "CombinedOrder",
+        on_delete=models.CASCADE,
+        related_name="packing_lists"
+    )
+    packer = models.ForeignKey(
+        "pantry.OrderPacker",
+        on_delete=models.CASCADE,
+        related_name="packing_lists"
+    )
+    orders = models.ManyToManyField(
+        "Order",
+        related_name="packing_lists",
+        blank=True,
+        help_text="Orders assigned to this packer"
+    )
+    categories = models.ManyToManyField(
+        "pantry.Category",
+        related_name="packing_lists",
+        blank=True,
+        help_text="Categories this packer is responsible for (for by_category strategy)"
+    )
+    summarized_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Aggregated product quantities for this packer's portion"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'orders_packing_list'
+        verbose_name = "Packing List"
+        verbose_name_plural = "Packing Lists"
+
+    def __str__(self):
+        return f"{self.combined_order} - {self.packer.name}"
+
+    def calculate_summarized_data(self):
+        """
+        Calculate aggregated product quantities for this packer's orders/categories.
+        
+        Returns dict of {category_name: {product_name: quantity}}
+        """
+        summary = defaultdict(lambda: defaultdict(int))
+        
+        # Get the split strategy from the combined order
+        strategy = self.combined_order.split_strategy
+        
+        if strategy == 'by_category':
+            # For by_category, filter items by assigned categories
+            assigned_category_ids = set(self.categories.values_list('id', flat=True))
+            
+            for order in self.combined_order.orders.all():
+                for item in order.items.select_related('product__category'):
+                    product = item.product
+                    if product.category_id in assigned_category_ids:
+                        category_name = product.category.name if product.category else "Uncategorized"
+                        summary[category_name][product.name] += item.quantity
+        else:
+            # For other strategies (fifty_fifty, round_robin), use assigned orders
+            for order in self.orders.all():
+                for item in order.items.select_related('product__category'):
+                    product = item.product
+                    category_name = product.category.name if product.category else "Uncategorized"
+                    summary[category_name][product.name] += item.quantity
+        
+        return dict(summary)

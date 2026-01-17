@@ -11,11 +11,18 @@ from django.utils import timezone
 # First-party imports
 from apps.voucher.models import Voucher
 # Local imports
-from .models import Order, CombinedOrder
+from .models import Order, CombinedOrder, PackingSplitRule, PackingList
 from .inline import OrderItemInline
 from .forms import CreateCombinedOrderForm
 from .utils.order_helper import OrderHelper
 from .utils.order_services import generate_combined_order_pdf
+from .tasks.helper.combined_order_helper import (
+    get_eligible_orders,
+    get_split_preview,
+    validate_split_strategy,
+    create_combined_order_with_packing,
+    uncombine_order,
+)
 
 
 @admin.register(Order)
@@ -85,15 +92,21 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(CombinedOrder)
 class CombinedOrderAdmin(admin.ModelAdmin):
-    """Admin for CombinedOrder with custom actions."""
-    actions = ['download_combined_order_pdf']
-    readonly_fields = ('display_orders', 'created_at', 'updated_at')
+    """Admin for CombinedOrder with preview/confirm workflow."""
+    actions = ['download_combined_order_pdf', 'download_packing_list_pdf', 'uncombine_orders_action']
+    readonly_fields = ('display_orders', 'created_at', 'updated_at', 'display_packing_lists', 'display_split_strategy')
     exclude = ('summarized_data', 'is_parent')
     change_list_template = "admin/orders/combinedorder/change_list.html"
     change_form_template = "admin/orders/combinedorder/change_form.html"
     list_display = (
-        'name', 'program', 'created_at', 'updated_at', 'order_count'
+        'name', 'program', 'display_split_strategy', 'created_at', 'updated_at', 'order_count', 'packing_list_count'
     )
+    list_filter = ('program', 'split_strategy', 'created_at')
+    
+    def display_split_strategy(self, obj):
+        """Display split strategy with human-readable label."""
+        return obj.get_split_strategy_display()
+    display_split_strategy.short_description = 'Split Strategy'
     
     def display_orders(self, obj):
         """Display orders in a readable format with links."""
@@ -109,8 +122,10 @@ class CombinedOrderAdmin(admin.ModelAdmin):
         order_data = []
         for order in orders:
             url = reverse('admin:orders_order_change', args=[order.id])
-            participant_name = order.account.participant.user.get_full_name()
-            order_text = f"Order #{order.order_number} - {participant_name}"
+            # Use customer_number for privacy
+            participant = order.account.participant
+            customer_num = getattr(participant, 'customer_number', 'N/A')
+            order_text = f"Order #{order.order_number} - Customer #{customer_num}"
             order_data.append((url, order_text))
         
         # Use format_html_join to safely join HTML
@@ -122,11 +137,33 @@ class CombinedOrderAdmin(admin.ModelAdmin):
     
     display_orders.short_description = 'Orders'
     
+    def display_packing_lists(self, obj):
+        """Display packing lists for this combined order."""
+        from django.utils.html import format_html
+        
+        packing_lists = obj.packing_lists.all()
+        if not packing_lists:
+            return "No packing lists (single packer or not split)"
+        
+        lines = []
+        for pl in packing_lists:
+            lines.append(f"• {pl.packer.name}: {pl.orders.count()} orders")
+        
+        return format_html('<br>'.join(lines))
+    
+    display_packing_lists.short_description = 'Packing Lists'
+    
     def order_count(self, obj):
         """Display count of orders in the combined order."""
         return obj.orders.count()
     
-    order_count.short_description = 'Order Count'
+    order_count.short_description = 'Orders'
+    
+    def packing_list_count(self, obj):
+        """Display count of packing lists."""
+        return obj.packing_lists.count()
+    
+    packing_list_count.short_description = 'Packing Lists'
 
     # ------------------------
     # Custom URLs
@@ -136,9 +173,24 @@ class CombinedOrderAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
-                "create-combined-order/",
+                "create/",
                 self.admin_site.admin_view(self.create_combined_order_view),
                 name="orders_combinedorder_create",
+            ),
+            path(
+                "preview/",
+                self.admin_site.admin_view(self.preview_combined_order_view),
+                name="orders_combinedorder_preview",
+            ),
+            path(
+                "confirm/",
+                self.admin_site.admin_view(self.confirm_combined_order_view),
+                name="orders_combinedorder_confirm",
+            ),
+            path(
+                "<int:pk>/success/",
+                self.admin_site.admin_view(self.success_combined_order_view),
+                name="orders_combinedorder_success",
             ),
         ]
 
@@ -146,89 +198,193 @@ class CombinedOrderAdmin(admin.ModelAdmin):
     
     def create_combined_order_view(self, request):
         """
-        Handle the creation of a combined order with custom time frame.
+        Step 1: Show form to select program and date range.
         """
         if request.method == 'POST':
             form = CreateCombinedOrderForm(request.POST)
             if form.is_valid():
-                program = form.cleaned_data['program']
-                start_date = form.cleaned_data['start_date']
-                end_date = form.cleaned_data['end_date']
-                
-                # Convert dates to datetime for filtering
-                start_datetime = timezone.make_aware(
-                    timezone.datetime.combine(
-                        start_date, timezone.datetime.min.time()
-                    )
-                )
-                end_datetime = timezone.make_aware(
-                    timezone.datetime.combine(
-                        end_date, timezone.datetime.max.time()
-                    )
-                )
-                
-                # Get orders for the selected program and time frame
-                orders = Order.objects.filter(
-                    account__participant__program=program,
-                    order_date__gte=start_datetime,
-                    order_date__lte=end_datetime,
-                    status='confirmed'
-                ).select_related('account__participant')
-                
-                if not orders.exists():
-                    messages.warning(
-                        request,
-                        f"No confirmed orders found for {program.name} "
-                        f"between {start_date} and {end_date}."
-                    )
-                    return render(
-                        request,
-                        'admin/orders/create_combined_order.html',
-                        {'form': form}
-                    )
-                
-                # Use get_or_create to avoid duplicate constraint violation
-                # The unique constraint is on program, week, year
-                timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
-                order_name = f"Combined Order - {timestamp}"
-                
-                # Get or create based on program and current week/year
-                now = timezone.now()
-                week = now.isocalendar()[1]
-                year = now.year
-                
-                combined_order, created = CombinedOrder.objects.get_or_create(
-                    program=program,
-                    week=week,
-                    year=year,
-                    defaults={'name': order_name}
-                )
-                
-                if not created:
-                    # Update the name with new timestamp if reusing existing
-                    combined_order.name = order_name
-                    combined_order.save(update_fields=['name'])
-                
-                # Add orders to the combined order
-                combined_order.orders.add(*orders)
-                combined_order.save()
-                
-                messages.success(
-                    request,
-                    f"Combined order created successfully with "
-                    f"{orders.count()} orders for {program.name}."
-                )
-                return redirect('admin:orders_combinedorder_changelist')
+                # Store form data in session for preview
+                request.session['combined_order_form_data'] = {
+                    'program_id': form.cleaned_data['program'].id,
+                    'start_date': form.cleaned_data['start_date'].isoformat(),
+                    'end_date': form.cleaned_data['end_date'].isoformat(),
+                    'split_strategy_override': form.cleaned_data.get('split_strategy_override', ''),
+                }
+                return redirect('admin:orders_combinedorder_preview')
         else:
             form = CreateCombinedOrderForm()
         
-        return render(
-            request,
-            'admin/orders/create_combined_order.html',
-            {'form': form}
+        context = {
+            **self.admin_site.each_context(request),
+            'form': form,
+            'title': 'Create Combined Order',
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/orders/create_combined_order.html', context)
+    
+    def preview_combined_order_view(self, request):
+        """
+        Step 2: Show preview with validation, totals, and split preview.
+        """
+        from apps.lifeskills.models import Program
+        from datetime import date
+        
+        # Get form data from session
+        form_data = request.session.get('combined_order_form_data')
+        if not form_data:
+            messages.error(request, "No form data found. Please start over.")
+            return redirect('admin:orders_combinedorder_create')
+        
+        try:
+            program = Program.objects.get(id=form_data['program_id'])
+            start_date = date.fromisoformat(form_data['start_date'])
+            end_date = date.fromisoformat(form_data['end_date'])
+            strategy_override = form_data.get('split_strategy_override', '')
+        except (Program.DoesNotExist, ValueError) as e:
+            messages.error(request, f"Invalid form data: {e}")
+            return redirect('admin:orders_combinedorder_create')
+        
+        # Determine effective strategy
+        if strategy_override:
+            effective_strategy = strategy_override
+        else:
+            effective_strategy = program.default_split_strategy
+        
+        # Get eligible orders
+        eligible_orders, excluded_orders, warnings = get_eligible_orders(
+            program, start_date, end_date
         )
+        
+        # Check for critical errors
+        errors = []
+        if not eligible_orders:
+            errors.append(
+                f"No eligible orders found for {program.name} "
+                f"between {start_date} and {end_date}."
+            )
+        
+        # Validate split strategy
+        strategy_valid, strategy_errors = validate_split_strategy(program, effective_strategy)
+        if not strategy_valid:
+            errors.extend(strategy_errors)
+        
+        # Get split preview if we have orders
+        preview_data = {}
+        if eligible_orders and strategy_valid:
+            preview_data = get_split_preview(eligible_orders, program, effective_strategy)
+        
+        # Store order IDs in session for confirmation
+        request.session['combined_order_preview'] = {
+            'order_ids': [o.id for o in eligible_orders],
+            'program_id': program.id,
+            'strategy': effective_strategy,
+            'start_date': form_data['start_date'],
+            'end_date': form_data['end_date'],
+        }
+        
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Preview Combined Order',
+            'opts': self.model._meta,
+            'program': program,
+            'start_date': start_date,
+            'end_date': end_date,
+            'effective_strategy': effective_strategy,
+            'strategy_display': dict(CombinedOrder.SPLIT_STRATEGY_CHOICES).get(effective_strategy, effective_strategy),
+            'eligible_orders': eligible_orders,
+            'excluded_orders': excluded_orders,
+            'warnings': warnings,
+            'errors': errors,
+            'preview_data': preview_data,
+            'can_proceed': len(errors) == 0 and len(eligible_orders) > 0,
+        }
+        
+        return render(request, 'admin/orders/preview_combined_order.html', context)
+    
+    def confirm_combined_order_view(self, request):
+        """
+        Step 3: Confirm and create the combined order.
+        """
+        from apps.lifeskills.models import Program
+        
+        if request.method != 'POST':
+            return redirect('admin:orders_combinedorder_create')
+        
+        # Get preview data from session
+        preview_data = request.session.get('combined_order_preview')
+        if not preview_data:
+            messages.error(request, "No preview data found. Please start over.")
+            return redirect('admin:orders_combinedorder_create')
+        
+        try:
+            program = Program.objects.get(id=preview_data['program_id'])
+            order_ids = preview_data['order_ids']
+            strategy = preview_data['strategy']
+            
+            # Get orders
+            orders = list(Order.objects.filter(id__in=order_ids))
+            
+            if not orders:
+                messages.error(request, "No orders found to combine.")
+                return redirect('admin:orders_combinedorder_create')
+            
+            # Create the combined order
+            combined_order, packing_lists = create_combined_order_with_packing(
+                program=program,
+                orders=orders,
+                strategy=strategy,
+            )
+            
+            # Clear session data
+            request.session.pop('combined_order_form_data', None)
+            request.session.pop('combined_order_preview', None)
+            
+            messages.success(
+                request,
+                f"Combined order created successfully with {len(orders)} orders."
+            )
+            
+            return redirect('admin:orders_combinedorder_success', pk=combined_order.pk)
+            
+        except ValidationError as e:
+            messages.error(request, f"Validation error: {e}")
+            return redirect('admin:orders_combinedorder_preview')
+        except Exception as e:
+            messages.error(request, f"Error creating combined order: {e}")
+            return redirect('admin:orders_combinedorder_create')
+    
+    def success_combined_order_view(self, request, pk):
+        """
+        Step 4: Show success page with download links.
+        """
+        try:
+            combined_order = CombinedOrder.objects.get(pk=pk)
+        except CombinedOrder.DoesNotExist:
+            messages.error(request, "Combined order not found.")
+            return redirect('admin:orders_combinedorder_changelist')
+        
+        packing_lists = list(combined_order.packing_lists.select_related('packer'))
+        
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Combined Order Created',
+            'opts': self.model._meta,
+            'combined_order': combined_order,
+            'packing_lists': packing_lists,
+            'order_count': combined_order.orders.count(),
+            'total_items': sum(
+                sum(products.values())
+                for products in combined_order.summarized_data.values()
+            ) if combined_order.summarized_data else 0,
+        }
+        
+        return render(request, 'admin/orders/success_combined_order.html', context)
 
-    @admin.action(description="Download Combined Order PDF")
+    # ------------------------
+    # Admin Actions
+    # ------------------------
+
+    @admin.action(description="Download Warehouse PDF")
     def download_combined_order_pdf(self, request, queryset):
         """Generate and download a PDF for the selected combined order."""
         if queryset.count() != 1:
@@ -246,6 +402,126 @@ class CombinedOrderAdmin(admin.ModelAdmin):
         # Wrap in HttpResponse for download
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
         response['Content-Disposition'] = (
-            f'attachment; filename="combined_order_{combined_order.id}.pdf"'
+            f'attachment; filename="warehouse_order_{combined_order.id}.pdf"'
         )
         return response
+
+    @admin.action(description="Download Packing List PDF")
+    def download_packing_list_pdf(self, request, queryset):
+        """Generate and download packing list PDF(s) for the selected combined order."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one combined order to download.",
+                level='error'
+            )
+            return
+        
+        combined_order = queryset.first()
+        packing_lists = combined_order.packing_lists.all()
+        
+        if packing_lists.exists():
+            # Multiple packing lists - for now just download the first one
+            # TODO: Create a ZIP file with all packing lists
+            from .utils.order_services import generate_packing_list_pdf
+            packing_list = packing_lists.first()
+            pdf_buffer = generate_packing_list_pdf(packing_list)
+            filename = f"packing_list_{combined_order.id}_{packing_list.packer.name}.pdf"
+        else:
+            # Single packer - use combined order as packing list
+            pdf_buffer = generate_combined_order_pdf(combined_order)
+            filename = f"packing_list_{combined_order.id}.pdf"
+
+        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @admin.action(description="Uncombine Selected Orders")
+    def uncombine_orders_action(self, request, queryset):
+        """Uncombine selected combined orders."""
+        total_uncombined = 0
+        for combined_order in queryset:
+            count = uncombine_order(combined_order)
+            total_uncombined += count
+        
+        self.message_user(
+            request,
+            f"Uncombined {queryset.count()} combined order(s), releasing {total_uncombined} order(s)."
+        )
+
+
+@admin.register(PackingSplitRule)
+class PackingSplitRuleAdmin(admin.ModelAdmin):
+    """Admin for configuring category-to-packer mappings."""
+    list_display = ('program', 'packer', 'category_list', 'created_at')
+    list_filter = ('program', 'packer')
+    filter_horizontal = ('categories', 'subcategories')
+    search_fields = ('program__name', 'packer__name')
+    
+    fieldsets = (
+        (None, {
+            'fields': ('program', 'packer')
+        }),
+        ('Category Assignments', {
+            'fields': ('categories', 'subcategories'),
+            'description': 'Select which categories/subcategories this packer is responsible for.'
+        }),
+    )
+    
+    def category_list(self, obj):
+        """Display assigned categories."""
+        categories = list(obj.categories.values_list('name', flat=True)[:5])
+        if obj.categories.count() > 5:
+            categories.append('...')
+        return ', '.join(categories) if categories else 'None'
+    category_list.short_description = 'Categories'
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Filter packers to only show those assigned to programs."""
+        if db_field.name == 'packer':
+            from apps.pantry.models import OrderPacker
+            kwargs['queryset'] = OrderPacker.objects.filter(programs__isnull=False).distinct()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+@admin.register(PackingList)
+class PackingListAdmin(admin.ModelAdmin):
+    """Admin for viewing packing lists (read-only)."""
+    list_display = ('combined_order', 'packer', 'order_count', 'created_at')
+    list_filter = ('packer', 'combined_order__program', 'created_at')
+    readonly_fields = ('combined_order', 'packer', 'display_orders', 'display_categories', 'summarized_data', 'created_at', 'updated_at')
+    
+    def order_count(self, obj):
+        """Display count of orders."""
+        return obj.orders.count()
+    order_count.short_description = 'Orders'
+    
+    def display_orders(self, obj):
+        """Display orders in this packing list."""
+        from django.utils.html import format_html
+        
+        orders = obj.orders.all()[:10]
+        lines = []
+        for order in orders:
+            customer_num = getattr(order.account.participant, 'customer_number', 'N/A')
+            lines.append(f"#{order.order_number} - Customer #{customer_num}")
+        
+        if obj.orders.count() > 10:
+            lines.append(f"... and {obj.orders.count() - 10} more")
+        
+        return format_html('<br>'.join(lines))
+    display_orders.short_description = 'Orders'
+    
+    def display_categories(self, obj):
+        """Display categories assigned to this packer."""
+        categories = list(obj.categories.values_list('name', flat=True))
+        return ', '.join(categories) if categories else 'All categories'
+    display_categories.short_description = 'Categories'
+    
+    def has_add_permission(self, request):
+        """Packing lists are created automatically."""
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        """Packing lists are read-only."""
+        return False

@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div id="content-main">
+    <h1>✅ Combined Order Created Successfully</h1>
+    
+    <!-- Success Message -->
+    <div style="background-color: #e8f5e9; border-left: 4px solid #4caf50; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
+        <h2 style="margin-top: 0; color: #2e7d32;">
+            {{ combined_order.program.name }} - {{ combined_order.name }}
+        </h2>
+        <p style="font-size: 1.1em; margin-bottom: 0;">
+            <strong>{{ order_count }}</strong> orders combined | 
+            <strong>{{ total_items }}</strong> total items |
+            Strategy: <strong>{{ combined_order.get_split_strategy_display }}</strong>
+        </p>
+    </div>
+    
+    <!-- Warehouse Order Section -->
+    <fieldset class="module">
+        <h2>📦 Warehouse Order</h2>
+        <p>Use this PDF to order supplies from the warehouse. Contains aggregated product quantities by category.</p>
+        <form method="post" action="{% url 'admin:orders_combinedorder_changelist' %}" style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="download_combined_order_pdf">
+            <input type="hidden" name="_selected_action" value="{{ combined_order.pk }}">
+            <a href="{% url 'admin:orders_combinedorder_changelist' %}?action=download_combined_order_pdf&_selected_action={{ combined_order.pk }}" 
+               class="button" style="background-color: #2196F3; color: white;">
+                📥 Download Warehouse PDF
+            </a>
+        </form>
+    </fieldset>
+    
+    <!-- Packing Lists Section -->
+    <fieldset class="module">
+        <h2>📋 Packing Lists</h2>
+        
+        {% if packing_lists %}
+        <p>Packing lists for {{ packing_lists|length }} packer(s). Each packer receives their assigned orders/categories.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Packer</th>
+                    <th>Orders</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pl in packing_lists %}
+                <tr>
+                    <td><strong>{{ pl.packer.name }}</strong></td>
+                    <td>{{ pl.orders.count }} orders</td>
+                    <td>
+                        <a href="{% url 'admin:orders_packinglist_change' pl.pk %}" class="button">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="margin-top: 15px;">
+            <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button">
+                📥 Download All Packing Lists
+            </a>
+            <span style="color: #666; margin-left: 10px;">(Select the combined order and use "Download Packing List PDF" action)</span>
+        </p>
+        
+        {% else %}
+        <p>Single packer program - the warehouse PDF also serves as the packing list.</p>
+        <p>
+            <strong>Packer:</strong> {{ combined_order.program.packers.first.name|default:"Not assigned" }}
+        </p>
+        {% endif %}
+    </fieldset>
+    
+    <!-- Summary by Category -->
+    {% if combined_order.summarized_data %}
+    <fieldset class="module collapse">
+        <h2>Items Summary by Category</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category, products in combined_order.summarized_data.items %}
+                    {% for product, qty in products.items %}
+                    <tr>
+                        <td>{{ category }}</td>
+                        <td>{{ product }}</td>
+                        <td>{{ qty }}</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    {% endif %}
+    
+    <!-- Actions -->
+    <div class="submit-row">
+        <a href="{% url 'admin:orders_combinedorder_change' combined_order.pk %}" class="button default">
+            View Combined Order Details
+        </a>
+        <a href="{% url 'admin:orders_combinedorder_create' %}" class="button">
+            Create Another Combined Order
+        </a>
+        <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button">
+            Return to Combined Orders List
+        </a>
+    </div>
+</div>
+{% endblock %}

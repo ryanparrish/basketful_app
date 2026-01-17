@@ -149,6 +149,15 @@ class LifeskillsCoach(models.Model):
 # Class to represent a Life Skills program
 class Program(models.Model):
     """Model representing a Life Skills program."""
+    
+    # Split strategy choices for combined orders
+    SPLIT_STRATEGY_CHOICES = [
+        ('none', 'None (Single Packer)'),
+        ('fifty_fifty', '50/50 Split'),
+        ('round_robin', 'Round Robin'),
+        ('by_category', 'By Category'),
+    ]
+    
     name = models.CharField(max_length=100)
     meeting_time = models.TimeField(
         default="09:00:00"
@@ -165,6 +174,12 @@ class Program(models.Model):
         max_length=20
     )
     meeting_address = models.CharField(max_length=255)
+    default_split_strategy = models.CharField(
+        max_length=20,
+        choices=SPLIT_STRATEGY_CHOICES,
+        default='none',
+        help_text="Default strategy for splitting combined orders among packers"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

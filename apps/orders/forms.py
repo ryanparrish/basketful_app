@@ -11,6 +11,7 @@ from .models import OrderItem
 class CreateCombinedOrderForm(forms.Form):
     """
     Form for creating a combined order with custom time frame and program.
+    Supports strategy override for advanced users.
     """
     program = forms.ModelChoiceField(
         queryset=None,
@@ -30,6 +31,18 @@ class CreateCombinedOrderForm(forms.Form):
         widget=forms.DateInput(attrs={'type': 'date'}),
         help_text="End date of the time frame"
     )
+    split_strategy_override = forms.ChoiceField(
+        required=False,
+        label="Split Strategy Override",
+        choices=[
+            ('', 'Use Program Default'),
+            ('none', 'None (Single Packer)'),
+            ('fifty_fifty', '50/50 Split'),
+            ('round_robin', 'Round Robin'),
+            ('by_category', 'By Category'),
+        ],
+        help_text="Override the program's default split strategy (optional)"
+    )
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -46,6 +59,23 @@ class CreateCombinedOrderForm(forms.Form):
             raise ValidationError("End date must be after start date.")
         
         return cleaned_data
+    
+    def get_effective_strategy(self):
+        """
+        Get the effective split strategy (override or program default).
+        
+        Returns:
+            str: The split strategy to use
+        """
+        override = self.cleaned_data.get('split_strategy_override')
+        if override:
+            return override
+        
+        program = self.cleaned_data.get('program')
+        if program:
+            return program.default_split_strategy
+        
+        return 'none'
 
 
 # --------------------------

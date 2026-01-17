@@ -1,0 +1,202 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Preview Combined Order</h1>
+    
+    <!-- Summary Header -->
+    <div style="background-color: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+        <h2 style="margin-top: 0;">
+            Combining {{ eligible_orders|length }} orders for {{ program.name }}
+        </h2>
+        <p>
+            <strong>Date Range:</strong> {{ start_date }} to {{ end_date }}<br>
+            <strong>Split Strategy:</strong> {{ strategy_display }}
+        </p>
+    </div>
+    
+    <!-- Errors (Red - Blocking) -->
+    {% if errors %}
+    <div style="background-color: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+        <h3 style="margin-top: 0; color: #c62828;">
+            <span style="font-size: 1.2em;">❌</span> Errors (Cannot Proceed)
+        </h3>
+        <ul style="margin-bottom: 0;">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    <!-- Warnings (Yellow - Informational) -->
+    {% if warnings %}
+    <div style="background-color: #fff8e1; border-left: 4px solid #ff9800; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+        <h3 style="margin-top: 0; color: #e65100;">
+            <span style="font-size: 1.2em;">⚠️</span> Warnings
+        </h3>
+        <ul style="margin-bottom: 0;">
+            {% for warning in warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    {% if can_proceed %}
+    <!-- Totals Summary -->
+    <fieldset class="module">
+        <h2>Order Totals</h2>
+        <table>
+            <tr>
+                <th>Total Orders</th>
+                <td>{{ preview_data.order_count }}</td>
+            </tr>
+            <tr>
+                <th>Total Items</th>
+                <td>{{ preview_data.total_items }}</td>
+            </tr>
+            <tr>
+                <th>Total Value</th>
+                <td>${{ preview_data.total_value|floatformat:2 }}</td>
+            </tr>
+        </table>
+    </fieldset>
+    
+    <!-- Totals by Category -->
+    <fieldset class="module">
+        <h2>Items by Category</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category, qty in preview_data.category_totals.items %}
+                <tr>
+                    <td>{{ category }}</td>
+                    <td>{{ qty }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="2">No items found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    
+    <!-- Packing Split Preview -->
+    {% if preview_data.packer_count > 1 and preview_data.split_preview %}
+    <fieldset class="module">
+        <h2>📋 Packing Split Preview</h2>
+        <p style="color: #666; margin-bottom: 15px;">
+            How orders/items will be distributed among {{ preview_data.packer_count }} packers:
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Packer</th>
+                    <th>Orders</th>
+                    <th>Items</th>
+                    <th>Categories</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for split in preview_data.split_preview %}
+                <tr>
+                    <td><strong>{{ split.packer.name }}</strong></td>
+                    <td>{{ split.order_count }}</td>
+                    <td>{{ split.item_count }}</td>
+                    <td>
+                        {% if split.categories == 'All categories' %}
+                            All categories
+                        {% else %}
+                            {{ split.categories|join:", " }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    {% elif preview_data.packer_count == 1 %}
+    <fieldset class="module">
+        <h2>📋 Packing</h2>
+        <p>Single packer: <strong>{{ preview_data.packers.0.name }}</strong> will handle all {{ preview_data.order_count }} orders.</p>
+    </fieldset>
+    {% endif %}
+    
+    <!-- Eligible Orders List -->
+    <fieldset class="module collapse">
+        <h2>Eligible Orders ({{ eligible_orders|length }})</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Order Number</th>
+                    <th>Customer #</th>
+                    <th>Date</th>
+                    <th>Items</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in eligible_orders %}
+                <tr>
+                    <td>{{ order.order_number }}</td>
+                    <td>{{ order.account.participant.customer_number|default:"N/A" }}</td>
+                    <td>{{ order.order_date|date:"Y-m-d" }}</td>
+                    <td>{{ order.items.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    
+    <!-- Excluded Orders (if any) -->
+    {% if excluded_orders %}
+    <fieldset class="module collapse">
+        <h2>Excluded Orders ({{ excluded_orders|length }})</h2>
+        <p style="color: #666;">These orders are already combined and will not be included:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Order Number</th>
+                    <th>Customer #</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in excluded_orders %}
+                <tr>
+                    <td>{{ order.order_number }}</td>
+                    <td>{{ order.account.participant.customer_number|default:"N/A" }}</td>
+                    <td>{{ order.order_date|date:"Y-m-d" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    {% endif %}
+    
+    <!-- Confirmation Form -->
+    <form method="post" action="{% url 'admin:orders_combinedorder_confirm' %}">
+        {% csrf_token %}
+        <div class="submit-row">
+            <input type="submit" value="✓ Confirm & Create Combined Order" class="default">
+            <a href="{% url 'admin:orders_combinedorder_create' %}" class="button">← Back to Selection</a>
+            <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+    
+    {% else %}
+    <!-- Cannot proceed - show back button only -->
+    <div class="submit-row">
+        <a href="{% url 'admin:orders_combinedorder_create' %}" class="button default">← Back to Selection</a>
+        <a href="{% url 'admin:orders_combinedorder_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
