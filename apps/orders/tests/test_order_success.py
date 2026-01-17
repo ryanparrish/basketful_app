@@ -88,13 +88,13 @@ class TestOrderSuccessView:
         user = user_with_order['user']
         order = user_with_order['order']
         
-        # Login first
-        client.force_login(user)
-        
-        # Then set session (session is available after login)
+        # Set session first
         session = client.session
         session['last_order_id'] = order.id
         session.save()
+        
+        # Login after session setup
+        client.force_login(user)
         
         response = client.get(reverse('order_success'))
         
@@ -109,10 +109,13 @@ class TestOrderSuccessView:
         
         assert not order.success_viewed
         
-        client.force_login(user)
+        # Set session first
         session = client.session
         session['last_order_id'] = order.id
         session.save()
+        
+        # Login after session setup
+        client.force_login(user)
         
         response = client.get(reverse('order_success'))
         
@@ -137,11 +140,14 @@ class TestOrderSuccessView:
     def test_order_success_with_nonexistent_order(self, client, user_with_order):
         """Test that nonexistent order redirects to dashboard."""
         user = user_with_order['user']
-        client.force_login(user)
         
+        # Set session first
         session = client.session
         session['last_order_id'] = 99999  # Non-existent ID
         session.save()
+        
+        # Login after session setup
+        client.force_login(user)
         
         response = client.get(reverse('order_success'))
         
@@ -160,10 +166,13 @@ class TestOrderSuccessView:
         
         order = user_with_order['order']
         
-        client.force_login(other_user)
+        # Set session first
         session = client.session
         session['last_order_id'] = order.id
         session.save()
+        
+        # Login after session setup
+        client.force_login(other_user)
         
         response = client.get(reverse('order_success'))
         
@@ -180,10 +189,13 @@ class TestOrderSuccessView:
         user = user_with_order['user']
         order = user_with_order['order']
         
-        client.force_login(user)
+        # Set session first
         session = client.session
         session['last_order_id'] = order.id
         session.save()
+        
+        # Login after session setup
+        client.force_login(user)
         
         # Mock save to raise ValidationError
         with patch.object(Order, 'save') as mock_save:

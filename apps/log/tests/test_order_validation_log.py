@@ -374,9 +374,8 @@ class TestVoucherUtilsLogging:
         voucher1 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
         voucher2 = VoucherFactory(account=account, state='applied', voucher_type='grocery')
         
-        # Now delete the vouchers so apply_vouchers_to_order finds none
-        voucher1.delete()
-        voucher2.delete()
+        # Delete ALL vouchers for this account (including ones from signal)
+        account.vouchers.all().delete()
         
         # Verify vouchers are deleted
         remaining_vouchers = account.vouchers.filter(state='applied', active=True).count()
