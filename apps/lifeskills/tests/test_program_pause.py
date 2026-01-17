@@ -38,6 +38,13 @@ def participant_with_vouchers(db):
         defaults={"base_balance": Decimal("100.0")}
     )
     
+    # Ensure base_balance is set even if account already exists
+    account.base_balance = Decimal("100.0")
+    account.save()
+    
+    # Delete signal-created vouchers
+    account.vouchers.all().delete()
+    
     # Create three vouchers: two active, one inactive
     v1 = Voucher.objects.create(
         account=account,

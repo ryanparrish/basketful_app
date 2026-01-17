@@ -163,6 +163,9 @@ class TestVoucherValidation:
         participant.accountbalance.base_balance = Decimal("50.00")
         participant.accountbalance.save()
         
+        # Delete signal-created vouchers
+        participant.accountbalance.vouchers.all().delete()
+        
         voucher = VoucherFactory.create(
             account=participant.accountbalance,
             voucher_type="grocery",
@@ -218,6 +221,9 @@ class TestVoucherValidation:
         participant = ParticipantFactory()
         participant.accountbalance.base_balance = Decimal("50.00")
         participant.accountbalance.save()
+        
+        # Delete signal-created vouchers
+        participant.accountbalance.vouchers.all().delete()
         
         voucher1 = VoucherFactory.create(
             account=participant.accountbalance,
@@ -284,6 +290,9 @@ class TestVoucherValidation:
         participant = ParticipantFactory()
         participant.accountbalance.base_balance = Decimal("50.00")
         participant.accountbalance.save()
+        
+        # Delete all vouchers (signals create 2 by default)
+        participant.accountbalance.vouchers.all().delete()
         
         # Verify no active vouchers (available_balance will be $0)
         active_vouchers = Voucher.objects.filter(

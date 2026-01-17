@@ -81,20 +81,15 @@ class SearchCartIntegrationTest(TestCase):
             quantity_in_stock=100
         )
         
-        # Create active voucher
-        self.voucher = Voucher.objects.create(
-            account=self.participant.accountbalance,
-            voucher_type='grocery',
-            active=True,
-            state='applied'
-        )
+        # Signal automatically creates 2 active vouchers when participant is created
+        # No need to create additional vouchers
         
         # Login
         self.client.login(username='testuser', password='test_password_123')
 
     def test_template_has_all_products_json(self):
         """Test that template receives all_products_json variable."""
-        response = self.client.get('/pantry/products/')
+        response = self.client.get(reverse('create_order'))
         
         self.assertEqual(response.status_code, 200)
         self.assertIn('all_products_json', response.context)
@@ -102,7 +97,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_all_products_json_contains_all_products(self):
         """Test that all_products_json contains all active products."""
-        response = self.client.get('/pantry/products/')
+        response = self.client.get(reverse('create_order'))
         
         all_products_json = response.context['all_products_json']
         all_products = json.loads(all_products_json)
@@ -117,7 +112,7 @@ class SearchCartIntegrationTest(TestCase):
     def test_search_filters_products_json_but_not_all_products_json(self):
         """Test that search filters products_json but all_products_json stays complete."""
         # Search for "apple"
-        response = self.client.get('/pantry/products/?q=apple')
+        response = self.client.get(reverse('create_order') + '?q=apple')
         
         self.assertEqual(response.status_code, 200)
         
@@ -142,7 +137,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_template_renders_allProducts_variable(self):
         """Test that template contains allProducts JavaScript variable."""
-        response = self.client.get('/pantry/products/')
+        response = self.client.get(reverse('create_order'))
         
         content = response.content.decode('utf-8')
         
@@ -152,7 +147,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_template_renderCart_uses_allProducts(self):
         """Test that renderCart function uses allProducts."""
-        response = self.client.get('/pantry/products/')
+        response = self.client.get(reverse('create_order'))
         
         content = response.content.decode('utf-8')
         
@@ -171,7 +166,7 @@ class SearchCartIntegrationTest(TestCase):
         session.save()
         
         # Now search for "apple" (should filter products)
-        response = self.client.get('/pantry/products/?q=apple')
+        response = self.client.get(reverse('create_order') + '?q=apple')
         
         # Get the rendered HTML
         content = response.content.decode('utf-8')
@@ -209,7 +204,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_search_with_no_results(self):
         """Test search with no results still provides all_products_json."""
-        response = self.client.get('/pantry/products/?q=nonexistentproduct12345')
+        response = self.client.get(reverse('create_order') + '?q=nonexistentproduct12345')
         
         # products_json might be empty
         products_json = response.context['products_json']
@@ -223,7 +218,7 @@ class SearchCartIntegrationTest(TestCase):
         
     def test_all_products_json_has_required_fields(self):
         """Test that all_products_json has name and price for each product."""
-        response = self.client.get('/pantry/products/')
+        response = self.client.get(reverse('create_order'))
         
         all_products_json = response.context['all_products_json']
         all_products = json.loads(all_products_json)
@@ -246,7 +241,7 @@ class SearchCartIntegrationTest(TestCase):
         session.save()
         
         # Search for "apple"
-        response = self.client.get('/pantry/products/?q=apple')
+        response = self.client.get(reverse('create_order') + '?q=apple')
         
         all_products_json = response.context['all_products_json']
         all_products = json.loads(all_products_json)
