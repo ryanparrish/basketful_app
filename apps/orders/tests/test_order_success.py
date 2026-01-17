@@ -214,7 +214,10 @@ class TestOrderSuccessView:
         user = user_with_order['user']
         order = user_with_order['order']
         
+        # Login first to create authenticated session
         client.force_login(user)
+        
+        # Then set session data in the authenticated session
         session = client.session
         session['last_order_id'] = order.id
         session.save()
@@ -319,7 +322,10 @@ class TestOrderValidationEdgeCases:
             status="confirmed"
         )
         
+        # Login first to create authenticated session
         client.force_login(user)
+        
+        # Then set session data in the authenticated session
         session = client.session
         session['last_order_id'] = order2.id
         session.save()
@@ -425,7 +431,10 @@ class TestVoucherConsumptionEdgeCases:
         account.base_balance = Decimal("0")
         account.save()
         
+        # Login first to create authenticated session
         client.force_login(user)
+        
+        # Then set session data in the authenticated session
         session = client.session
         session['last_order_id'] = order.id
         session.save()
