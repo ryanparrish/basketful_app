@@ -95,12 +95,14 @@ class ParticipantAdmin(admin.ModelAdmin):
     form = ParticipantAdminForm
     list_display = (
         'name',
+        'customer_number',
         'full_balance_display',
         'available_balance_display',
         'hygiene_balance_display',
         'get_base_balance',
     )
     readonly_fields = (
+        'customer_number',
         'full_balance_display',
         'available_balance_display',
         'hygiene_balance_display',
