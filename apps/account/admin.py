@@ -115,6 +115,7 @@ class ParticipantAdmin(admin.ModelAdmin):
         'resend_password_reset_email',
         'create_user_accounts',
         'create_user_accounts_silent',
+        'print_customer_list',
     ]
 
     def full_balance_display(self, obj):
@@ -375,5 +376,20 @@ class ParticipantAdmin(admin.ModelAdmin):
         
         self.message_user(request, " ".join(messages) or "No participants selected.")
     create_user_accounts_silent.short_description = "Create user accounts (silent - no email)"
+
+    def print_customer_list(self, request, queryset):
+        """
+        Print a list of selected customers grouped by program with customer numbers.
+        """
+        from django.shortcuts import redirect
+        from django.urls import reverse
+        
+        # Store selected participant IDs in session
+        participant_ids = list(queryset.values_list('id', flat=True))
+        request.session['print_customer_ids'] = participant_ids
+        
+        # Redirect to print view
+        return redirect(reverse('print_customer_list'))
+    print_customer_list.short_description = "Print customer list"
 
 

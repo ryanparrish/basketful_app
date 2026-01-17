@@ -76,6 +76,11 @@ urlpatterns = [
         name='account_update',
     ),
     path(
+        'print-customer-list/',
+        account_views.print_customer_list,
+        name='print_customer_list',
+    ),
+    path(
         'accounts/password_change/',
         account_views.CustomPasswordChangeView.as_view(),
         name='password_change',

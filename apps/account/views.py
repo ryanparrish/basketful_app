@@ -40,3 +40,36 @@ def custom_login_view(request):
         "registration/login.html",
         {"form": form, "show_captcha": show_captcha},
     )
+
+
+def print_customer_list(request):
+    """Print view for customer list grouped by program."""
+    from core.models import BrandingSettings
+    from .models import Participant
+    
+    # Get participant IDs from session
+    participant_ids = request.session.get('print_customer_ids', [])
+    
+    # Get participants and group by program
+    participants = Participant.objects.filter(
+        id__in=participant_ids
+    ).select_related('program').order_by('program__name', 'name')
+    
+    # Group by program
+    programs = {}
+    for participant in participants:
+        program_name = participant.program.name if participant.program else "No Program"
+        if program_name not in programs:
+            programs[program_name] = []
+        programs[program_name].append(participant)
+    
+    # Get branding settings
+    branding = BrandingSettings.get_settings()
+    
+    context = {
+        'programs': programs,
+        'branding': branding,
+        'total_customers': len(participants),
+    }
+    
+    return render(request, 'account/print_customer_list.html', context)
