@@ -339,7 +339,6 @@ class TestMiddlewareLogging:
 
 
 @pytest.mark.django_db
-@pytest.mark.override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestVoucherUtilsLogging:
     """Tests for OrderValidationLog creation in voucher_utils."""
 
@@ -382,8 +381,10 @@ class TestVoucherUtilsLogging:
         # Clear existing logs
         OrderValidationLog.objects.all().delete()
         
-        # Apply vouchers (none available after deletion)
-        result = apply_vouchers_to_order(order)
+        # Mock the Celery task that gets called when vouchers are consumed
+        with patch('apps.pantry.utils.voucher_utils.log_voucher_application_task.delay'):
+            # Apply vouchers (none available after deletion)
+            result = apply_vouchers_to_order(order)
         
         # Verify log was created
         logs = OrderValidationLog.objects.filter(participant=participant)

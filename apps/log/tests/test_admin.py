@@ -14,7 +14,6 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
-@pytest.mark.override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class TestEmailLogAdmin:
     """Tests for EmailLogAdmin configuration."""
 
@@ -86,11 +85,14 @@ class TestEmailLogAdmin:
         assert admin.has_delete_permission(request, email_log) is False
 
     def test_has_change_permission_returns_true(self):
-        """Verify change permission returns False (logs are read-only)."""
+        """Verify change permission returns False (logs are read-only).""
         site = AdminSite()
         admin = EmailLogAdmin(EmailLog, site)
         request = RequestFactory().get('/')
-        request.user = UserFactory(is_staff=True, is_superuser=True)
+        
+        # Mock the Celery task that gets triggered by user creation signal
+        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
+            request.user = UserFactory(is_staff=True, is_superuser=True)
         
         # EmailLog should be read-only, so has_change_permission should return False
         assert admin.has_change_permission(request) is False
