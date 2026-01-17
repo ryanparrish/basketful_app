@@ -187,14 +187,27 @@ class CombinedOrderAdmin(admin.ModelAdmin):
                         {'form': form}
                     )
                 
-                # Always create a new combined order with timestamp
+                # Use get_or_create to avoid duplicate constraint violation
+                # The unique constraint is on program, week, year
                 timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
                 order_name = f"Combined Order - {timestamp}"
                 
-                combined_order = CombinedOrder.objects.create(
+                # Get or create based on program and current week/year
+                now = timezone.now()
+                week = now.isocalendar()[1]
+                year = now.year
+                
+                combined_order, created = CombinedOrder.objects.get_or_create(
                     program=program,
-                    name=order_name
+                    week=week,
+                    year=year,
+                    defaults={'name': order_name}
                 )
+                
+                if not created:
+                    # Update the name with new timestamp if reusing existing
+                    combined_order.name = order_name
+                    combined_order.save(update_fields=['name'])
                 
                 # Add orders to the combined order
                 combined_order.orders.add(*orders)

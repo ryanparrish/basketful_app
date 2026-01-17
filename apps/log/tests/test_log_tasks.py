@@ -73,15 +73,18 @@ def account_balance(participant, voucher_setting):
 
 
 @pytest.fixture
-def voucher(account_balance):
-    """Create a test voucher."""
-    return Voucher.objects.create(
+def voucher(account_balance, voucher_setting):
+    """Create a test voucher with explicit amount."""
+    voucher = Voucher.objects.create(
         account=account_balance,
         voucher_type='grocery',
         state='applied',
         multiplier=1,
         active=True
     )
+    # Voucher amount is calculated from account base_balance and multiplier
+    # With base_balance=100 and multiplier=1, voucher_amnt should be 100
+    return voucher
 
 
 @pytest.fixture
@@ -132,7 +135,7 @@ class TestLogVoucherApplicationTask:
     def test_log_voucher_application_partial_usage(self, order, voucher, participant):
         """Test logging when voucher is partially used."""
         voucher_amount = voucher.voucher_amnt
-        applied = float(voucher_amount) / 2
+        applied = float(voucher_amount) / 2  # 50.0 if voucher_amnt is 100
         remaining = 50.0
         
         log_voucher_application_task(
@@ -145,8 +148,10 @@ class TestLogVoucherApplicationTask:
         
         # Check that log was created
         log = VoucherLog.objects.get(order=order, voucher=voucher)
+        # Verify the applied amount is stored correctly
         assert log.applied_amount == Decimal(str(applied))
         assert log.remaining == Decimal('50.00')
+        # Since applied (50) < voucher_amnt (100), should say "Partially used"
         assert 'Partially used voucher' in log.message
     
     def test_log_voucher_application_none_values(self, order, voucher, participant):
