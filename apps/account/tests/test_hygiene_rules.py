@@ -54,8 +54,10 @@ def create_test_voucher(participant, multiplier=1):
     account = participant.accountbalance
     voucher = Voucher.objects.create(
         account=account,
+        voucher_type="grocery",  # Must be grocery to have a balance
         multiplier=multiplier,
-        state="applied"  # Set to applied state so it has a balance
+        state="applied",  # Set to applied state so it has a balance
+        active=True
     )
     return voucher
 

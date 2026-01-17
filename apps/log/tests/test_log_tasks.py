@@ -75,6 +75,11 @@ def account_balance(participant, voucher_setting):
 @pytest.fixture
 def voucher(account_balance, voucher_setting):
     """Create a test voucher with explicit amount."""
+    # Ensure account has base_balance set
+    if account_balance.base_balance == 0:
+        account_balance.base_balance = Decimal('100.00')
+        account_balance.save()
+    
     voucher = Voucher.objects.create(
         account=account_balance,
         voucher_type='grocery',

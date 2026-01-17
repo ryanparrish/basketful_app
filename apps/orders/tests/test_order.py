@@ -307,12 +307,6 @@ def test_submit_order_view(client):
     logger.info(
         "Templates used: %s", [t.name for t in response.templates]
     )
-    # Login the user before submitting order
-    client.force_login(user)
-    
-    # Re-submit the order after login
-    response = client.post(reverse("submit_order"), follow=True)
-    
     logger.info(
         "Response content snippet: %s",
         response.content.decode()[:200],
