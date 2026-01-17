@@ -60,6 +60,13 @@ class Participant(BaseModel):
     allergy = models.CharField(
         max_length=100, default="None", blank=True, null=True
     )
+    customer_number = models.CharField(
+        max_length=10,
+        unique=True,
+        blank=True,
+        null=True,
+        help_text="Customer number format: C-XXX-D (e.g., C-BKM-7)"
+    )
 
     def balances(self):
         """
@@ -88,6 +95,12 @@ class Participant(BaseModel):
         return self.adults + self.children 
 
     def save(self, *args, **kwargs):
+        # Generate customer number on first save with collision prevention
+        if not self.customer_number:
+            from .utils.warehouse_id import generate_unique_customer_number
+            self.customer_number = generate_unique_customer_number(
+                existing_numbers_queryset=Participant.objects.all()
+            )
         self.full_clean()  # Optional if you want validation on every save
         super().save(*args, **kwargs)
 
