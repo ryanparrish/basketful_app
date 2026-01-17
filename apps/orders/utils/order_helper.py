@@ -35,11 +35,13 @@ class OrderHelper:
     def get_order_print_context(self, order) -> Dict[str, Any]:
         """Prepare context data for order printing."""
         participant = getattr(getattr(order, "account", None), "participant", None)
+        customer_number = getattr(participant, "customer_number", None) if participant else None
         return {
             "order": order,
             "items": order.items.select_related("product").all(),
             "total": getattr(order, "total_price()", lambda: 0)(),
             "customer": participant,
+            "customer_number": customer_number,
             "created_at": order.created_at,
         }
 

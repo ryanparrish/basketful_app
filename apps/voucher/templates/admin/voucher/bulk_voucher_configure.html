@@ -1,0 +1,101 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Bulk Voucher Creation - Configuration{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    .form-group label {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+    .helptext {
+        font-size: 0.9em;
+        color: #666;
+        display: block;
+        margin-top: 0.25rem;
+    }
+    .btn-container {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #ddd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Bulk Voucher Creation - Configuration</h1>
+    
+    <div class="module">
+        <p class="help">
+            Configure the bulk voucher creation settings. In the next step, you'll be able to 
+            preview all participants who will receive vouchers and confirm the action.
+        </p>
+        
+        <form method="post" class="form-horizontal">
+            {% csrf_token %}
+            
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+            
+            <div class="form-group">
+                <label for="{{ form.program.id_for_label }}">{{ form.program.label }}</label>
+                {{ form.program }}
+                {% if form.program.help_text %}
+                    <span class="helptext">{{ form.program.help_text }}</span>
+                {% endif %}
+                {% if form.program.errors %}
+                    <div class="alert alert-danger">{{ form.program.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.voucher_type.id_for_label }}">{{ form.voucher_type.label }}</label>
+                {{ form.voucher_type }}
+                {% if form.voucher_type.help_text %}
+                    <span class="helptext">{{ form.voucher_type.help_text }}</span>
+                {% endif %}
+                {% if form.voucher_type.errors %}
+                    <div class="alert alert-danger">{{ form.voucher_type.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.vouchers_per_participant.id_for_label }}">{{ form.vouchers_per_participant.label }}</label>
+                {{ form.vouchers_per_participant }}
+                {% if form.vouchers_per_participant.help_text %}
+                    <span class="helptext">{{ form.vouchers_per_participant.help_text }}</span>
+                {% endif %}
+                {% if form.vouchers_per_participant.errors %}
+                    <div class="alert alert-danger">{{ form.vouchers_per_participant.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                {{ form.notes }}
+                {% if form.notes.help_text %}
+                    <span class="helptext">{{ form.notes.help_text }}</span>
+                {% endif %}
+                {% if form.notes.errors %}
+                    <div class="alert alert-danger">{{ form.notes.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="btn-container">
+                <button type="submit" class="button default">Next: Preview Participants</button>
+                <a href="{% url 'admin:voucher_voucher_changelist' %}" class="button">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

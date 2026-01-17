@@ -1,0 +1,195 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Bulk Voucher Creation - Preview{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .summary-box {
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        border-radius: 4px;
+    }
+    .summary-box h3 {
+        margin-top: 0;
+        color: #417690;
+    }
+    .summary-item {
+        margin: 0.5rem 0;
+    }
+    .summary-item strong {
+        display: inline-block;
+        min-width: 200px;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffc107;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 4px;
+    }
+    .participant-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+    }
+    .participant-table th,
+    .participant-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    .participant-table th {
+        background-color: #417690;
+        color: white;
+        font-weight: bold;
+    }
+    .participant-table tr:hover {
+        background-color: #f5f5f5;
+    }
+    .no-account {
+        color: #d32f2f;
+        font-weight: bold;
+    }
+    .has-account {
+        color: #388e3c;
+    }
+    .confirmation-box {
+        background-color: #fff;
+        border: 2px solid #d32f2f;
+        padding: 1.5rem;
+        margin: 2rem 0;
+        border-radius: 4px;
+    }
+    .confirmation-box label {
+        font-size: 1.1em;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .confirmation-box input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+    }
+    .btn-container {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #ddd;
+    }
+    .button-danger {
+        background-color: #d32f2f;
+        color: white;
+    }
+    .button-danger:hover {
+        background-color: #b71c1c;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Bulk Voucher Creation - Preview & Confirm</h1>
+    
+    <div class="summary-box">
+        <h3>Configuration Summary</h3>
+        <div class="summary-item"><strong>Program:</strong> {{ program.name }}</div>
+        <div class="summary-item"><strong>Voucher Type:</strong> {{ voucher_type|title }}</div>
+        <div class="summary-item"><strong>Vouchers per Participant:</strong> {{ vouchers_per_participant }}</div>
+        <div class="summary-item"><strong>Total Participants:</strong> {{ total_participants }}</div>
+        <div class="summary-item"><strong>Total Vouchers to Create:</strong> {{ total_vouchers }}</div>
+        {% if notes %}
+        <div class="summary-item"><strong>Notes:</strong> {{ notes }}</div>
+        {% endif %}
+    </div>
+    
+    {% if participants_without_account %}
+    <div class="warning-box">
+        <strong>⚠️ Warning:</strong> {{ participants_without_account|length }} participant(s) do not have an account balance 
+        and will be skipped during voucher creation:
+        <ul>
+            {% for participant in participants_without_account %}
+            <li>{{ participant.name }} ({% if participant.customer_number %}#{{ participant.customer_number }}{% else %}ID: {{ participant.id }}{% endif %})</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    <h2>Participants in {{ program.name }}</h2>
+    <table class="participant-table">
+        <thead>
+            <tr>
+                <th>Customer #</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Household Size</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in participant_list %}
+            <tr>
+                <td>{{ item.participant.customer_number|default:"-" }}</td>
+                <td>{{ item.participant.name }}</td>
+                <td>{{ item.participant.email }}</td>
+                <td>{{ item.participant.household_size }}</td>
+                <td>
+                    {% if item.has_account %}
+                        <span class="has-account">✓ Ready</span>
+                    {% else %}
+                        <span class="no-account">✗ No Account</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align: center;">No participants found in this program.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {% if total_participants > 0 %}
+    <form method="post">
+        {% csrf_token %}
+        
+        {% for hidden in form.hidden_fields %}
+            {{ hidden }}
+        {% endfor %}
+        
+        <div class="confirmation-box">
+            <label for="{{ form.confirmation.id_for_label }}">
+                {{ form.confirmation }}
+                {{ form.confirmation.label }}
+            </label>
+            {% if form.confirmation.errors %}
+                <div class="alert alert-danger" style="margin-top: 1rem;">
+                    {{ form.confirmation.errors }}
+                </div>
+            {% endif %}
+            <p style="margin-top: 1rem; color: #666;">
+                This action will create {{ total_vouchers }} voucher(s) across {{ total_participants }} participant(s). 
+                Participants without account balances will be automatically skipped.
+            </p>
+        </div>
+        
+        <div class="btn-container">
+            <button type="submit" class="button button-danger">Create Vouchers</button>
+            <a href="{% url 'admin:bulk_voucher_configure' %}" class="button">Back</a>
+            <a href="{% url 'admin:voucher_voucher_changelist' %}" class="button">Cancel</a>
+        </div>
+    </form>
+    {% else %}
+    <div class="warning-box">
+        <strong>No participants found.</strong> Cannot proceed with voucher creation.
+    </div>
+    <div class="btn-container">
+        <a href="{% url 'admin:bulk_voucher_configure' %}" class="button">Back</a>
+        <a href="{% url 'admin:voucher_voucher_changelist' %}" class="button">Cancel</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

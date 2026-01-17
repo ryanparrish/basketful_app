@@ -2,10 +2,12 @@
 """Admin configuration for Voucher and VoucherSetting models."""
 # Django imports
 from django.contrib import admin, messages
+from django.urls import path
 # First Party imports
 from apps.log.inlines import VoucherLogInline
 # Local imports
 from .models import Voucher, VoucherSetting
+from . import views as voucher_views
 
 
 @admin.action(description="Mark selected vouchers as Applied")
@@ -37,6 +39,34 @@ class VoucherAdmin(admin.ModelAdmin):
     search_fields = ('voucher_type__name', 'account__name', 'notes') 
     
     inlines = [VoucherLogInline]
+    
+    def get_urls(self):
+        """Add custom URLs for bulk voucher creation."""
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                'bulk-create/',
+                self.admin_site.admin_view(voucher_views.bulk_voucher_configure),
+                name='bulk_voucher_configure'
+            ),
+            path(
+                'bulk-create/preview/',
+                self.admin_site.admin_view(voucher_views.bulk_voucher_preview),
+                name='bulk_voucher_preview'
+            ),
+            path(
+                'bulk-create/execute/',
+                self.admin_site.admin_view(voucher_views.bulk_voucher_create),
+                name='bulk_voucher_create'
+            ),
+        ]
+        return custom_urls + urls
+    
+    def changelist_view(self, request, extra_context=None):
+        """Add bulk create button to voucher list."""
+        extra_context = extra_context or {}
+        extra_context['show_bulk_create_button'] = True
+        return super().changelist_view(request, extra_context=extra_context)
 
 
 admin.site.register(VoucherSetting)

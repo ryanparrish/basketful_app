@@ -249,5 +249,3 @@ class CombinedOrderAdmin(admin.ModelAdmin):
             f'attachment; filename="combined_order_{combined_order.id}.pdf"'
         )
         return response
-
-# Register your models here.
