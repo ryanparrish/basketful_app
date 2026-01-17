@@ -1,6 +1,7 @@
 """Admin configuration for core app."""
 from django.contrib import admin
-from .models import OrderWindowSettings, EmailSettings
+from django.utils.html import format_html
+from .models import OrderWindowSettings, EmailSettings, BrandingSettings
 
 
 @admin.register(OrderWindowSettings)
@@ -152,4 +153,45 @@ class EmailSettingsAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         """Prevent deletion of the settings."""
+        return False
+
+
+@admin.register(BrandingSettings)
+class BrandingSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Branding Settings."""
+    
+    list_display = ['organization_name', 'has_logo', 'updated_at']
+    
+    fieldsets = (
+        ('Organization Branding', {
+            'fields': ('organization_name', 'logo'),
+            'description': (
+                '<p><strong>Configure organization branding for printed orders.</strong></p>'
+                '<p>Upload a logo and set your organization name. '
+                'These will appear on all printed order documents.</p>'
+            )
+        }),
+    )
+    
+    def has_logo(self, obj):
+        """Display whether a logo is uploaded."""
+        if obj.logo:
+            return format_html(
+                '<span style="color: green;">✓ Uploaded</span>'
+            )
+        return format_html(
+            '<span style="color: gray;">✗ No logo</span>'
+        )
+    has_logo.short_description = 'Logo Status'
+    
+    def has_add_permission(self, request):
+        """Only allow one instance (singleton)."""
+        return not BrandingSettings.objects.exists()
+    
+    def get_queryset(self, request):
+        """Limit queryset to single instance."""
+        return BrandingSettings.objects.all()[:1]
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of singleton."""
         return False

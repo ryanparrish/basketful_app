@@ -6,6 +6,20 @@
 <body class="bg-light" onload="window.print()">
 <div class="container my-4">
 
+  <!-- Logo and Branding -->
+  {% if branding.logo %}
+  <div class="text-center mb-3">
+    <img src="{{ branding.logo.url }}" alt="{{ branding.organization_name }}" style="max-height: 80px;">
+  </div>
+  {% endif %}
+
+  <!-- Program Banner -->
+  {% if program %}
+  <div class="alert alert-info text-center mb-4">
+    <strong>Program:</strong> {{ program.name }}
+  </div>
+  {% endif %}
+
   <!-- Header -->
   <div class="mb-4">
     <h2>Order #{{ order.order_number }} Details</h2>
@@ -15,7 +29,6 @@
         <p><strong>Status:</strong> {{ order.status_type|default:"N/A" }}</p>
       </div>
       <div class="col-md-6">
-        <p><strong>Customer:</strong> {{ customer|default:"N/A" }}</p>
         {% if customer_number %}<p><strong>Customer #:</strong> {{ customer_number }}</p>{% endif %}
       </div>
     </div>

@@ -123,3 +123,47 @@ class EmailSettings(models.Model):
     def get_reply_to(self):
         """Get the default reply-to address."""
         return self.reply_to_default
+
+
+class BrandingSettings(models.Model):
+    """Singleton model for organization branding configuration."""
+    organization_name = models.CharField(
+        max_length=255,
+        default="Love Your Neighbor",
+        help_text="Organization name to display on printed orders"
+    )
+    logo = models.ImageField(
+        upload_to='branding/',
+        blank=True,
+        null=True,
+        help_text="Upload organization logo (displayed on printed orders)"
+    )
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Branding Setting"
+        verbose_name_plural = "Branding Settings"
+    
+    def __str__(self):
+        return "Branding Settings"
+    
+    def save(self, *args, **kwargs):
+        """Ensure only one instance exists (singleton pattern)."""
+        if not self.pk and BrandingSettings.objects.exists():
+            existing = BrandingSettings.objects.first()
+            existing.organization_name = self.organization_name
+            existing.logo = self.logo
+            existing.save()
+            return existing
+        return super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={'organization_name': 'Love Your Neighbor'}
+        )
+        return obj
