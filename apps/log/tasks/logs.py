@@ -47,8 +47,9 @@ def log_voucher_application_task(
     applied_amount = float(applied_amount or 0.0)
     remaining = float(remaining or 0.0)
 
-    # Determine note type
-    note_type = "Fully used" if applied_amount == voucher.voucher_amnt else "Partially used"
+    # Determine note type - compare applied to voucher amount
+    voucher_amnt = float(voucher.voucher_amnt)
+    note_type = "Fully used" if applied_amount >= voucher_amnt else "Partially used"
 
     # Build log message
     message = (

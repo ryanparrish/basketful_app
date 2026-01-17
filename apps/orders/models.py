@@ -347,9 +347,12 @@ class CombinedOrder(models.Model):
     def save(self, *args, **kwargs):
         """Auto-populate week and year from created_at on creation only."""
         # Only set week/year on initial creation to avoid unique constraint violations on update
-        if self.pk is None and self.created_at:
-            self.week = self.created_at.isocalendar()[1]
-            self.year = self.created_at.year
+        if self.pk is None:
+            # Use timezone.now() since created_at isn't set yet (auto_now_add happens in DB)
+            from django.utils import timezone
+            now = self.created_at or timezone.now()
+            self.week = now.isocalendar()[1]
+            self.year = now.year
         super().save(*args, **kwargs)
 
     def summarized_items_by_category(self):

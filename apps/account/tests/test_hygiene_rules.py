@@ -72,6 +72,8 @@ class TestHygieneRules:
         An order should be invalid if the total cost of hygiene items
         exceeds the participant's hygiene balance.
         """
+        from apps.orders.models import OrderItemData
+        
         # --- Setup ---
         product = create_hygiene_product(
             name="Toothbrush", price=Decimal("15.00")
@@ -83,16 +85,15 @@ class TestHygieneRules:
         participant.refresh_from_db()
 
         # Hygiene balance = 1/3 of voucher balance, assume 30 for test purposes
-        # Exceeding it intentionally
+        # Exceeding it intentionally (3 * 15 = 45, which exceeds typical hygiene balance)
         account_balance = participant.accountbalance
-        order = Order.objects.create(account=account_balance)
         quantity = 3
-        order_item = OrderItem(order=order, product=product, quantity=quantity)
+        order_item_data = OrderItemData(product=product, quantity=quantity)
 
         validator = OrderValidation()
         with pytest.raises(ValidationError) as exc_info:
             validator.validate_order_items(
-                [order_item], participant, account_balance
+                [order_item_data], participant, account_balance
             )
 
         assert "Hygiene items total" in str(exc_info.value)

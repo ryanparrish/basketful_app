@@ -381,10 +381,9 @@ class TestVoucherUtilsLogging:
         # Clear existing logs
         OrderValidationLog.objects.all().delete()
         
-        # Mock the Celery task that gets called when vouchers are consumed
-        with patch('apps.pantry.utils.voucher_utils.log_voucher_application_task.delay'):
-            # Apply vouchers (none available after deletion)
-            result = apply_vouchers_to_order(order)
+        # Apply vouchers (none available after deletion)
+        # The function will log internally when no vouchers are found
+        result = apply_vouchers_to_order(order)
         
         # Verify log was created
         logs = OrderValidationLog.objects.filter(participant=participant)

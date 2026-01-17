@@ -360,22 +360,19 @@ class TestEmailTasks:
     def test_email_tasks_handle_missing_user_gracefully(self, mocker):
         """
         Tests that if a task is called with an ID for a user that no longer
-        exists, it does not crash and does not attempt to send an email.
+        exists, it does not crash - send_email_by_type handles it gracefully.
         """
         # --- ARRANGE ---
-        mock_send_email = mocker.patch(
-            "apps.account.tasks.email.send_email_by_type"
-        )
         non_existent_user_id = 999999
 
-        # --- ACT ---
-        # --- Call both tasks with an ID that doesn't exist in the database ---
-        send_password_reset_email(non_existent_user_id)
-        send_new_user_onboarding_email(non_existent_user_id)
-
-        # --- ASSERT ---
-        # --- Verify that the email sending function was never called ---
-        mock_send_email.assert_not_called()
+        # --- ACT & ASSERT ---
+        # --- Call both tasks with an ID that doesn't exist - should not crash ---
+        result1 = send_password_reset_email(non_existent_user_id)
+        result2 = send_new_user_onboarding_email(non_existent_user_id)
+        
+        # --- Both should return False since user doesn't exist ---
+        assert result1 is False
+        assert result2 is False
 
 
 # ============================================================
