@@ -50,6 +50,14 @@ def print_customer_list(request):
     # Get participant IDs from session
     participant_ids = request.session.get('print_customer_ids', [])
     
+    # Check if user is confirming selection (POST with selected IDs)
+    if request.method == 'POST':
+        selected_ids = request.POST.getlist('selected_participants')
+        participant_ids = [int(pid) for pid in selected_ids]
+        auto_print = True
+    else:
+        auto_print = False
+    
     # Get participants and group by program
     participants = Participant.objects.filter(
         id__in=participant_ids
@@ -70,6 +78,7 @@ def print_customer_list(request):
         'programs': programs,
         'branding': branding,
         'total_customers': len(participants),
+        'auto_print': auto_print,
     }
     
     return render(request, 'account/print_customer_list.html', context)

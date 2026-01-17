@@ -87,6 +87,23 @@
     .button-danger:hover {
         background-color: #b71c1c;
     }
+    .checkbox-cell {
+        width: 30px;
+        text-align: center;
+    }
+    .selection-controls {
+        background-color: #e3f2fd;
+        border: 1px solid #90caf9;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .selection-controls .button {
+        margin-left: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -118,10 +135,21 @@
     </div>
     {% endif %}
     
+    <div class="selection-controls">
+        <div>
+            <strong>Select participants to create vouchers for:</strong>
+        </div>
+        <div>
+            <button type="button" class="button" onclick="selectAll()">Select All</button>
+            <button type="button" class="button" onclick="deselectAll()">Deselect All</button>
+        </div>
+    </div>
+    
     <h2>Participants in {{ program.name }}</h2>
     <table class="participant-table">
         <thead>
             <tr>
+                <th class="checkbox-cell"></th>
                 <th>Customer #</th>
                 <th>Name</th>
                 <th>Email</th>
@@ -132,6 +160,13 @@
         <tbody>
             {% for item in participant_list %}
             <tr>
+                <td class="checkbox-cell">
+                    {% if item.has_account %}
+                        <input type="checkbox" name="selected_participants" value="{{ item.participant.id }}" checked class="participant-checkbox">
+                    {% else %6
+                        <input type="checkbox" name="selected_participants" value="{{ item.participant.id }}" disabled title="No account balance">
+                    {% endif %}
+                </td>
                 <td>{{ item.participant.customer_number|default:"-" }}</td>
                 <td>{{ item.participant.name }}</td>
                 <td>{{ item.participant.email }}</td>
@@ -192,4 +227,14 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+    function selectAll() {
+        document.querySelectorAll('.participant-checkbox:not([disabled])').forEach(cb => cb.checked = true);
+    }
+    
+    function deselectAll() {
+        document.querySelectorAll('.participant-checkbox:not([disabled])').forEach(cb => cb.checked = false);
+    }
+</script>
 {% endblock %}

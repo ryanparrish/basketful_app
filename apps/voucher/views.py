@@ -52,10 +52,6 @@ def bulk_voucher_preview(request):
     program = get_object_or_404(Program, id=config['program_id'])
     participants = Participant.objects.filter(program=program, active=True)
     
-    # Calculate totals
-    total_participants = participants.count()
-    total_vouchers = total_participants * config['vouchers_per_participant']
-    
     # Prepare participant list with account info
     participant_list = []
     participants_without_account = []
@@ -77,10 +73,20 @@ def bulk_voucher_preview(request):
             })
     
     if request.method == 'POST':
-        form = BulkVoucherConfirmationForm(request.POST)
-        if form.is_valid():
-            # Proceed to creation
-            return redirect('admin:bulk_voucher_create')
+        # Get selected participant IDs from form
+        selected_ids = request.POST.getlist('selected_participants')
+        if selected_ids:
+            # Store selected participant IDs in session
+            config['selected_participant_ids'] = [int(pid) for pid in selected_ids]
+            request.session['bulk_voucher_config'] = config
+            request.session.modified = True
+            
+            form = BulkVoucherConfirmationForm(request.POST)
+            if form.is_valid():
+                # Proceed to creation
+                return redirect('admin:bulk_voucher_create')
+        else:
+            messages.error(request, "Please select at least one participant.")
     else:
         form = BulkVoucherConfirmationForm(initial={
             'program_id': config['program_id'],
@@ -88,6 +94,10 @@ def bulk_voucher_preview(request):
             'vouchers_per_participant': config['vouchers_per_participant'],
             'notes': config['notes'],
         })
+    
+    # Calculate totals based on all participants (will be recalculated at creation time)
+    total_participants = len([p for p in participant_list if p['has_account']])
+    total_vouchers = total_participants * config['vouchers_per_participant']
     
     context = {
         'form': form,
@@ -116,7 +126,14 @@ def bulk_voucher_create(request):
         return redirect('admin:bulk_voucher_configure')
     
     program = get_object_or_404(Program, id=config['program_id'])
-    participants = Participant.objects.filter(program=program, active=True)
+    
+    # Get selected participant IDs from config (set in preview step)
+    selected_ids = config.get('selected_participant_ids', [])
+    if selected_ids:
+        participants = Participant.objects.filter(id__in=selected_ids, program=program, active=True)
+    else:
+        # Fallback to all participants if no selection was made
+        participants = Participant.objects.filter(program=program, active=True)
     
     created_count = 0
     skipped_participants = []

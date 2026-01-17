@@ -14,9 +14,13 @@
             page-break-inside: avoid;
             margin-bottom: 30px;
         }
+        .checkbox-cell {
+            width: 30px;
+            text-align: center;
+        }
     </style>
 </head>
-<body class="bg-light" onload="window.print()">
+<body class="bg-light" {% if auto_print %}onload="window.print()"{% endif %}>
 <div class="container my-4">
 
   <!-- Logo and Branding -->
@@ -31,6 +35,24 @@
     <p class="text-muted">Total Customers: {{ total_customers }}</p>
   </div>
 
+  {% if not auto_print %}
+  <!-- Selection Controls -->
+  <form method="post" id="customerSelectionForm">
+    {% csrf_token %}
+    <div class="alert alert-info no-print mb-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Select customers to print:</strong> Check/uncheck customers below, then click Print.
+        </div>
+        <div>
+          <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="selectAll()">Select All</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="deselectAll()">Deselect All</button>
+          <button type="submit" class="btn btn-primary">Print Selected</button>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   <!-- Programs and Customers -->
   {% for program_name, customers in programs.items %}
   <div class="program-section">
@@ -43,6 +65,7 @@
     <table class="table table-striped table-bordered">
       <thead class="table-light">
         <tr>
+          {% if not auto_print %}<th class="checkbox-cell no-print"></th>{% endif %}
           <th style="width: 60%;">Customer Name</th>
           <th style="width: 40%;">Customer Number</th>
         </tr>
@@ -50,6 +73,11 @@
       <tbody>
         {% for customer in customers %}
         <tr>
+          {% if not auto_print %}
+          <td class="checkbox-cell no-print">
+            <input type="checkbox" name="selected_participants" value="{{ customer.id }}" checked class="form-check-input customer-checkbox">
+          </td>
+          {% endif %}
           <td>{{ customer.name }}</td>
           <td><strong>{{ customer.customer_number|default:"N/A" }}</strong></td>
         </tr>
@@ -63,11 +91,25 @@
   </div>
   {% endfor %}
 
+  {% if not auto_print %}
+  </form>
+  {% endif %}
+
   <!-- Footer -->
   <div class="text-muted small mt-4">
     Printed on {% now "M d, Y H:i" %}
   </div>
 
 </div>
+
+<script>
+  function selectAll() {
+    document.querySelectorAll('.customer-checkbox').forEach(cb => cb.checked = true);
+  }
+  
+  function deselectAll() {
+    document.querySelectorAll('.customer-checkbox').forEach(cb => cb.checked = false);
+  }
+</script>
 </body>
 </html>
