@@ -1,0 +1,27 @@
+# .github/dependabot.yml
+# Dependabot configuration for Basketful
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml
+
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"          # Root directory where requirements.txt or Pipfile is located
+    schedule:
+      interval: "weekly"    # Check for updates weekly
+      day: "monday"         # Optional: pick day for updates
+    commit-message:
+      prefix: "deps"        # Prefix for PR titles
+    # Optional: ignore pre-release versions
+    ignore:
+      - dependency-name: "*"
+        versions: ["*-*"]
+
+  # Optional: Docker base image updates
+  - package-ecosystem: "docker"
+    directory: "/"          # Root directory with Dockerfile(s)
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "docker"
