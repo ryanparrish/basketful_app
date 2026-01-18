@@ -542,6 +542,8 @@ class PackingListAdmin(admin.ModelAdmin):
     list_display = ('combined_order', 'packer', 'order_count', 'created_at')
     list_filter = ('packer', 'combined_order__program', 'created_at')
     readonly_fields = ('combined_order', 'packer', 'display_orders', 'display_categories', 'summarized_data', 'created_at', 'updated_at')
+    actions = ['download_packing_list_pdf_action']
+    change_form_template = "admin/orders/packinglist/change_form.html"
     
     def order_count(self, obj):
         """Display count of orders."""
@@ -569,6 +571,63 @@ class PackingListAdmin(admin.ModelAdmin):
         categories = list(obj.categories.values_list('name', flat=True))
         return ', '.join(categories) if categories else 'All categories'
     display_categories.short_description = 'Categories'
+    
+    def get_urls(self):
+        """Add custom URLs for print view."""
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:packing_list_id>/print/',
+                self.admin_site.admin_view(self.print_packing_list),
+                name='packinglist-print',
+            ),
+        ]
+        return custom_urls + urls
+    
+    def print_packing_list(self, request, packing_list_id):
+        """Render a printable view of the packing list."""
+        from django.shortcuts import get_object_or_404
+        from django.utils import timezone
+        
+        packing_list = get_object_or_404(PackingList, pk=packing_list_id)
+        
+        # Get orders with related data
+        orders = packing_list.orders.select_related(
+            'account__participant'
+        ).prefetch_related('items__product__category')
+        
+        context = {
+            'packing_list': packing_list,
+            'combined_order': packing_list.combined_order,
+            'packer': packing_list.packer,
+            'orders': orders,
+            'now': timezone.now(),
+            'program': packing_list.combined_order.program,
+        }
+        
+        return render(request, "admin/orders/packinglist/print_packing_list.html", context)
+    
+    @admin.action(description="Download Packing List PDF")
+    def download_packing_list_pdf_action(self, request, queryset):
+        """Generate and download PDF for selected packing lists."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one packing list to download.",
+                level='error'
+            )
+            return
+        
+        packing_list = queryset.first()
+        
+        from .utils.order_services import generate_packing_list_pdf
+        pdf_buffer = generate_packing_list_pdf(packing_list)
+        pdf_buffer.seek(0)
+        
+        filename = f"packing_list_{packing_list.packer.name.replace(' ', '_')}_{packing_list.combined_order.id}.pdf"
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
     
     def has_add_permission(self, request):
         """Packing lists are created automatically."""

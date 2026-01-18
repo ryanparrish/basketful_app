@@ -1,0 +1,78 @@
+{% load django_bootstrap5 %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+
+{% block content %}
+<body class="bg-light" onload="window.print()">
+<div class="container my-4">
+
+  <!-- Header -->
+  <div class="mb-4">
+    <h2>📋 PACKING LIST</h2>
+    <div class="row">
+      <div class="col-md-6">
+        <p><strong>Program:</strong> {{ program.name }}</p>
+        <p><strong>Packer:</strong> {{ packer.name }}</p>
+      </div>
+      <div class="col-md-6">
+        <p><strong>Combined Order:</strong> {{ combined_order.name }}</p>
+        <p><strong>Created:</strong> {{ combined_order.created_at|date:"M d, Y H:i" }}</p>
+        <p><strong>Total Orders:</strong> {{ orders.count }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orders Section -->
+  {% for order in orders %}
+  <div class="card mb-3 p-3 shadow-sm {% if not forloop.first %}page-break-before{% endif %}">
+    <h5>
+      Order #{{ order.order_number }} 
+      - Customer #{{ order.account.participant.customer_number|default:"N/A" }}
+    </h5>
+    
+    <!-- Items Table -->
+    <table class="table table-sm table-striped mt-3">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Category</th>
+          <th class="text-center">Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in order.items.all %}
+        <tr>
+          <td>{{ item.product.name }}</td>
+          <td>{{ item.product.category.name|default:"Uncategorized" }}</td>
+          <td class="text-center">{{ item.quantity }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3" class="text-center text-muted">No items in this order.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% empty %}
+  <div class="alert alert-warning">
+    No orders assigned to this packing list.
+  </div>
+  {% endfor %}
+
+  <!-- Footer -->
+  <div class="text-muted small mt-4">
+    Printed on {{ now|date:"M d, Y H:i" }}
+  </div>
+
+</div>
+
+<style>
+@media print {
+  .page-break-before {
+    page-break-before: always;
+  }
+}
+</style>
+</body>
+{% endblock %}

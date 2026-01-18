@@ -1,0 +1,15 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    {% if original.pk %}
+    <li>
+        <a class="btn btn-outline-primary btn-sm"
+           href="{% url 'admin:packinglist-print' original.pk %}"
+           target="_blank"
+           title="Print Packing List">
+            <i class="bi bi-printer"></i> Print
+        </a>
+    </li>
+    {% endif %}
+{% endblock %}
