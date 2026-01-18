@@ -281,6 +281,7 @@ class CombinedOrderAdmin(admin.ModelAdmin):
             'start_date': form_data['start_date'],
             'end_date': form_data['end_date'],
         }
+        request.session.modified = True  # Ensure session is saved
         
         context = {
             **self.admin_site.each_context(request),

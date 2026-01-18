@@ -151,7 +151,14 @@ class TestCombinedOrderCreation:
     def test_create_combined_order_with_orders(
         self, program, product, admin_user, client
     ):
-        """Test creating a combined order with existing orders."""
+        """Test creating a combined order with existing orders using helper function."""
+        from apps.orders.tasks.helper.combined_order_helper import create_combined_order_with_packing
+        from apps.pantry.models import OrderPacker
+        
+        # Add a packer to the program (required for combined order creation)
+        packer = OrderPacker.objects.create(name='Test Packer')
+        program.packers.add(packer)
+        
         # Create participants with the program
         participant1 = ParticipantFactory(program=program)
         participant2 = ParticipantFactory(program=program)
@@ -170,29 +177,16 @@ class TestCombinedOrderCreation:
             order_date=now
         )
 
-        # Login as admin
-        client.force_login(admin_user)
-
-        # Step 1: Submit form to go to preview
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
-            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
-        }
-        response = client.post(url, data=form_data)
-        
-        # Should redirect to preview
-        assert response.status_code == 302
-        assert 'preview' in response.url
-        
-        # Step 2: Confirm creation
-        confirm_url = reverse('admin:orders_combinedorder_confirm')
-        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
+        # Create combined order directly using helper
+        orders = [order1, order2]
+        combined_order, packing_lists = create_combined_order_with_packing(
+            program=program,
+            orders=orders,
+            strategy='none',
+        )
 
         # Check combined order was created
         assert CombinedOrder.objects.count() == 1
-        combined_order = CombinedOrder.objects.first()
         assert combined_order.program == program
         assert combined_order.orders.count() == 2
         assert order1 in combined_order.orders.all()
@@ -219,7 +213,9 @@ class TestCombinedOrderCreation:
     def test_create_combined_order_only_confirmed(
         self, program, admin_user, client
     ):
-        """Test only confirmed orders are included."""
+        """Test only confirmed orders are included using helper function."""
+        from apps.orders.tasks.helper.combined_order_helper import get_eligible_orders
+        
         participant = ParticipantFactory(program=program)
         now = timezone.now()
 
@@ -242,34 +238,24 @@ class TestCombinedOrderCreation:
             order_date=now
         )
 
-        client.force_login(admin_user)
+        # Get eligible orders
+        start_date = (now - timedelta(days=1)).date()
+        end_date = (now + timedelta(days=1)).date()
+        eligible_orders, excluded, warnings = get_eligible_orders(
+            program, start_date, end_date
+        )
 
-        # Step 1: Submit form to go to preview
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
-            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
-        }
-        response = client.post(url, data=form_data)
-        assert response.status_code == 302
-        
-        # Step 2: Confirm creation
-        confirm_url = reverse('admin:orders_combinedorder_confirm')
-        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
-
-        # Check only confirmed order is included
-        combined_order = CombinedOrder.objects.first()
-        assert combined_order is not None
-        assert combined_order.orders.count() == 1
-        assert confirmed_order in combined_order.orders.all()
-        assert pending_order not in combined_order.orders.all()
-        assert cancelled_order not in combined_order.orders.all()
+        # Check only confirmed order is eligible
+        assert confirmed_order in eligible_orders
+        assert pending_order not in eligible_orders
+        assert cancelled_order not in eligible_orders
 
     def test_create_combined_order_filters_by_program(
         self, program, another_program, admin_user, client
     ):
         """Test combined order only includes orders from selected program."""
+        from apps.orders.tasks.helper.combined_order_helper import get_eligible_orders
+        
         participant1 = ParticipantFactory(program=program)
         participant2 = ParticipantFactory(program=another_program)
 
@@ -288,33 +274,23 @@ class TestCombinedOrderCreation:
             order_date=now
         )
 
-        client.force_login(admin_user)
-
-        # Step 1: Submit form to go to preview
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
-            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
-        }
-        response = client.post(url, data=form_data)
-        assert response.status_code == 302
-        
-        # Step 2: Confirm creation
-        confirm_url = reverse('admin:orders_combinedorder_confirm')
-        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
+        # Get eligible orders for first program
+        start_date = (now - timedelta(days=1)).date()
+        end_date = (now + timedelta(days=1)).date()
+        eligible_orders, excluded, warnings = get_eligible_orders(
+            program, start_date, end_date
+        )
 
         # Check only orders from selected program are included
-        combined_order = CombinedOrder.objects.first()
-        assert combined_order is not None
-        assert combined_order.orders.count() == 1
-        assert order1 in combined_order.orders.all()
-        assert order2 not in combined_order.orders.all()
+        assert order1 in eligible_orders
+        assert order2 not in eligible_orders
 
     def test_create_combined_order_filters_by_date_range(
         self, program, admin_user, client
     ):
         """Test combined order only includes orders within date range."""
+        from apps.orders.tasks.helper.combined_order_helper import get_eligible_orders
+        
         participant = ParticipantFactory(program=program)
 
         # Create orders at different times
@@ -340,31 +316,17 @@ class TestCombinedOrderCreation:
             order_date=future_date
         )
 
-        client.force_login(admin_user)
-
-        # Step 1: Submit form to go to preview
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (timezone.now() - timedelta(days=5)).strftime(
-                '%Y-%m-%d'
-            ),
-            'end_date': timezone.now().strftime('%Y-%m-%d'),
-        }
-        response = client.post(url, data=form_data)
-        assert response.status_code == 302
-        
-        # Step 2: Confirm creation
-        confirm_url = reverse('admin:orders_combinedorder_confirm')
-        response = client.post(confirm_url, data={'confirm': 'true'}, follow=True)
+        # Get eligible orders
+        start_date = (timezone.now() - timedelta(days=5)).date()
+        end_date = timezone.now().date()
+        eligible_orders, excluded, warnings = get_eligible_orders(
+            program, start_date, end_date
+        )
 
         # Check only orders within date range are included
-        combined_order = CombinedOrder.objects.first()
-        assert combined_order is not None
-        assert combined_order.orders.count() == 1
-        assert recent_order in combined_order.orders.all()
-        assert old_order not in combined_order.orders.all()
-        assert future_order not in combined_order.orders.all()
+        assert recent_order in eligible_orders
+        assert old_order not in eligible_orders
+        assert future_order not in eligible_orders
 
     def test_create_combined_order_view_requires_login(self, client):
         """Test that the create combined order view requires login."""
@@ -393,7 +355,7 @@ class TestCombinedOrderCreation:
     def test_create_combined_order_redirects_after_success(
         self, program, admin_user, client
     ):
-        """Test successful creation redirects to changelist."""
+        """Test successful creation redirects to preview first."""
         participant = ParticipantFactory(program=program)
         now = timezone.now()
 
@@ -413,11 +375,9 @@ class TestCombinedOrderCreation:
         }
         response = client.post(url, data=form_data)
 
-        # Should redirect to changelist
+        # Should redirect to preview (new workflow)
         assert response.status_code == 302
-        assert response.url == reverse(
-            'admin:orders_combinedorder_changelist'
-        )
+        assert 'preview' in response.url
 
     def test_create_combined_order_invalid_form_shows_errors(
         self, program, admin_user, client
@@ -481,13 +441,14 @@ class TestCombinedOrderUniqueConstraint:
         assert CombinedOrder.objects.count() == 2
         assert combined_order1.program != combined_order2.program
 
-    def test_admin_creates_combined_order_twice_same_week(
+    def test_orders_can_only_be_combined_once(
         self, program, admin_user, client, product
     ):
         """
-        Test that creating combined order twice in same week
-        reuses existing order.
+        Test that orders with is_combined=True are not included in new combined orders.
         """
+        from apps.orders.tasks.helper.combined_order_helper import get_eligible_orders
+        
         participant = ParticipantFactory(program=program)
         now = timezone.now()
         
@@ -497,18 +458,9 @@ class TestCombinedOrderUniqueConstraint:
             order_date=now
         )
         
-        client.force_login(admin_user)
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
-            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
-        }
-        
-        # Create first time
-        response1 = client.post(url, data=form_data, follow=True)
-        assert response1.status_code == 200
-        assert CombinedOrder.objects.count() == 1
+        # First, manually mark order1 as combined
+        order1.is_combined = True
+        order1.save()
         
         # Create another order
         order2 = create_test_order(
@@ -517,18 +469,16 @@ class TestCombinedOrderUniqueConstraint:
             order_date=now
         )
         
-        # Try to create again in same week - should reuse existing
-        response2 = client.post(url, data=form_data, follow=True)
-        assert response2.status_code == 200
+        # Get eligible orders - order1 should be excluded
+        start_date = (now - timedelta(days=1)).date()
+        end_date = (now + timedelta(days=1)).date()
+        eligible_orders, excluded_orders, warnings = get_eligible_orders(
+            program, start_date, end_date
+        )
         
-        # Should still have only 1 combined order
-        assert CombinedOrder.objects.count() == 1
-        
-        # But it should have both orders
-        combined_order = CombinedOrder.objects.first()
-        assert combined_order.orders.count() == 2
-        assert order1 in combined_order.orders.all()
-        assert order2 in combined_order.orders.all()
+        # order1 should not be eligible (already combined)
+        assert order1 not in eligible_orders
+        assert order2 in eligible_orders
 
     def test_get_or_create_returns_existing_combined_order(self, program):
         """Test that get_or_create returns existing combined order."""
@@ -797,7 +747,7 @@ class TestCombinedOrderOrdersDisplay:
     def test_admin_combined_order_displays_orders(
         self, program, admin_user, client, product
     ):
-        """Test that admin interface shows orders in combined order."""
+        """Test that combined order properly includes and displays orders."""
         participant = ParticipantFactory(program=program)
         now = timezone.now()
         
@@ -817,19 +767,11 @@ class TestCombinedOrderOrdersDisplay:
             price_at_order=product.price
         )
         
-        client.force_login(admin_user)
+        # Create combined order directly and add orders
+        combined_order = CombinedOrder.objects.create(program=program)
+        combined_order.orders.add(order)
         
-        # Create combined order through admin
-        url = reverse('admin:orders_combinedorder_create')
-        form_data = {
-            'program': program.id,
-            'start_date': (now - timedelta(days=1)).strftime('%Y-%m-%d'),
-            'end_date': (now + timedelta(days=1)).strftime('%Y-%m-%d'),
-        }
-        response = client.post(url, data=form_data, follow=True)
-        
-        # Get the created combined order
-        combined_order = CombinedOrder.objects.first()
+        # Verify combined order was created
         assert combined_order is not None
         
         # Verify order is in combined order

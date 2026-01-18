@@ -161,14 +161,16 @@ def create_parent_combined_order(program: Program, child_orders: List[CombinedOr
     """Create parent combined order that aggregates all child orders."""
     from django.utils import timezone
     
-    current_year = timezone.now().year
-    current_week = timezone.now().isocalendar()[1]
+    now = timezone.now()
+    current_year = now.year
+    current_week = now.isocalendar()[1]
     
     # Get or create parent combined order for this program/week
+    # Use the explicit week/year fields (not created_at lookups)
     parent_order, created = CombinedOrder.objects.get_or_create(
         program=program,
-        created_at__year=current_year,
-        created_at__week=current_week,
+        week=current_week,
+        year=current_year,
         is_parent=True,
         defaults={
             'program': program,
