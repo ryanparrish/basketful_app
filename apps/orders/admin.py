@@ -587,7 +587,6 @@ class PackingListAdmin(admin.ModelAdmin):
     def print_packing_list(self, request, packing_list_id):
         """Render a printable view of the packing list."""
         from django.shortcuts import get_object_or_404
-        from django.utils import timezone
         
         packing_list = get_object_or_404(PackingList, pk=packing_list_id)
         
