@@ -8,6 +8,8 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.contrib import messages
 from django.utils import timezone
+import io
+import zipfile
 # First-party imports
 from apps.voucher.models import Voucher
 # Local imports
@@ -93,8 +95,8 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(CombinedOrder)
 class CombinedOrderAdmin(admin.ModelAdmin):
     """Admin for CombinedOrder with preview/confirm workflow."""
-    actions = ['download_combined_order_pdf', 'download_packing_list_pdf', 'uncombine_orders_action']
-    readonly_fields = ('display_orders', 'created_at', 'updated_at', 'display_packing_lists', 'display_split_strategy')
+    actions = ['download_primary_order_pdf', 'download_packing_list_pdf', 'download_all_packing_lists_zip', 'uncombine_orders_action']
+    readonly_fields = ('orders', 'split_strategy', 'display_orders', 'created_at', 'updated_at', 'display_packing_lists', 'display_split_strategy')
     exclude = ('summarized_data', 'is_parent')
     change_list_template = "admin/orders/combinedorder/change_list.html"
     change_form_template = "admin/orders/combinedorder/change_form.html"
@@ -385,8 +387,8 @@ class CombinedOrderAdmin(admin.ModelAdmin):
     # Admin Actions
     # ------------------------
 
-    @admin.action(description="Download Warehouse PDF")
-    def download_combined_order_pdf(self, request, queryset):
+    @admin.action(description="Download Primary Order PDF")
+    def download_primary_order_pdf(self, request, queryset):
         """Generate and download a PDF for the selected combined order."""
         if queryset.count() != 1:
             self.message_user(
@@ -399,17 +401,18 @@ class CombinedOrderAdmin(admin.ModelAdmin):
 
         # Call your utils function (returns BytesIO)
         pdf_buffer = generate_combined_order_pdf(combined_order)
+        pdf_buffer.seek(0)
 
         # Wrap in HttpResponse for download
-        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
         response['Content-Disposition'] = (
-            f'attachment; filename="warehouse_order_{combined_order.id}.pdf"'
+            f'attachment; filename="primary_order_{combined_order.id}.pdf"'
         )
         return response
 
-    @admin.action(description="Download Packing List PDF")
+    @admin.action(description="Download First Packing List PDF")
     def download_packing_list_pdf(self, request, queryset):
-        """Generate and download packing list PDF(s) for the selected combined order."""
+        """Generate and download first packing list PDF for the selected combined order."""
         if queryset.count() != 1:
             self.message_user(
                 request,
@@ -422,32 +425,80 @@ class CombinedOrderAdmin(admin.ModelAdmin):
         packing_lists = combined_order.packing_lists.all()
         
         if packing_lists.exists():
-            # Multiple packing lists - for now just download the first one
-            # TODO: Create a ZIP file with all packing lists
+            # Download first packing list
             from .utils.order_services import generate_packing_list_pdf
             packing_list = packing_lists.first()
             pdf_buffer = generate_packing_list_pdf(packing_list)
-            filename = f"packing_list_{combined_order.id}_{packing_list.packer.name}.pdf"
+            pdf_buffer.seek(0)
+            filename = f"packing_list_{combined_order.id}_{packing_list.packer.name.replace(' ', '_')}.pdf"
         else:
             # Single packer - use combined order as packing list
             pdf_buffer = generate_combined_order_pdf(combined_order)
+            pdf_buffer.seek(0)
             filename = f"packing_list_{combined_order.id}.pdf"
 
-        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
-    @admin.action(description="Uncombine Selected Orders")
+    @admin.action(description="Download All Packing Lists (ZIP)")
+    def download_all_packing_lists_zip(self, request, queryset):
+        """Download all packing lists and primary order as a ZIP file."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one combined order to download.",
+                level='error'
+            )
+            return
+        
+        combined_order = queryset.first()
+        packing_lists = combined_order.packing_lists.all()
+        
+        # If no packing lists, just download single PDF
+        if not packing_lists.exists():
+            return self.download_packing_list_pdf(request, queryset)
+        
+        # Create ZIP file in memory
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Add primary order PDF
+            primary_pdf = generate_combined_order_pdf(combined_order)
+            primary_pdf.seek(0)
+            zip_file.writestr(
+                f"primary_order_{combined_order.id}.pdf",
+                primary_pdf.read()
+            )
+            
+            # Add each packing list PDF
+            from .utils.order_services import generate_packing_list_pdf
+            for packing_list in packing_lists:
+                pdf_buffer = generate_packing_list_pdf(packing_list)
+                pdf_buffer.seek(0)
+                filename = f"packing_list_{packing_list.packer.name.replace(' ', '_')}_{combined_order.id}.pdf"
+                zip_file.writestr(filename, pdf_buffer.read())
+        
+        # Return ZIP as download
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="combined_order_{combined_order.id}_all_lists.zip"'
+        return response
+
+    @admin.action(description="Uncombine and Delete Selected Orders")
     def uncombine_orders_action(self, request, queryset):
-        """Uncombine selected combined orders."""
+        """Uncombine selected combined orders and delete them."""
         total_uncombined = 0
+        combined_count = queryset.count()
         for combined_order in queryset:
             count = uncombine_order(combined_order)
             total_uncombined += count
+            # Delete the combined order after uncombining
+            combined_order.delete()
         
         self.message_user(
             request,
-            f"Uncombined {queryset.count()} combined order(s), releasing {total_uncombined} order(s)."
+            f"Uncombined and deleted {combined_count} combined order(s), releasing {total_uncombined} order(s)."
         )
 
 

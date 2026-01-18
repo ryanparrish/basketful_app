@@ -17,17 +17,17 @@
         </p>
     </div>
     
-    <!-- Warehouse Order Section -->
+    <!-- Primary Order Section -->
     <fieldset class="module">
-        <h2>📦 Warehouse Order</h2>
+        <h2>📦 Primary Order</h2>
         <p>Use this PDF to order supplies from the warehouse. Contains aggregated product quantities by category.</p>
         <form method="post" action="{% url 'admin:orders_combinedorder_changelist' %}" style="display: inline;">
             {% csrf_token %}
-            <input type="hidden" name="action" value="download_combined_order_pdf">
+            <input type="hidden" name="action" value="download_primary_order_pdf">
             <input type="hidden" name="_selected_action" value="{{ combined_order.pk }}">
-            <a href="{% url 'admin:orders_combinedorder_changelist' %}?action=download_combined_order_pdf&_selected_action={{ combined_order.pk }}" 
+            <a href="{% url 'admin:orders_combinedorder_changelist' %}?action=download_primary_order_pdf&_selected_action={{ combined_order.pk }}" 
                class="button" style="background-color: #2196F3; color: white;">
-                📥 Download Warehouse PDF
+                📥 Download Primary Order PDF
             </a>
         </form>
     </fieldset>
@@ -68,7 +68,7 @@
         </p>
         
         {% else %}
-        <p>Single packer program - the warehouse PDF also serves as the packing list.</p>
+        <p>Single packer program - the primary order PDF also serves as the packing list.</p>
         <p>
             <strong>Packer:</strong> {{ combined_order.program.packers.first.name|default:"Not assigned" }}
         </p>
