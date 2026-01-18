@@ -62,7 +62,7 @@ class ProgramAdmin(admin.ModelAdmin):
         'meeting_address',
         'created_at'
     )
-    list_filter = ('MeetingDay',)
+    list_filter = ('MeetingDay', 'default_split_strategy')
     search_fields = ('name', 'meeting_address')
     fieldsets = (
         ('Program Information', {
@@ -77,6 +77,13 @@ class ProgramAdmin(admin.ModelAdmin):
         ('Location', {
             'fields': ('meeting_address',),
             'description': 'Format: "123 Main St, City, ST 12345"'
+        }),
+        ('Combined Orders', {
+            'fields': ('default_split_strategy',),
+            'description': (
+                'Configure how combined orders are split among packers. '
+                '"By Category" requires Packing Split Rules to be configured.'
+            )
         }),
     )
 
