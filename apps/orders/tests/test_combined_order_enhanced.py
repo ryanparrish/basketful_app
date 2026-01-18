@@ -172,18 +172,23 @@ class TestOrderIsCombinedField:
         assert order.is_combined is False
     
     def test_is_combined_can_be_set_true(self):
-        """is_combined can be set to True."""
+        """Order marked as combined when added to CombinedOrder."""
         participant = ParticipantFactory()
         order = Order.objects.create(
             account=participant.accountbalance,
             status='pending',
             order_number='TEST-002',
-            is_combined=True,
         )
+        # Add order to a CombinedOrder to mark it as combined
+        combined = CombinedOrder.objects.create(program=participant.program)
+        combined.orders.add(order)
+        
+        # Refresh from DB to see the relationship
+        order.refresh_from_db()
         assert order.is_combined is True
     
     def test_is_combined_filter(self):
-        """Test filtering orders by is_combined status."""
+        """Test identifying orders by is_combined status."""
         participant = ParticipantFactory()
         
         # Create combined and uncombined orders
@@ -191,22 +196,23 @@ class TestOrderIsCombinedField:
             account=participant.accountbalance,
             status='confirmed',
             order_number='TEST-COMBINED',
-            is_combined=True,
         )
         uncombined_order = Order.objects.create(
             account=participant.accountbalance,
             status='confirmed',
             order_number='TEST-UNCOMBINED',
-            is_combined=False,
         )
         
-        combined_qs = Order.objects.filter(is_combined=True)
-        uncombined_qs = Order.objects.filter(is_combined=False)
+        # Mark one as combined by adding to CombinedOrder
+        combined = CombinedOrder.objects.create(program=participant.program)
+        combined.orders.add(combined_order)
         
-        assert combined_order in combined_qs
-        assert uncombined_order not in combined_qs
-        assert uncombined_order in uncombined_qs
-        assert combined_order not in uncombined_qs
+        # Refresh to see relationships
+        combined_order.refresh_from_db()
+        uncombined_order.refresh_from_db()
+        
+        assert combined_order.is_combined is True
+        assert uncombined_order.is_combined is False
 
 
 # =============================================================================
@@ -564,15 +570,17 @@ class TestGetEligibleOrders:
             account=participant.accountbalance,
             status='confirmed',
             order_number='ALREADY-COMBINED',
-            is_combined=True,
         )
         
         uncombined_order = Order.objects.create(
             account=participant.accountbalance,
             status='confirmed',
             order_number='NOT-COMBINED',
-            is_combined=False,
         )
+        
+        # Mark one as combined by adding to CombinedOrder
+        temp_combined = CombinedOrder.objects.create(program=program)
+        temp_combined.orders.add(combined_order)
         
         start_date = timezone.now() - timedelta(days=1)
         end_date = timezone.now() + timedelta(days=1)

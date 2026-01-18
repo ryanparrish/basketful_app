@@ -539,14 +539,14 @@ def get_eligible_orders(
         order_date__gte=start_datetime,
         order_date__lte=end_datetime,
         status=status
-    ).select_related('account__participant')
+    ).select_related('account__participant').prefetch_related('combined_orders')
     
     # Separate eligible and excluded orders
     eligible = []
     excluded = []
     
     for order in all_orders:
-        if order.is_combined:
+        if order.combined_orders.exists():
             excluded.append(order)
         else:
             eligible.append(order)
@@ -606,9 +606,8 @@ def create_combined_order_with_packing(
         year=year,
     )
     
-    # Add orders and mark them as combined
+    # Add orders to combined order (M2M relationship tracks combined status)
     combined_order.orders.add(*orders)
-    Order.objects.filter(id__in=[o.id for o in orders]).update(is_combined=True)
     
     # Calculate summarized data
     combined_order.summarized_data = combined_order.summarized_items_by_category()
@@ -671,10 +670,7 @@ def uncombine_order(combined_order: CombinedOrder) -> int:
     # Delete packing lists
     combined_order.packing_lists.all().delete()
     
-    # Clear is_combined flag on orders
-    Order.objects.filter(id__in=order_ids).update(is_combined=False)
-    
-    # Clear the orders from the combined order
+    # Clear the orders from the combined order (removes M2M relationship)
     combined_order.orders.clear()
     combined_order.summarized_data = {}
     combined_order.save(update_fields=['summarized_data'])

@@ -65,12 +65,13 @@ class Order(models.Model):
         default="pending",
     )
     paid = models.BooleanField(default=False)
-    is_combined = models.BooleanField(
-        default=False,
-        help_text="Whether this order has been included in a combined order"
-    )
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_combined(self) -> bool:
+        """Check if order has been included in a combined order."""
+        return self.combined_orders.exists()
 
     def total_price(self) -> Decimal:
         """Calculate the total price of the order."""

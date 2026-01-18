@@ -458,9 +458,9 @@ class TestCombinedOrderUniqueConstraint:
             order_date=now
         )
         
-        # First, manually mark order1 as combined
-        order1.is_combined = True
-        order1.save()
+        # First, mark order1 as combined by adding it to a CombinedOrder
+        temp_combined = CombinedOrder.objects.create(program=program)
+        temp_combined.orders.add(order1)
         
         # Create another order
         order2 = create_test_order(
