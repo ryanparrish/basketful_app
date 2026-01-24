@@ -106,12 +106,86 @@ def generate_combined_order_pdf(combined_order) -> BytesIO:
     return buffer
 
 
+# --- Packing List PDF Helper Functions ---
+
+# Page layout constants
+USABLE_HEIGHT = 650  # Letter height minus top/bottom margins
+TOP_MARGIN = 50
+BOTTOM_MARGIN = 80  # Leave room for page numbers
+PAGE_NUMBER_Y = 30
+
+
+def _calculate_order_height(item_count: int, font_size: int) -> int:
+    """
+    Calculate the vertical space needed for an order.
+    
+    Args:
+        item_count: Number of items in the order
+        font_size: Font size for items (12 or 10)
+        
+    Returns:
+        Height in points needed for the order
+    """
+    line_spacing = font_size + 3
+    header_height = 40  # Customer header + spacing
+    items_height = item_count * line_spacing
+    footer_height = 25  # Separator line + spacing
+    return header_height + items_height + footer_height
+
+
+def _draw_page_number(p, current_page: int, total_pages: int, width: float):
+    """Draw centered page number at bottom of page."""
+    p.setFont("Helvetica", 9)
+    text = f"Page {current_page} of {total_pages}"
+    text_width = p.stringWidth(text, "Helvetica", 9)
+    p.drawString((width - text_width) / 2, PAGE_NUMBER_Y, text)
+
+
+def _count_summary_pages(summarized_data: dict, usable_height: int) -> int:
+    """
+    Count how many pages the summary section will need.
+    
+    Args:
+        summarized_data: Dict of {category: {product: qty}}
+        usable_height: Available height per page for summary content
+        
+    Returns:
+        Number of pages needed for summary
+    """
+    if not summarized_data:
+        return 1
+    
+    # Header takes ~180pt (title, program, packer, etc.)
+    # Summary title takes ~30pt
+    first_page_available = usable_height - 210
+    continuation_available = usable_height - 50  # Just "SUMMARY (continued)" header
+    
+    total_items = 0
+    for category, products in summarized_data.items():
+        total_items += 1  # Category header
+        total_items += len(products)  # Products
+    
+    line_height = 15
+    total_height = total_items * line_height + 50  # Plus signature line
+    
+    if total_height <= first_page_available:
+        return 1
+    
+    remaining = total_height - first_page_available
+    extra_pages = (remaining + continuation_available - 1) // continuation_available
+    return 1 + extra_pages
+
+
 def generate_packing_list_pdf(packing_list) -> BytesIO:
     """
     Generate a PDF packing list for a specific packer.
     
+    Layout:
+    - Each order on its own page with adaptive font sizing (12pt → 10pt)
+    - Summary page at end with header info
+    - Page numbers "Page X of Y" on all pages
+    
     Uses customer numbers only for privacy (no participant names).
-    Shows orders assigned to this packer with their items.
     
     Args:
         packing_list: PackingList instance with orders and packer assignment
@@ -125,12 +199,103 @@ def generate_packing_list_pdf(packing_list) -> BytesIO:
     
     combined_order = packing_list.combined_order
     packer = packing_list.packer
-    orders = packing_list.orders.all().select_related(
+    orders = list(packing_list.orders.all().select_related(
         'account__participant'
-    ).prefetch_related('items__product')
+    ).prefetch_related('items__product'))
     
-    # Header
-    y = height - 50
+    summarized_data = packing_list.summarized_data or {}
+    
+    # Pre-calculate total pages
+    # Each order gets its own page; check if any overflow at size 10
+    order_pages = 0
+    order_info = []  # [(order, item_count, font_size, needs_overflow)]
+    
+    for order in orders:
+        item_count = order.items.count()
+        height_at_12 = _calculate_order_height(item_count, 12)
+        height_at_10 = _calculate_order_height(item_count, 10)
+        
+        if height_at_12 <= USABLE_HEIGHT:
+            order_info.append((order, item_count, 12, False))
+            order_pages += 1
+        elif height_at_10 <= USABLE_HEIGHT:
+            order_info.append((order, item_count, 10, False))
+            order_pages += 1
+        else:
+            # Will overflow - calculate extra pages needed at size 10
+            order_info.append((order, item_count, 10, True))
+            items_first_page = (USABLE_HEIGHT - 40) // 13  # 13pt line spacing for size 10
+            remaining_items = item_count - items_first_page
+            continuation_capacity = (USABLE_HEIGHT - 50) // 13
+            extra_pages = (remaining_items + continuation_capacity - 1) // continuation_capacity
+            order_pages += 1 + extra_pages
+    
+    summary_pages = _count_summary_pages(summarized_data, USABLE_HEIGHT)
+    total_pages = order_pages + summary_pages
+    
+    current_page = 0
+    
+    # Render each order on its own page
+    for order, item_count, font_size, needs_overflow in order_info:
+        current_page += 1
+        y = height - TOP_MARGIN
+        
+        # Get customer number
+        participant = order.account.participant if order.account else None
+        customer_number = getattr(participant, 'customer_number', 'N/A') if participant else 'N/A'
+        
+        # Order header
+        p.setFont("Helvetica-Bold", font_size + 2)
+        p.drawString(50, y, f"Customer #{customer_number}")
+        y -= font_size + 8
+        
+        # Separator line under header
+        p.line(50, y, width - 50, y)
+        y -= 15
+        
+        # Order items
+        line_spacing = font_size + 3
+        checkbox_size = font_size - 2
+        p.setFont("Helvetica", font_size)
+        
+        order_items = list(order.items.all())
+        
+        for item in order_items:
+            # Check for page overflow (only happens at size 10 for large orders)
+            if y < BOTTOM_MARGIN:
+                # Draw page number before moving to next page
+                _draw_page_number(p, current_page, total_pages, width)
+                p.showPage()
+                current_page += 1
+                y = height - TOP_MARGIN
+                
+                # Continuation header
+                p.setFont("Helvetica-Bold", font_size)
+                p.drawString(50, y, f"Customer #{customer_number} (continued)")
+                y -= font_size + 8
+                p.line(50, y, width - 50, y)
+                y -= 15
+                p.setFont("Helvetica", font_size)
+            
+            product_name = item.product.name if item.product else 'Unknown Product'
+            quantity = item.quantity
+            
+            # Checkbox (proportional size)
+            p.rect(60, y - 3, checkbox_size, checkbox_size)
+            p.drawString(60 + checkbox_size + 10, y, f"{product_name}")
+            p.drawString(width - 100, y, f"Qty: {quantity}")
+            y -= line_spacing
+        
+        # Draw page number
+        _draw_page_number(p, current_page, total_pages, width)
+        p.showPage()
+    
+    # Summary page with header
+    current_page += 1
+    y = height - TOP_MARGIN
+    is_first_summary_page = True
+    
+    # Header section (only on first summary page)
     p.setFont("Helvetica-Bold", 18)
     p.drawString(50, y, "PACKING LIST")
     y -= 25
@@ -145,95 +310,63 @@ def generate_packing_list_pdf(packing_list) -> BytesIO:
     
     p.setFont("Helvetica", 11)
     p.drawString(50, y, f"Generated: {combined_order.created_at.strftime('%Y-%m-%d %H:%M')}")
-    y -= 10
-    p.drawString(50, y, f"Total Orders: {orders.count()}")
-    y -= 30
+    y -= 15
+    p.drawString(50, y, f"Total Orders: {len(orders)}")
+    y -= 25
     
     # Separator line
     p.line(50, y, width - 50, y)
     y -= 20
     
-    # Orders section
-    for order in orders:
-        # Check for page break
-        if y < 120:
-            p.showPage()
-            y = height - 50
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, y, f"PACKING LIST (continued) - Packer: {packer.name if packer else 'Unassigned'}")
-            y -= 30
-        
-        # Order header with customer number only (privacy)
-        p.setFont("Helvetica-Bold", 12)
-        # Access participant through account
-        participant = order.account.participant if order.account else None
-        customer_number = getattr(participant, 'customer_number', 'N/A') if participant else 'N/A'
-        p.drawString(50, y, f"Customer #{customer_number}")
-        y -= 15
-        
-        # Order items
-        p.setFont("Helvetica", 10)
-        order_items = order.items.all()
-        
-        for item in order_items:
-            if y < 80:
-                p.showPage()
-                y = height - 50
-                p.setFont("Helvetica-Bold", 12)
-                p.drawString(50, y, f"PACKING LIST (continued) - Packer: {packer.name if packer else 'Unassigned'}")
-                y -= 30
-                p.setFont("Helvetica", 10)
-            
-            product_name = item.product.name if item.product else 'Unknown Product'
-            quantity = item.quantity
-            # Checkbox for packer to mark
-            p.rect(60, y - 3, 10, 10)  # Empty checkbox
-            p.drawString(80, y, f"{product_name}")
-            p.drawString(width - 100, y, f"Qty: {quantity}")
-            y -= 15
-        
-        # Spacing between orders
-        y -= 10
-        p.line(50, y, width - 50, y)
-        y -= 15
-    
-    # Footer with summary
-    if y < 100:
-        p.showPage()
-        y = height - 50
-    
-    p.setFont("Helvetica-Bold", 12)
+    # Summary section
+    p.setFont("Helvetica-Bold", 14)
     p.drawString(50, y, "SUMMARY")
-    y -= 20
-    
-    # Calculate totals from packing list summarized data
-    summarized_data = packing_list.summarized_data or {}
-    p.setFont("Helvetica", 10)
+    y -= 25
     
     for category, products in summarized_data.items():
-        if y < 60:
+        # Check for page break
+        if y < BOTTOM_MARGIN + 30:
+            _draw_page_number(p, current_page, total_pages, width)
             p.showPage()
-            y = height - 50
+            current_page += 1
+            y = height - TOP_MARGIN
+            is_first_summary_page = False
+            
+            # Continuation header
+            p.setFont("Helvetica-Bold", 14)
+            p.drawString(50, y, "SUMMARY (continued)")
+            y -= 25
         
-        p.setFont("Helvetica-Bold", 11)
+        p.setFont("Helvetica-Bold", 12)
         p.drawString(50, y, f"{category}:")
-        y -= 15
+        y -= 18
         
-        p.setFont("Helvetica", 10)
+        p.setFont("Helvetica", 11)
         for product_name, qty in products.items():
-            if y < 60:
+            if y < BOTTOM_MARGIN + 30:
+                _draw_page_number(p, current_page, total_pages, width)
                 p.showPage()
-                y = height - 50
+                current_page += 1
+                y = height - TOP_MARGIN
+                
+                p.setFont("Helvetica-Bold", 14)
+                p.drawString(50, y, "SUMMARY (continued)")
+                y -= 25
+                p.setFont("Helvetica", 11)
+            
             p.drawString(70, y, f"{product_name}: {qty}")
-            y -= 12
+            y -= 15
         
-        y -= 5
+        y -= 8
     
     # Packer signature line at bottom
     y -= 20
     p.setFont("Helvetica", 10)
     p.drawString(50, y, "Packed by: _______________________")
     p.drawString(300, y, "Date: _____________")
+    
+    # Final page number
+    _draw_page_number(p, current_page, total_pages, width)
     
     p.showPage()
     p.save()
