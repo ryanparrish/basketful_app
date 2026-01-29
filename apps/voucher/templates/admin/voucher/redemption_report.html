@@ -1,0 +1,340 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .report-container {
+        margin: 20px 0;
+    }
+    .filter-form {
+        background: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-bottom: 15px;
+    }
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+    .filter-group label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    .filter-group .form-control {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .custom-date-fields {
+        display: none;
+    }
+    .custom-date-fields.show {
+        display: flex;
+        gap: 20px;
+    }
+    .btn-container {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+    }
+    .btn-primary {
+        background-color: #417690;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .btn-primary:hover {
+        background-color: #205067;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        border-radius: 4px;
+        text-decoration: none;
+    }
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    /* Summary cards */
+    .summary-cards {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+    .summary-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        min-width: 180px;
+        flex: 1;
+    }
+    .summary-card.grocery {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    .summary-card.life {
+        background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);
+    }
+    .summary-card.amount {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .summary-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        opacity: 0.9;
+        font-weight: normal;
+    }
+    .summary-card .value {
+        font-size: 32px;
+        font-weight: bold;
+    }
+    
+    /* Results table */
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .results-table th {
+        background-color: #417690;
+        color: white;
+        padding: 12px;
+        text-align: left;
+        font-weight: bold;
+    }
+    .results-table th:not(:first-child) {
+        text-align: right;
+    }
+    .results-table td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+    }
+    .results-table td:not(:first-child) {
+        text-align: right;
+    }
+    .results-table tr:nth-child(even) {
+        background-color: #f5f5f5;
+    }
+    .results-table tr:hover {
+        background-color: #e9e9e9;
+    }
+    .results-table tfoot {
+        font-weight: bold;
+        background-color: #f0f0f0;
+    }
+    .results-table tfoot td {
+        border-top: 2px solid #417690;
+    }
+    
+    /* Date range display */
+    .date-range-banner {
+        background: #e8f4fd;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border-left: 4px solid #417690;
+    }
+    .date-range-banner h2 {
+        margin: 0;
+        font-size: 16px;
+        color: #333;
+    }
+    
+    /* No data message */
+    .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+        font-style: italic;
+    }
+    
+    .helptext {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 3px;
+    }
+    
+    .errorlist {
+        color: #c00;
+        margin: 5px 0;
+        padding: 0;
+        list-style: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+    
+    <div class="report-container">
+        <!-- Filter Form -->
+        <div class="filter-form">
+            <form method="get">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="{{ form.date_range.id_for_label }}">Date Range</label>
+                        {{ form.date_range }}
+                    </div>
+                    <div class="filter-group">
+                        <label for="{{ form.program.id_for_label }}">Program</label>
+                        {{ form.program }}
+                    </div>
+                    <div class="filter-group">
+                        <label for="{{ form.voucher_type.id_for_label }}">Voucher Type</label>
+                        {{ form.voucher_type }}
+                    </div>
+                </div>
+                
+                <div class="filter-row custom-date-fields" id="custom-date-container">
+                    <div class="filter-group">
+                        <label for="{{ form.start_date.id_for_label }}">Start Date</label>
+                        {{ form.start_date }}
+                        {% if form.start_date.errors %}
+                            <ul class="errorlist">
+                                {% for error in form.start_date.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                    <div class="filter-group">
+                        <label for="{{ form.end_date.id_for_label }}">End Date</label>
+                        {{ form.end_date }}
+                        {% if form.end_date.errors %}
+                            <ul class="errorlist">
+                                {% for error in form.end_date.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="btn-container">
+                    <button type="submit" class="btn-primary">Generate Report</button>
+                    {% if report_data %}
+                        <button type="submit" name="export_pdf" value="1" class="btn-secondary">Export PDF</button>
+                    {% endif %}
+                    <a href="{% url 'admin:voucher_voucher_changelist' %}" class="btn-secondary">Back to Vouchers</a>
+                </div>
+            </form>
+        </div>
+        
+        {% if report_data is not None %}
+            <!-- Date Range Banner -->
+            <div class="date-range-banner">
+                <h2>📅 Report Period: {{ date_range_display }}</h2>
+            </div>
+            
+            {% if totals.voucher_count > 0 %}
+                <!-- Summary Cards -->
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <h3>Total Vouchers Redeemed</h3>
+                        <div class="value">{{ totals.voucher_count }}</div>
+                    </div>
+                    <div class="summary-card grocery">
+                        <h3>Grocery Vouchers</h3>
+                        <div class="value">{{ totals.grocery_count }}</div>
+                    </div>
+                    <div class="summary-card life">
+                        <h3>Life Vouchers</h3>
+                        <div class="value">{{ totals.life_count }}</div>
+                    </div>
+                    <div class="summary-card amount">
+                        <h3>Total Amount</h3>
+                        <div class="value">${{ totals.total_amount|floatformat:2 }}</div>
+                    </div>
+                </div>
+                
+                <!-- Detail Table -->
+                <h2>Breakdown by Program</h2>
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Program</th>
+                            <th>Total Vouchers</th>
+                            <th>Grocery</th>
+                            <th>Life</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for program_name, data in report_data.items %}
+                            <tr>
+                                <td>{{ program_name }}</td>
+                                <td>{{ data.voucher_count }}</td>
+                                <td>{{ data.grocery_count }}</td>
+                                <td>{{ data.life_count }}</td>
+                                <td>${{ data.total_amount|floatformat:2 }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td>TOTAL</td>
+                            <td>{{ totals.voucher_count }}</td>
+                            <td>{{ totals.grocery_count }}</td>
+                            <td>{{ totals.life_count }}</td>
+                            <td>${{ totals.total_amount|floatformat:2 }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            {% else %}
+                <div class="no-data">
+                    <p>📭 No vouchers were redeemed during this period.</p>
+                    <p>Try selecting a different date range or removing filters.</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="no-data">
+                <p>Select a date range and click "Generate Report" to view redemption data.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extrascript %}
+{{ block.super }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const dateRangeSelect = document.getElementById('date-range-select');
+        const customDateContainer = document.getElementById('custom-date-container');
+        
+        function toggleCustomDates() {
+            if (dateRangeSelect.value === 'custom') {
+                customDateContainer.classList.add('show');
+            } else {
+                customDateContainer.classList.remove('show');
+            }
+        }
+        
+        // Initial check
+        toggleCustomDates();
+        
+        // Listen for changes
+        dateRangeSelect.addEventListener('change', toggleCustomDates);
+    });
+</script>
+{% endblock %}

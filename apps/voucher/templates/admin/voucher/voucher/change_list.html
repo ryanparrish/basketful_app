@@ -9,4 +9,11 @@
         </a>
     </li>
     {% endif %}
+    {% if show_reports_link %}
+    <li>
+        <a href="{% url 'admin:voucher_redemption_report' %}" class="viewlink">
+            📊 Redemption Report
+        </a>
+    </li>
+    {% endif %}
 {% endblock %}

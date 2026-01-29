@@ -61,3 +61,76 @@ class BulkVoucherConfirmationForm(forms.Form):
     voucher_type = forms.CharField(max_length=20, widget=forms.HiddenInput())
     vouchers_per_participant = forms.IntegerField(widget=forms.HiddenInput())
     notes = forms.CharField(required=False, widget=forms.HiddenInput())
+
+
+class VoucherRedemptionReportForm(forms.Form):
+    """Form for filtering voucher redemption report."""
+    
+    DATE_RANGE_CHOICES = [
+        ('last_7_days', 'Last 7 Days'),
+        ('last_30_days', 'Last 30 Days'),
+        ('last_month', 'Last Month'),
+        ('ytd', 'Year to Date'),
+        ('custom', 'Custom Range'),
+    ]
+    
+    date_range = forms.ChoiceField(
+        choices=DATE_RANGE_CHOICES,
+        initial='last_30_days',
+        required=True,
+        widget=forms.Select(attrs={'class': 'form-control', 'id': 'date-range-select'})
+    )
+    
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'class': 'form-control',
+            'type': 'date',
+            'id': 'start-date'
+        }),
+        help_text="Required for custom date range"
+    )
+    
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'class': 'form-control',
+            'type': 'date',
+            'id': 'end-date'
+        }),
+        help_text="Required for custom date range"
+    )
+    
+    program = forms.ModelChoiceField(
+        queryset=Program.objects.all(),
+        required=False,
+        empty_label="All Programs",
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    
+    voucher_type = forms.ChoiceField(
+        choices=[
+            ('', 'All Types'),
+            ('grocery', 'Grocery'),
+            ('life', 'Life'),
+        ],
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    
+    def clean(self):
+        """Validate custom date range fields."""
+        cleaned_data = super().clean()
+        date_range = cleaned_data.get('date_range')
+        start_date = cleaned_data.get('start_date')
+        end_date = cleaned_data.get('end_date')
+        
+        if date_range == 'custom':
+            if not start_date:
+                self.add_error('start_date', 'Start date is required for custom range.')
+            if not end_date:
+                self.add_error('end_date', 'End date is required for custom range.')
+            if start_date and end_date and start_date > end_date:
+                self.add_error('end_date', 'End date must be after start date.')
+        
+        return cleaned_data

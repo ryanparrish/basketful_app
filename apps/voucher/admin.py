@@ -8,6 +8,7 @@ from apps.log.inlines import VoucherLogInline
 # Local imports
 from .models import Voucher, VoucherSetting
 from . import views as voucher_views
+from . import views_reports
 
 
 @admin.action(description="Mark selected vouchers as Applied")
@@ -41,7 +42,7 @@ class VoucherAdmin(admin.ModelAdmin):
     inlines = [VoucherLogInline]
     
     def get_urls(self):
-        """Add custom URLs for bulk voucher creation."""
+        """Add custom URLs for bulk voucher creation and reports."""
         urls = super().get_urls()
         custom_urls = [
             path(
@@ -59,13 +60,19 @@ class VoucherAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(voucher_views.bulk_voucher_create),
                 name='bulk_voucher_create'
             ),
+            path(
+                'redemption-report/',
+                self.admin_site.admin_view(views_reports.voucher_redemption_report),
+                name='voucher_redemption_report'
+            ),
         ]
         return custom_urls + urls
     
     def changelist_view(self, request, extra_context=None):
-        """Add bulk create button to voucher list."""
+        """Add bulk create button and reports link to voucher list."""
         extra_context = extra_context or {}
         extra_context['show_bulk_create_button'] = True
+        extra_context['show_reports_link'] = True
         return super().changelist_view(request, extra_context=extra_context)
 
 
