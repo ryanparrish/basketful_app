@@ -247,10 +247,10 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        rightMargin=0.5*inch,
-        leftMargin=0.5*inch,
-        topMargin=0.5*inch,
-        bottomMargin=0.5*inch
+        rightMargin=0.5 * inch,
+        leftMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch
     )
     
     elements = []
@@ -286,7 +286,7 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
     if filters:
         elements.append(Paragraph(f"Filters: {', '.join(filters)}", subtitle_style))
     
-    elements.append(Spacer(1, 0.25*inch))
+    elements.append(Spacer(1, 0.25 * inch))
     
     # Summary totals
     summary_data = [
@@ -296,7 +296,7 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
         ['Life Vouchers', str(totals['life_count'])],
     ]
     
-    summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+    summary_table = Table(summary_data, colWidths=[3 * inch, 2 * inch])
     summary_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
@@ -306,12 +306,12 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
         ('PADDING', (0, 0), (-1, -1), 8),
     ]))
     elements.append(summary_table)
-    elements.append(Spacer(1, 0.25*inch))
+    elements.append(Spacer(1, 0.25 * inch))
     
     # Detail by program
     if report_data:
         elements.append(Paragraph("Breakdown by Program", styles['Heading2']))
-        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Spacer(1, 0.1 * inch))
         
         detail_data = [['Program', 'Vouchers', 'Grocery', 'Life', 'Amount']]
         
@@ -335,7 +335,7 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
         
         detail_table = Table(
             detail_data, 
-            colWidths=[2.5*inch, 1*inch, 1*inch, 1*inch, 1.5*inch]
+            colWidths=[2.5 * inch, 1 * inch, 1 * inch, 1 * inch, 1.5 * inch]
         )
         detail_table.setStyle(TableStyle([
             # Header row
@@ -364,7 +364,7 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
         ))
     
     # Footer
-    elements.append(Spacer(1, 0.5*inch))
+    elements.append(Spacer(1, 0.5 * inch))
     footer_style = ParagraphStyle(
         'Footer',
         parent=styles['Normal'],
