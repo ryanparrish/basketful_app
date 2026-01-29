@@ -67,24 +67,27 @@ class VoucherRedemptionReportForm(forms.Form):
     """Form for filtering voucher redemption report."""
     
     DATE_RANGE_CHOICES = [
-        ('last_7_days', 'Last 7 Days'),
-        ('last_30_days', 'Last 30 Days'),
+        ('this_week', 'This Week'),
+        ('this_month', 'This Month'),
         ('last_month', 'Last Month'),
-        ('ytd', 'Year to Date'),
+        ('this_year', 'This Year'),
         ('custom', 'Custom Range'),
     ]
     
     date_range = forms.ChoiceField(
         choices=DATE_RANGE_CHOICES,
-        initial='last_30_days',
+        initial='this_month',
         required=True,
-        widget=forms.Select(attrs={'class': 'form-control', 'id': 'date-range-select'})
+        widget=forms.Select(attrs={
+            'class': 'form-control date-range-select',
+            'id': 'date-range-select'
+        })
     )
     
     start_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={
-            'class': 'form-control',
+            'class': 'form-control date-input',
             'type': 'date',
             'id': 'start-date'
         }),
@@ -94,7 +97,7 @@ class VoucherRedemptionReportForm(forms.Form):
     end_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={
-            'class': 'form-control',
+            'class': 'form-control date-input',
             'type': 'date',
             'id': 'end-date'
         }),
@@ -105,7 +108,9 @@ class VoucherRedemptionReportForm(forms.Form):
         queryset=Program.objects.all(),
         required=False,
         empty_label="All Programs",
-        widget=forms.Select(attrs={'class': 'form-control'})
+        widget=forms.Select(attrs={
+            'class': 'form-control program-select'
+        })
     )
     
     voucher_type = forms.ChoiceField(
@@ -115,7 +120,22 @@ class VoucherRedemptionReportForm(forms.Form):
             ('life', 'Life'),
         ],
         required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
+        widget=forms.Select(attrs={
+            'class': 'form-control voucher-type-select'
+        })
+    )
+    
+    group_by = forms.ChoiceField(
+        choices=[
+            ('program', 'By Program'),
+            ('participant', 'By Participant'),
+        ],
+        initial='program',
+        required=True,
+        widget=forms.Select(attrs={
+            'class': 'form-control group-by-select'
+        }),
+        label='Group Results'
     )
     
     def clean(self):

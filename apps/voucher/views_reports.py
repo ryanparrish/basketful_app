@@ -27,7 +27,7 @@ def _get_date_range(date_range_choice: str, start_date=None, end_date=None):
     Calculate start and end dates based on date range choice.
     
     Args:
-        date_range_choice: One of 'last_7_days', 'last_30_days', 'last_month', 'ytd', 'custom'
+        date_range_choice: One of 'this_week', 'this_month', 'last_month', 'this_year', 'custom'
         start_date: Custom start date (only used if date_range_choice is 'custom')
         end_date: Custom end date (only used if date_range_choice is 'custom')
         
@@ -36,26 +36,30 @@ def _get_date_range(date_range_choice: str, start_date=None, end_date=None):
     """
     today = date.today()
     
-    if date_range_choice == 'last_7_days':
-        return today - timedelta(days=7), today
-    elif date_range_choice == 'last_30_days':
-        return today - timedelta(days=30), today
+    if date_range_choice == 'this_week':
+        # Start from Monday of current week
+        start_of_week = today - timedelta(days=today.weekday())
+        return start_of_week, today
+    elif date_range_choice == 'this_month':
+        # First day of current month to today
+        return today.replace(day=1), today
     elif date_range_choice == 'last_month':
         # Get first and last day of previous month
         first_of_this_month = today.replace(day=1)
         last_of_last_month = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         return first_of_last_month, last_of_last_month
-    elif date_range_choice == 'ytd':
+    elif date_range_choice == 'this_year':
+        # Jan 1 of current year to today
         return date(today.year, 1, 1), today
     elif date_range_choice == 'custom':
         return start_date, end_date
     else:
-        # Default to last 30 days
-        return today - timedelta(days=30), today
+        # Default to this month
+        return today.replace(day=1), today
 
 
-def _get_redemption_data(start_date, end_date, program=None, voucher_type=None):
+def _get_redemption_data(start_date, end_date, program=None, voucher_type=None, group_by='program'):
     """
     Get voucher redemption data for the given date range.
     
@@ -67,9 +71,10 @@ def _get_redemption_data(start_date, end_date, program=None, voucher_type=None):
         end_date: End date for filtering
         program: Optional Program instance to filter by
         voucher_type: Optional voucher type ('grocery' or 'life')
+        group_by: How to group results ('program' or 'participant')
         
     Returns:
-        Dict with aggregated data by program
+        Dict with aggregated data grouped by program or participant
     """
     # Convert dates to datetime for timezone-aware comparison
     start_datetime = timezone.make_aware(
@@ -117,55 +122,71 @@ def _get_redemption_data(start_date, end_date, program=None, voucher_type=None):
             voucher_type=voucher_type
         )
     
-    # Aggregate data by program
-    program_data = defaultdict(lambda: {
+    # Aggregate data by program or participant
+    result_data = defaultdict(lambda: {
         'voucher_count': 0,
         'total_amount': Decimal('0.00'),
         'grocery_count': 0,
         'life_count': 0,
-        'voucher_ids': set()
+        'voucher_ids': set(),
+        'program_name': '',
     })
     
     # Process OrderVoucher records (primary source)
     for ov in order_voucher_qs:
         voucher = ov.voucher
-        if voucher.pk in program_data[voucher.account.participant.program.name]['voucher_ids']:
+        participant = voucher.account.participant
+        
+        if group_by == 'participant':
+            key = f"{participant.customer_number} - {participant.name}"
+            result_data[key]['program_name'] = participant.program.name
+        else:
+            key = participant.program.name
+            
+        if voucher.pk in result_data[key]['voucher_ids']:
             continue  # Skip duplicates
             
-        program_name = voucher.account.participant.program.name
-        program_data[program_name]['voucher_ids'].add(voucher.pk)
-        program_data[program_name]['voucher_count'] += 1
-        program_data[program_name]['total_amount'] += ov.applied_amount
+        result_data[key]['voucher_ids'].add(voucher.pk)
+        result_data[key]['voucher_count'] += 1
+        result_data[key]['total_amount'] += ov.applied_amount
         
         if voucher.voucher_type == 'grocery':
-            program_data[program_name]['grocery_count'] += 1
+            result_data[key]['grocery_count'] += 1
         else:
-            program_data[program_name]['life_count'] += 1
+            result_data[key]['life_count'] += 1
     
     # Process consumed vouchers not in OrderVoucher (fallback)
     for voucher in consumed_vouchers_qs:
+        participant = voucher.account.participant
+        
+        if group_by == 'participant':
+            key = f"{participant.customer_number} - {participant.name}"
+            result_data[key]['program_name'] = participant.program.name
+        else:
+            key = participant.program.name
+            
         # Check if we already counted this voucher via OrderVoucher
-        program_name = voucher.account.participant.program.name
-        if voucher.pk in program_data[program_name]['voucher_ids']:
+        if voucher.pk in result_data[key]['voucher_ids']:
             continue
             
-        program_data[program_name]['voucher_ids'].add(voucher.pk)
-        program_data[program_name]['voucher_count'] += 1
-        program_data[program_name]['total_amount'] += voucher.voucher_amnt
+        result_data[key]['voucher_ids'].add(voucher.pk)
+        result_data[key]['voucher_count'] += 1
+        result_data[key]['total_amount'] += voucher.voucher_amnt
         
         if voucher.voucher_type == 'grocery':
-            program_data[program_name]['grocery_count'] += 1
+            result_data[key]['grocery_count'] += 1
         else:
-            program_data[program_name]['life_count'] += 1
+            result_data[key]['life_count'] += 1
     
     # Clean up voucher_ids from output (not needed in final data)
     result = {}
-    for program_name, data in program_data.items():
-        result[program_name] = {
+    for key, data in result_data.items():
+        result[key] = {
             'voucher_count': data['voucher_count'],
             'total_amount': data['total_amount'],
             'grocery_count': data['grocery_count'],
             'life_count': data['life_count'],
+            'program_name': data.get('program_name', ''),
         }
     
     return result
@@ -176,12 +197,13 @@ def voucher_redemption_report(request):
     """
     View for voucher redemption report.
     
-    Shows voucher redemption counts grouped by program for a selected time period.
+    Shows voucher redemption counts grouped by program or participant for a selected time period.
     """
     form = VoucherRedemptionReportForm(request.GET or None)
     report_data = None
     totals = None
     date_range_display = None
+    group_by = 'program'
     
     if request.GET and form.is_valid():
         date_range_choice = form.cleaned_data['date_range']
@@ -193,9 +215,10 @@ def voucher_redemption_report(request):
         
         program = form.cleaned_data.get('program')
         voucher_type = form.cleaned_data.get('voucher_type')
+        group_by = form.cleaned_data.get('group_by', 'program')
         
         report_data = _get_redemption_data(
-            start_date, end_date, program, voucher_type
+            start_date, end_date, program, voucher_type, group_by
         )
         
         # Calculate totals
@@ -211,7 +234,7 @@ def voucher_redemption_report(request):
         # Handle PDF export
         if 'export_pdf' in request.GET:
             return _generate_pdf_report(
-                report_data, totals, date_range_display, program, voucher_type
+                report_data, totals, date_range_display, program, voucher_type, group_by
             )
     
     context = {
@@ -219,6 +242,7 @@ def voucher_redemption_report(request):
         'report_data': report_data,
         'totals': totals,
         'date_range_display': date_range_display,
+        'group_by': group_by,
         'title': 'Voucher Redemption Report',
     }
     
@@ -229,16 +253,17 @@ def voucher_redemption_report(request):
     )
 
 
-def _generate_pdf_report(report_data, totals, date_range_display, program=None, voucher_type=None):
+def _generate_pdf_report(report_data, totals, date_range_display, program=None, voucher_type=None, group_by='program'):
     """
     Generate PDF version of the redemption report.
     
     Args:
-        report_data: Dict of program data
+        report_data: Dict of program/participant data
         totals: Dict with total counts and amounts
         date_range_display: Formatted date range string
         program: Optional filtered program
         voucher_type: Optional filtered voucher type
+        group_by: How data is grouped ('program' or 'participant')
         
     Returns:
         HttpResponse with PDF attachment
@@ -308,35 +333,66 @@ def _generate_pdf_report(report_data, totals, date_range_display, program=None, 
     elements.append(summary_table)
     elements.append(Spacer(1, 0.25 * inch))
     
-    # Detail by program
+    # Detail by program or participant
     if report_data:
-        elements.append(Paragraph("Breakdown by Program", styles['Heading2']))
-        elements.append(Spacer(1, 0.1 * inch))
-        
-        detail_data = [['Program', 'Vouchers', 'Grocery', 'Life', 'Amount']]
-        
-        for program_name, data in sorted(report_data.items()):
+        if group_by == 'participant':
+            elements.append(Paragraph("Breakdown by Participant", styles['Heading2']))
+            elements.append(Spacer(1, 0.1 * inch))
+            
+            detail_data = [['Participant', 'Program', 'Vouchers', 'Grocery', 'Life', 'Amount']]
+            
+            for participant_name, data in sorted(report_data.items()):
+                detail_data.append([
+                    participant_name,
+                    data.get('program_name', ''),
+                    str(data['voucher_count']),
+                    str(data['grocery_count']),
+                    str(data['life_count']),
+                    f"${data['total_amount']:.2f}"
+                ])
+            
+            # Add totals row
             detail_data.append([
-                program_name,
-                str(data['voucher_count']),
-                str(data['grocery_count']),
-                str(data['life_count']),
-                f"${data['total_amount']:.2f}"
+                'TOTAL',
+                '',
+                str(totals['voucher_count']),
+                str(totals['grocery_count']),
+                str(totals['life_count']),
+                f"${totals['total_amount']:.2f}"
             ])
-        
-        # Add totals row
-        detail_data.append([
-            'TOTAL',
-            str(totals['voucher_count']),
-            str(totals['grocery_count']),
-            str(totals['life_count']),
-            f"${totals['total_amount']:.2f}"
-        ])
-        
-        detail_table = Table(
-            detail_data, 
-            colWidths=[2.5 * inch, 1 * inch, 1 * inch, 1 * inch, 1.5 * inch]
-        )
+            
+            detail_table = Table(
+                detail_data,
+                colWidths=[2 * inch, 1.5 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch, 1 * inch]
+            )
+        else:
+            elements.append(Paragraph("Breakdown by Program", styles['Heading2']))
+            elements.append(Spacer(1, 0.1 * inch))
+            
+            detail_data = [['Program', 'Vouchers', 'Grocery', 'Life', 'Amount']]
+            
+            for program_name, data in sorted(report_data.items()):
+                detail_data.append([
+                    program_name,
+                    str(data['voucher_count']),
+                    str(data['grocery_count']),
+                    str(data['life_count']),
+                    f"${data['total_amount']:.2f}"
+                ])
+            
+            # Add totals row
+            detail_data.append([
+                'TOTAL',
+                str(totals['voucher_count']),
+                str(totals['grocery_count']),
+                str(totals['life_count']),
+                f"${totals['total_amount']:.2f}"
+            ])
+            
+            detail_table = Table(
+                detail_data, 
+                colWidths=[2.5 * inch, 1 * inch, 1 * inch, 1 * inch, 1.5 * inch]
+            )
         detail_table.setStyle(TableStyle([
             # Header row
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#336699')),

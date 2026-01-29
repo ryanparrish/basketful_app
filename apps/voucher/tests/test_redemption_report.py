@@ -96,19 +96,20 @@ def consumed_voucher(db, participant_with_account, voucher_setting):
 class TestGetDateRange:
     """Tests for _get_date_range helper function."""
     
-    def test_last_7_days(self):
-        """Test last 7 days calculation."""
-        start, end = _get_date_range('last_7_days')
+    def test_this_week(self):
+        """Test this week calculation."""
+        start, end = _get_date_range('this_week')
         today = date.today()
+        start_of_week = today - timedelta(days=today.weekday())
         assert end == today
-        assert start == today - timedelta(days=7)
+        assert start == start_of_week
     
-    def test_last_30_days(self):
-        """Test last 30 days calculation."""
-        start, end = _get_date_range('last_30_days')
+    def test_this_month(self):
+        """Test this month calculation."""
+        start, end = _get_date_range('this_month')
         today = date.today()
         assert end == today
-        assert start == today - timedelta(days=30)
+        assert start == today.replace(day=1)
     
     def test_last_month(self):
         """Test last month calculation."""
@@ -121,9 +122,9 @@ class TestGetDateRange:
         assert start == first_of_last_month
         assert end == last_of_last_month
     
-    def test_ytd(self):
-        """Test year to date calculation."""
-        start, end = _get_date_range('ytd')
+    def test_this_year(self):
+        """Test this year calculation."""
+        start, end = _get_date_range('this_year')
         today = date.today()
         assert start == date(today.year, 1, 1)
         assert end == today
@@ -210,7 +211,7 @@ class TestVoucherRedemptionReportView:
         """Test view with date range parameter."""
         client.login(username='admin', password='testpass123')
         url = reverse('admin:voucher_redemption_report')
-        response = client.get(url, {'date_range': 'last_7_days'})
+        response = client.get(url, {'date_range': 'this_week', 'group_by': 'program'})
         assert response.status_code == 200
         assert 'Report Period' in response.content.decode()
     
@@ -237,7 +238,8 @@ class TestVoucherRedemptionReportView:
         client.login(username='admin', password='testpass123')
         url = reverse('admin:voucher_redemption_report')
         response = client.get(url, {
-            'date_range': 'last_30_days',
+            'date_range': 'this_month',
+            'group_by': 'program',
             'export_pdf': '1'
         })
         assert response.status_code == 200
@@ -253,7 +255,8 @@ class TestVoucherRedemptionReportForm:
         """Test form is valid with preset date range."""
         from apps.voucher.forms import VoucherRedemptionReportForm
         form = VoucherRedemptionReportForm(data={
-            'date_range': 'last_7_days'
+            'date_range': 'this_week',
+            'group_by': 'program'
         })
         assert form.is_valid()
     
@@ -263,7 +266,8 @@ class TestVoucherRedemptionReportForm:
         form = VoucherRedemptionReportForm(data={
             'date_range': 'custom',
             'start_date': '2025-01-01',
-            'end_date': '2025-01-31'
+            'end_date': '2025-01-31',
+            'group_by': 'program'
         })
         assert form.is_valid()
     

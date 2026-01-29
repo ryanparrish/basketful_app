@@ -18,36 +18,59 @@
     .filter-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 20px;
+        gap: 15px;
         margin-bottom: 15px;
     }
     .filter-group {
         flex: 1;
-        min-width: 200px;
+        min-width: 180px;
     }
     .filter-group label {
         display: block;
         font-weight: bold;
         margin-bottom: 5px;
         color: #333;
+        font-size: 13px;
     }
     .filter-group .form-control {
         width: 100%;
-        padding: 8px;
+        padding: 8px 10px;
         border: 1px solid #ccc;
         border-radius: 4px;
+        font-size: 14px;
+        background-color: white;
+        min-width: 0;
     }
+    
+    /* Better dropdown styling */
+    .filter-group select.form-control {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23417690%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+        background-repeat: no-repeat;
+        background-position: right 8px top 50%;
+        background-size: 10px auto;
+        padding-right: 30px;
+    }
+    
     .custom-date-fields {
         display: none;
+        width: 100%;
     }
     .custom-date-fields.show {
         display: flex;
-        gap: 20px;
+        gap: 15px;
     }
+    .custom-date-fields .filter-group {
+        flex: 1;
+    }
+    
     .btn-container {
         margin-top: 15px;
         display: flex;
         gap: 10px;
+        flex-wrap: wrap;
     }
     .btn-primary {
         background-color: #417690;
@@ -56,6 +79,8 @@
         padding: 10px 20px;
         cursor: pointer;
         border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
     }
     .btn-primary:hover {
         background-color: #205067;
@@ -68,6 +93,8 @@
         cursor: pointer;
         border-radius: 4px;
         text-decoration: none;
+        font-size: 14px;
+        display: inline-block;
     }
     .btn-secondary:hover {
         background-color: #545b62;
@@ -120,15 +147,18 @@
         padding: 12px;
         text-align: left;
         font-weight: bold;
+        font-size: 13px;
+        white-space: nowrap;
     }
-    .results-table th:not(:first-child) {
+    .results-table th:not(:first-child):not(:nth-child(2)) {
         text-align: right;
     }
     .results-table td {
         padding: 12px;
         border-bottom: 1px solid #ddd;
+        font-size: 13px;
     }
-    .results-table td:not(:first-child) {
+    .results-table td:not(:first-child):not(:nth-child(2)) {
         text-align: right;
     }
     .results-table tr:nth-child(even) {
@@ -203,6 +233,10 @@
                         <label for="{{ form.voucher_type.id_for_label }}">Voucher Type</label>
                         {{ form.voucher_type }}
                     </div>
+                    <div class="filter-group">
+                        <label for="{{ form.group_by.id_for_label }}">Group Results</label>
+                        {{ form.group_by }}
+                    </div>
                 </div>
                 
                 <div class="filter-row custom-date-fields" id="custom-date-container">
@@ -268,11 +302,16 @@
                 </div>
                 
                 <!-- Detail Table -->
-                <h2>Breakdown by Program</h2>
+                <h2>Breakdown by {% if group_by == 'participant' %}Participant{% else %}Program{% endif %}</h2>
                 <table class="results-table">
                     <thead>
                         <tr>
-                            <th>Program</th>
+                            {% if group_by == 'participant' %}
+                                <th>Participant</th>
+                                <th>Program</th>
+                            {% else %}
+                                <th>Program</th>
+                            {% endif %}
                             <th>Total Vouchers</th>
                             <th>Grocery</th>
                             <th>Life</th>
@@ -280,9 +319,14 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for program_name, data in report_data.items %}
+                        {% for key, data in report_data.items %}
                             <tr>
-                                <td>{{ program_name }}</td>
+                                {% if group_by == 'participant' %}
+                                    <td>{{ key }}</td>
+                                    <td>{{ data.program_name }}</td>
+                                {% else %}
+                                    <td>{{ key }}</td>
+                                {% endif %}
                                 <td>{{ data.voucher_count }}</td>
                                 <td>{{ data.grocery_count }}</td>
                                 <td>{{ data.life_count }}</td>
@@ -292,7 +336,11 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td>TOTAL</td>
+                            {% if group_by == 'participant' %}
+                                <td colspan="2">TOTAL</td>
+                            {% else %}
+                                <td>TOTAL</td>
+                            {% endif %}
                             <td>{{ totals.voucher_count }}</td>
                             <td>{{ totals.grocery_count }}</td>
                             <td>{{ totals.life_count }}</td>
