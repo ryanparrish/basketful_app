@@ -87,6 +87,7 @@ def bulk_voucher_preview(request):
                 return redirect('admin:bulk_voucher_create')
         else:
             messages.error(request, "Please select at least one participant.")
+            form = BulkVoucherConfirmationForm(request.POST)
     else:
         form = BulkVoucherConfirmationForm(initial={
             'program_id': config['program_id'],
