@@ -9,6 +9,29 @@ This Django project follows a modular app layout. High-level apps of interest:
 - `apps/log` — logging, order validation logs
 - `core` — project settings, middleware, celery, and app wiring
 
+## Balance System
+
+The application supports multiple balance types for participants:
+
+1. **Full Balance** - Total value of all vouchers
+2. **Available Balance** - Amount available for the current week's order (1/3 of full balance)
+3. **Hygiene Balance** - 1/3 of available balance, reserved for hygiene products
+4. **Go Fresh Balance** - Fixed per-order budget for fresh food based on household size
+
+### Balance Calculation Models
+
+**Percentage-based (Hygiene):** Calculated as a percentage of another balance
+- `hygiene_balance = available_balance / 3`
+- Scales with overall shopping budget
+- Suitable for products with consistent need ratios
+
+**Fixed per-order (Go Fresh):** Independent fixed amount based on household size
+- Determined by `GoFreshSettings` thresholds
+- Resets with each order (doesn't accumulate)
+- Suitable for fresh/perishable items
+
+See [GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md) for detailed Go Fresh implementation.
+
 Important notes:
 - Mobile UI: `apps/pantry/templates/food_orders/create_order.html` contains the ordering interface and JS enhancements.
 - Voucher consumption logic and validation are in `apps/orders/models.py`.

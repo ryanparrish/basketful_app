@@ -47,6 +47,7 @@ This directory contains comprehensive documentation for all features, fixes, and
 | Order Window | [ORDER_WINDOW_FEATURE.md](ORDER_WINDOW_FEATURE.md) | Control when participants can order |
 | Email Templates | [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) | Manage email templates from admin |
 | Customer Numbers | [CUSTOMER_NUMBER_SYSTEM.md](CUSTOMER_NUMBER_SYSTEM.md) | Generate warehouse-friendly IDs |
+| Go Fresh Budget | [GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md) | Household-based fresh food budgets |
 
 ### User Features
 | Feature | Documentation | Description |

@@ -151,6 +151,9 @@ def product_view(request):
     # Get existing cart from session for persistence
     session_cart = request.session.get("cart", {})
     
+    # Get participant balances for cart drawer
+    participant_balances = participant.balances()
+    
     logger.info(f"Total products to display: {len(products_by_category)}")
 
     return render(
@@ -162,10 +165,13 @@ def product_view(request):
             "all_products_json": all_products_json,
             "query": query,
             "session_cart": json.dumps(session_cart),
+            "participant_balances": participant_balances,
         },
     )
 
 
+@require_POST
+@login_required
 @require_POST
 @login_required
 def update_cart(request):
@@ -174,7 +180,28 @@ def update_cart(request):
         cart = json.loads(request.body)
         request.session["cart"] = cart
         request.session.modified = True
-        return JsonResponse({"status": "ok"})
+        
+        # Get participant balances for response
+        balances = {}
+        try:
+            participant = request.user.participant
+            participant_balances = participant.balances()
+            balances = {
+                "full_balance": str(participant_balances.get('full_balance', 0)),
+                "available_balance": str(participant_balances.get('available_balance', 0)),
+                "hygiene_balance": str(participant_balances.get('hygiene_balance', 0)),
+                "go_fresh_balance": str(participant_balances.get('go_fresh_balance', 0)),
+            }
+        except (AttributeError, Participant.DoesNotExist):
+            # If no participant, return zero balances
+            balances = {
+                "full_balance": "0",
+                "available_balance": "0",
+                "hygiene_balance": "0",
+                "go_fresh_balance": "0",
+            }
+        
+        return JsonResponse({"status": "ok", "balances": balances})
     except json.JSONDecodeError:
         return JsonResponse(
             {"status": "error", "message": "Invalid JSON"}, status=400

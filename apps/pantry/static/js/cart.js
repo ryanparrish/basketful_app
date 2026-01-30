@@ -39,6 +39,60 @@ function initializeCart(sessionCart) {
  */
 function saveCartToStorage(cartData) {
   localStorage.setItem('cart', JSON.stringify(cartData || cart));
+  
+  // Send cart to server and get updated balances
+  syncCartWithServer(cartData || cart);
+}
+
+/**
+ * Sync cart with server and update balance display
+ */
+function syncCartWithServer(cartData) {
+  const csrftoken = getCookie('csrftoken');
+  
+  fetch('/update-cart/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrftoken
+    },
+    body: JSON.stringify(cartData)
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'ok' && data.balances) {
+      updateCartBalances(data.balances);
+    }
+  })
+  .catch(error => {
+    console.error('Error syncing cart:', error);
+  });
+}
+
+/**
+ * Update balance display in cart drawer
+ */
+function updateCartBalances(balances) {
+  // Format balances with dollar sign and 2 decimals
+  const formatBalance = (balance) => {
+    const num = parseFloat(balance);
+    return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
+  };
+  
+  // Update balance elements if they exist
+  const availableBalanceEl = document.getElementById('cart-available-balance');
+  const hygieneBalanceEl = document.getElementById('cart-hygiene-balance');
+  const goFreshBalanceEl = document.getElementById('cart-go-fresh-balance');
+  
+  if (availableBalanceEl) {
+    availableBalanceEl.textContent = formatBalance(balances.available_balance);
+  }
+  if (hygieneBalanceEl) {
+    hygieneBalanceEl.textContent = formatBalance(balances.hygiene_balance);
+  }
+  if (goFreshBalanceEl) {
+    goFreshBalanceEl.textContent = formatBalance(balances.go_fresh_balance);
+  }
 }
 
 /**

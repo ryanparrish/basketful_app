@@ -105,3 +105,50 @@ def calculate_hygiene_balance(account_balance) -> Decimal:
         return Decimal(0)
 
     return account_balance.available_balance / Decimal(3)
+
+
+def calculate_go_fresh_balance(account_balance) -> Decimal:
+    """
+    Calculate Go Fresh budget per order based on household size.
+    
+    This is a per-order budget that resets with each order submission.
+    Unlike hygiene balance (which is a percentage of available balance),
+    Go Fresh budget is fixed per order based on household size thresholds.
+    
+    Args:
+        account_balance: AccountBalance instance
+    
+    Returns:
+        Decimal: Go Fresh budget amount for this participant's household size
+    
+    Household Size Thresholds (default):
+        - 1-2 people: $10.00
+        - 3-5 people: $20.00
+        - 6+ people: $25.00
+    """
+    if not account_balance:
+        return Decimal(0)
+    
+    # Lazy import to avoid circular dependency
+    from apps.account.models import GoFreshSettings
+    
+    # Get singleton settings
+    settings = GoFreshSettings.get_settings()
+    
+    # Check if feature is enabled
+    if not settings.enabled:
+        return Decimal(0)
+    
+    # Get participant's household size
+    try:
+        household_size = account_balance.participant.household_size()
+    except (AttributeError, TypeError):
+        return Decimal(0)
+    
+    # Apply threshold logic
+    if household_size <= settings.small_threshold:
+        return settings.small_household_budget
+    elif household_size >= settings.large_threshold:
+        return settings.large_household_budget
+    else:
+        return settings.medium_household_budget

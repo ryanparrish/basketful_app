@@ -12,7 +12,7 @@ from django.apps import apps
 # Local app imports
 from .models import Participant
 from .forms import CustomUserCreationForm, ParticipantAdminForm
-from .models import UserProfile, AccountBalance
+from .models import UserProfile, AccountBalance, GoFreshSettings
 from .utils.user_utils import _generate_admin_username, create_participant_user
 from .utils.balance_utils import calculate_base_balance
 from .tasks.email import send_password_reset_email, send_new_user_onboarding_email
@@ -391,5 +391,61 @@ class ParticipantAdmin(admin.ModelAdmin):
         # Redirect to print view
         return redirect(reverse('print_customer_list'))
     print_customer_list.short_description = "Print customer list"
+
+
+@admin.register(GoFreshSettings)
+class GoFreshSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Go Fresh Settings (singleton)."""
+    
+    list_display = ['get_budget_summary', 'enabled']
+    
+    fieldsets = (
+        ('Household Size Thresholds', {
+            'fields': ('small_threshold', 'large_threshold'),
+            'description': (
+                '<p><strong>Define household size ranges:</strong></p>'
+                '<ul>'
+                '<li><strong>Small threshold:</strong> Household sizes up to this number '
+                'receive the small budget</li>'
+                '<li><strong>Large threshold:</strong> Household sizes at or above this number '
+                'receive the large budget</li>'
+                '<li>Sizes between these thresholds receive the medium budget</li>'
+                '</ul>'
+            )
+        }),
+        ('Budget Amounts', {
+            'fields': ('small_household_budget', 'medium_household_budget', 'large_household_budget'),
+            'description': (
+                '<p>⚠️ <strong>Per-Order Budget:</strong> These amounts apply to EACH order. '
+                'Participants receive a fresh Go Fresh budget with every new order. '
+                'Budget does not carry over between orders.</p>'
+                '<p><strong>Impact Warning:</strong> Changing these values affects all future orders immediately.</p>'
+            )
+        }),
+        ('Feature Control', {
+            'fields': ('enabled',),
+            'description': 'Enable or disable the Go Fresh budget feature system-wide.'
+        }),
+    )
+    
+    def get_budget_summary(self, obj):
+        """Display budget configuration summary."""
+        if obj:
+            return (
+                f"Small(1-{obj.small_threshold}): ${obj.small_household_budget} | "
+                f"Medium({obj.small_threshold+1}-{obj.large_threshold-1}): ${obj.medium_household_budget} | "
+                f"Large({obj.large_threshold}+): ${obj.large_household_budget}"
+            )
+        return "No settings configured"
+    
+    get_budget_summary.short_description = 'Budget Configuration'
+    
+    def has_add_permission(self, request):
+        """Prevent adding multiple instances (singleton)."""
+        return not GoFreshSettings.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of the settings."""
+        return False
 
 

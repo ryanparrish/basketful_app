@@ -80,11 +80,13 @@ class Participant(BaseModel):
                 "full_balance": 0,
                 "available_balance": 0,
                 "hygiene_balance": 0,
+                "go_fresh_balance": 0,
             }
         return {
             "full_balance": account.full_balance,
             "available_balance": account.available_balance,
             "hygiene_balance": account.hygiene_balance,
+            "go_fresh_balance": account.go_fresh_balance,
         }
 
     def __str__(self) -> str:
@@ -144,7 +146,123 @@ class AccountBalance(BaseModel):
         """Hygiene-specific balance (1/3 of full balance)."""
         return calculate_hygiene_balance(self)
 
+    @property
+    def go_fresh_balance(self) -> Decimal:
+        """Go Fresh budget per order (based on household size)."""
+        from .utils.balance_utils import calculate_go_fresh_balance
+        return calculate_go_fresh_balance(self)
+
     def __str__(self) -> str:
         # Ensure a string is always returned (satisfies type checkers)
         return str(getattr(self.participant, "name", str(self.pk)))
+
+
+class GoFreshSettings(models.Model):
+    """
+    Singleton model for Go Fresh budget configuration.
+    
+    Go Fresh operates as a per-order budget allowance based on household size.
+    Unlike hygiene balance (which is a percentage of available balance), 
+    Go Fresh budgets reset with each order and don't carry over.
+    """
+    small_household_budget = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        validators=[MinValueValidator(0.01)],
+        help_text="Budget for households with 1-2 people (default: $10.00)"
+    )
+    medium_household_budget = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=20.00,
+        validators=[MinValueValidator(0.01)],
+        help_text="Budget for households with 3-5 people (default: $20.00)"
+    )
+    large_household_budget = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        validators=[MinValueValidator(0.01)],
+        help_text="Budget for households with 6+ people (default: $25.00)"
+    )
+    small_threshold = models.PositiveIntegerField(
+        default=2,
+        validators=[MinValueValidator(1)],
+        help_text="Household size up to this number gets small budget (default: 2)"
+    )
+    large_threshold = models.PositiveIntegerField(
+        default=6,
+        validators=[MinValueValidator(1)],
+        help_text="Household size at or above this gets large budget (default: 6)"
+    )
+    enabled = models.BooleanField(
+        default=True,
+        help_text="Enable or disable Go Fresh budget feature"
+    )
+    
+    class Meta:
+        verbose_name = "Go Fresh Settings"
+        verbose_name_plural = "Go Fresh Settings"
+        permissions = [
+            ("can_view_go_fresh_analytics", "Can view Go Fresh analytics dashboard")
+        ]
+    
+    def clean(self):
+        """Validate settings to prevent misconfiguration."""
+        from django.core.exceptions import ValidationError
+        errors = []
+        
+        if self.small_threshold >= self.large_threshold:
+            errors.append(
+                ValidationError(
+                    "Small threshold must be less than large threshold. "
+                    f"Currently: small={self.small_threshold}, large={self.large_threshold}"
+                )
+            )
+        
+        if self.small_household_budget <= 0:
+            errors.append(ValidationError("Small household budget must be positive"))
+        if self.medium_household_budget <= 0:
+            errors.append(ValidationError("Medium household budget must be positive"))
+        if self.large_household_budget <= 0:
+            errors.append(ValidationError("Large household budget must be positive"))
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """Ensure only one instance exists (singleton pattern)."""
+        if not self.pk and GoFreshSettings.objects.exists():
+            # Update existing instance instead of creating new one
+            existing = GoFreshSettings.objects.first()
+            existing.small_household_budget = self.small_household_budget
+            existing.medium_household_budget = self.medium_household_budget
+            existing.large_household_budget = self.large_household_budget
+            existing.small_threshold = self.small_threshold
+            existing.large_threshold = self.large_threshold
+            existing.enabled = self.enabled
+            existing.save()
+            return existing
+        return super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'small_household_budget': Decimal('10.00'),
+                'medium_household_budget': Decimal('20.00'),
+                'large_household_budget': Decimal('25.00'),
+                'small_threshold': 2,
+                'large_threshold': 6,
+                'enabled': True
+            }
+        )
+        return obj
+    
+    def __str__(self) -> str:
+        return f"Go Fresh Settings (Small: ${self.small_household_budget}, Medium: ${self.medium_household_budget}, Large: ${self.large_household_budget})"
+
 

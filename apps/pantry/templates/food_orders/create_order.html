@@ -3,6 +3,27 @@
 {% bootstrap_css %}
 {% bootstrap_javascript %}
 {% load static %}
+
+{% block extra_css %}
+<style>
+  /* Cart balance display mobile responsiveness */
+  @media (max-width: 374px) {
+    .cart-balances {
+      display: none;
+    }
+  }
+  
+  @media (min-width: 375px) and (max-width: 767px) {
+    .cart-balances {
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      padding: 0.5rem;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <nav aria-label="breadcrumb" class="d-none d-md-block">
@@ -210,6 +231,22 @@
   </div>
   
   <div class="offcanvas-body d-flex flex-column">
+    <!-- Cart Balances -->
+    <div class="cart-balances bg-light p-2 rounded mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <small class="text-muted">Available:</small>
+        <small id="cart-available-balance" class="fw-bold text-primary">${{ participant_balances.available_balance|floatformat:2|default:"0.00" }}</small>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <small class="text-muted">Hygiene:</small>
+        <small id="cart-hygiene-balance" class="fw-bold text-warning">${{ participant_balances.hygiene_balance|floatformat:2|default:"0.00" }}</small>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">Go Fresh:</small>
+        <small id="cart-go-fresh-balance" class="fw-bold text-success">${{ participant_balances.go_fresh_balance|floatformat:2|default:"0.00" }}</small>
+      </div>
+    </div>
+    
     <ul id="mobile-cart-items" class="list-group mb-3 flex-grow-1"></ul>
     <div class="mt-auto border-top pt-3">
       <button class="btn btn-outline-secondary w-100 mb-2" data-bs-dismiss="offcanvas">

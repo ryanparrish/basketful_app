@@ -4,6 +4,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.http import HttpResponseRedirect
+from django.core.exceptions import PermissionDenied
 # First-party imports
 from apps.orders.tasks.weekly_orders import create_weekly_combined_orders
 # Local application imports
@@ -12,6 +13,9 @@ from apps.pantry.models import (
     Subcategory, OrderPacker,
     ProductLimit, Tag
 )
+
+# Protected categories that cannot be modified or deleted
+PROTECTED_CATEGORIES = ['hygiene', 'go fresh']
 
 
 class SubcategoryInline(admin.StackedInline):
@@ -22,9 +26,39 @@ class SubcategoryInline(admin.StackedInline):
    
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    """Admin for Category with Subcategory inline."""
-    list_display = ('name',)
+    """Admin for Category with Subcategory inline and protection for critical categories."""
+    list_display = ('name_with_lock',)
     inlines = [SubcategoryInline]
+    
+    def name_with_lock(self, obj):
+        """Display category name with lock icon if protected."""
+        if obj and obj.name.lower() in PROTECTED_CATEGORIES:
+            return format_html('<span>🔒 {}</span>', obj.name)
+        return obj.name if obj else ''
+    
+    name_with_lock.short_description = 'Name'
+    name_with_lock.admin_order_field = 'name'
+    
+    def get_readonly_fields(self, request, obj=None):
+        """Make name field readonly for protected categories."""
+        if obj and obj.name.lower() in PROTECTED_CATEGORIES:
+            return ['name']
+        return []
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of protected categories."""
+        if obj and obj.name.lower() in PROTECTED_CATEGORIES:
+            return False
+        return super().has_delete_permission(request, obj)
+    
+    def delete_model(self, request, obj):
+        """Prevent deletion of protected categories with clear error message."""
+        if obj.name.lower() in PROTECTED_CATEGORIES:
+            raise PermissionDenied(
+                f"Cannot delete protected category: {obj.name}. "
+                f"This category is required for the system."
+            )
+        super().delete_model(request, obj)
     
     def get_inlines(self, request, obj):
         """Only show subcategory inline for existing categories."""

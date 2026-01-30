@@ -51,29 +51,52 @@
           <p class="text-muted">Here's your current basket summary.</p>
         </div>
       
-        <!-- Voucher Balances -->
-        <div class="row mb-4">
-          <div class="col-md-6">
-            <div class="card text-white bg-primary mb-3">
+        <!-- Voucher Balances - 4 Cards -->
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
+          <!-- Full Balance Card -->
+          <div class="col">
+            <div class="card text-white bg-info h-100">
               <div class="card-body">
-                <h5 class="card-title">Food Voucher Balance</h5>
-                <p class="card-text fs-4">${{ account.available_balance|floatformat:2|default:"NO BALANCE" }}
-</p>
-
-
+                <h5 class="card-title">Full Balance</h5>
+                <p class="card-text fs-4">${{ participant.balances.full_balance|floatformat:2|default:"0.00" }}</p>
+                <small class="text-white-50">Total value of all your vouchers</small>
               </div>
             </div>
           </div>
-          <div class="col-md-6">
-            <div class="card text-white bg-warning mb-3">
+          
+          <!-- Available Balance Card -->
+          <div class="col">
+            <div class="card text-white bg-primary h-100">
+              <div class="card-body">
+                <h5 class="card-title">Available Balance</h5>
+                <p class="card-text fs-4">${{ participant.balances.available_balance|floatformat:2|default:"0.00" }}</p>
+                <small class="text-white-50">Your balance available for this week's order</small>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Hygiene Balance Card -->
+          <div class="col">
+            <div class="card text-dark bg-warning h-100">
               <div class="card-body">
                 <h5 class="card-title">Hygiene Balance</h5>
-                <p class="card-text fs-4">${{ account.hygiene_balance|floatformat:2 }}</p>
-                </div> 
-                </div>
-                <div class="dropdown d-md-none">
-      
-    </div>
+                <p class="card-text fs-4">${{ participant.balances.hygiene_balance|floatformat:2|default:"0.00" }}</p>
+                <small>Your hygiene product allowance (1/3 of available balance)</small>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Go Fresh Balance Card -->
+          <div class="col">
+            <div class="card text-white bg-success h-100">
+              <div class="card-body">
+                <h5 class="card-title">Go Fresh Balance</h5>
+                <p class="card-text fs-4">${{ participant.balances.go_fresh_balance|floatformat:2|default:"0.00" }}</p>
+                <small class="text-white-50">Your fresh food budget (resets each order)</small>
+              </div>
+            </div>
+          </div>
+        </div>
 
   </div>
 

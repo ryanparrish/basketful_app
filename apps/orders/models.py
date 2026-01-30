@@ -65,6 +65,12 @@ class Order(models.Model):
         default="pending",
     )
     paid = models.BooleanField(default=False)
+    go_fresh_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Total amount spent on Go Fresh items in this order"
+    )
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -148,6 +154,22 @@ class Order(models.Model):
                 f"Hygiene balance exceeded: "
                 f"${hygiene_total} > ${hygiene_balance}"
             )
+
+        # --- Go Fresh balance ---
+        go_fresh_items = [
+            item for item in self.items.select_related("product")
+            if item.product.category and item.product.category.name.lower() == "go fresh"
+        ]
+        go_fresh_total = sum(item.total_price() for item in go_fresh_items)
+        go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
+        if go_fresh_total > go_fresh_balance:
+            errors.append(
+                f"Go Fresh balance exceeded: "
+                f"${go_fresh_total:.2f} > ${go_fresh_balance:.2f}"
+            )
+        # Store go_fresh_total for tracking (will be saved when order is confirmed)
+        self.go_fresh_total = go_fresh_total
+
 
         # --- Category limits ---
         try:
