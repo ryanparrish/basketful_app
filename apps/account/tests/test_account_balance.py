@@ -283,11 +283,17 @@ class TestFullBalanceCalculation:
 
     def test_full_balance_no_vouchers(self, account_balance):
         """Test full balance with no vouchers."""
+        # Clear any existing vouchers for this account
+        account_balance.vouchers.all().delete()
+        
         result = calculate_full_balance(account_balance)
         assert result == Decimal('0')
 
     def test_full_balance_only_consumed_vouchers(self, account_balance, voucher_setting):
         """Test full balance excludes consumed vouchers."""
+        # Clear any existing vouchers for this account
+        account_balance.vouchers.all().delete()
+        
         Voucher.objects.create(
             account=account_balance,
             voucher_type='grocery',
@@ -301,6 +307,9 @@ class TestFullBalanceCalculation:
 
     def test_full_balance_excludes_life_vouchers(self, account_balance, voucher_setting):
         """Test full balance excludes life vouchers."""
+        # Clear any existing vouchers for this account
+        account_balance.vouchers.all().delete()
+        
         Voucher.objects.create(
             account=account_balance,
             voucher_type='life',

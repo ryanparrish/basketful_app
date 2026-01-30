@@ -83,14 +83,15 @@ def calculate_full_balance(account_balance) -> Decimal:
     """
     Compute the total balance for an account using all active grocery vouchers.
     Uses the Voucher model's `voucher_amnt` property.
+    Includes pending, applied vouchers - excludes consumed and expired.
     """
     if not account_balance:
         return Decimal(0)
     
     vouchers = (
         account_balance.vouchers
-        .filter(state__isnull=True, voucher_type="grocery")  
-        .exclude(state='consumed')                             
+        .filter(voucher_type="grocery")
+        .exclude(state__in=['consumed', 'expired'])
         .order_by("created_at")
     )
     return sum(v.voucher_amnt for v in vouchers)
