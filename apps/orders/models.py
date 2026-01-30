@@ -170,7 +170,6 @@ class Order(models.Model):
         # Store go_fresh_total for tracking (will be saved when order is confirmed)
         self.go_fresh_total = go_fresh_total
 
-
         # --- Category limits ---
         try:
             participant = getattr(self.account, "participant", None)

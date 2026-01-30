@@ -433,7 +433,7 @@ class GoFreshSettingsAdmin(admin.ModelAdmin):
         if obj:
             return (
                 f"Small(1-{obj.small_threshold}): ${obj.small_household_budget} | "
-                f"Medium({obj.small_threshold+1}-{obj.large_threshold-1}): ${obj.medium_household_budget} | "
+                f"Medium({obj.small_threshold + 1}-{obj.large_threshold - 1}): ${obj.medium_household_budget} | "
                 f"Large({obj.large_threshold}+): ${obj.large_household_budget}"
             )
         return "No settings configured"
