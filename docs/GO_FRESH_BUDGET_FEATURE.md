@@ -1,5 +1,7 @@
 # Go Fresh Budget Feature Documentation
 
+> Last updated: January 2026
+
 ## Overview
 
 The Go Fresh Budget feature provides participants with a dedicated per-order budget for fresh food items from the "Go Fresh" category. Unlike the hygiene balance (which is a percentage of available balance), the Go Fresh budget is a fixed amount based on household size that resets with each order.

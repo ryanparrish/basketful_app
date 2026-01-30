@@ -1,5 +1,7 @@
 # Bulk Voucher Creation Feature
 
+> Last updated: January 2026
+
 ## Overview
 This feature allows Django Admin users to bulk create vouchers for all participants in a specific Program.
 

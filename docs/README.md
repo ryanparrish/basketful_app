@@ -1,5 +1,7 @@
 # Basketful App Documentation
 
+> Last updated: January 2026
+
 This folder contains developer and contributor documentation for the Basketful Django application.
 
 Files:

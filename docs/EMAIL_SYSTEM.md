@@ -1,5 +1,7 @@
 # Email System
 
+> Last updated: January 2026
+
 ## Overview
 The Basketful email system provides a flexible, admin-configurable approach to managing transactional emails. Administrators can edit email templates directly from Django Admin without requiring code deployments.
 

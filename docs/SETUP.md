@@ -1,5 +1,7 @@
 # Setup — Local Development
 
+> Last updated: January 2026
+
 1. Create virtualenv and install dependencies:
 
 ```bash

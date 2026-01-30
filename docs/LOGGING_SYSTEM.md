@@ -1,5 +1,7 @@
 # Logging & Audit System
 
+> Last updated: January 2026
+
 ## Overview
 Comprehensive audit logging system that tracks all significant events, changes, and actions throughout the Basketful application. Provides accountability, debugging capabilities, and compliance support.
 

@@ -1,5 +1,7 @@
 # Architecture Overview
 
+> Last updated: January 2026
+
 This Django project follows a modular app layout. High-level apps of interest:
 
 - `apps/account` — account and balance models
@@ -13,12 +15,18 @@ This Django project follows a modular app layout. High-level apps of interest:
 
 The application supports multiple balance types for participants:
 
-1. **Full Balance** - Total value of all vouchers
-2. **Available Balance** - Amount available for the current week's order (1/3 of full balance)
+1. **Full Balance** - Total value of all non-consumed grocery vouchers
+2. **Available Balance** - Sum of up to 2 oldest applied grocery vouchers (multiplied by their multipliers)
 3. **Hygiene Balance** - 1/3 of available balance, reserved for hygiene products
 4. **Go Fresh Balance** - Fixed per-order budget for fresh food based on household size
 
 ### Balance Calculation Models
+
+**Voucher-based (Available):** Sums up to N oldest applied vouchers
+- `available_balance = sum(voucher.voucher_amnt * voucher.multiplier for oldest N applied grocery vouchers)`
+- Default limit is 2 vouchers per week
+- Respects ProgramPause gate logic (only includes flagged vouchers during pauses)
+- Implementation: `apps/account/utils/balance_utils.py`
 
 **Percentage-based (Hygiene):** Calculated as a percentage of another balance
 - `hygiene_balance = available_balance / 3`
@@ -91,10 +99,12 @@ erDiagram
 	}
 	VOUCHER {
 		int id PK
-		string code
-		decimal amount
-		datetime expires_at
+		int account_id FK
+		string voucher_type
+		string state
 		bool active
+		bool program_pause_flag
+		int multiplier
 	}
 	ORDERVOUCHER {
 		int id PK
@@ -172,10 +182,12 @@ classDiagram
 	}
 	class Voucher {
 		+int id
-		+String code
-		+Decimal amount
-		+DateTime expires_at
+		+int account_id
+		+String voucher_type
+		+String state
 		+bool active
+		+bool program_pause_flag
+		+int multiplier
 	}
 	class OrderVoucher {
 		+int id

@@ -1,5 +1,7 @@
 # Order Window Feature
 
+> Last updated: January 2026
+
 ## Overview
 This feature restricts when participants can place orders based on their class schedule. Orders can only be placed within a configurable window before their scheduled class time.
 

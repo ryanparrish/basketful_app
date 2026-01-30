@@ -1,5 +1,7 @@
 # Signals & Automation System
 
+> Last updated: January 2026
+
 ## Overview
 Django signals provide automatic responses to model events, enabling seamless automation throughout Basketful. The system automatically handles account creation, voucher generation, user setup, and more.
 

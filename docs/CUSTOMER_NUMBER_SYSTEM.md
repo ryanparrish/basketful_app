@@ -1,5 +1,7 @@
 # Customer Number System
 
+> Last updated: January 2026
+
 ## Overview
 The customer number system generates spoken-friendly, warehouse-optimized identifiers for participants. These numbers are designed to be easily communicated verbally in noisy environments while including error detection.
 

@@ -1,5 +1,7 @@
 # Combined Order Creation Feature
 
+> Last updated: January 2026
+
 ## Overview
 This feature allows administrators to create combined orders by selecting a specific program and time frame. This provides more flexibility than the automated weekly combined orders.
 
