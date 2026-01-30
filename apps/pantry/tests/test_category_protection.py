@@ -2,6 +2,7 @@
 Tests for category protection in admin.
 """
 import pytest
+from unittest.mock import patch
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.models import User
@@ -13,15 +14,17 @@ from apps.pantry.admin import CategoryAdmin
 @pytest.mark.django_db
 class TestCategoryProtection:
     """Test category protection for Hygiene and Go Fresh."""
-    
+
     @pytest.fixture
     def admin_user(self):
         """Create superuser for admin tests."""
-        return User.objects.create_superuser(
-            username='admin',
-            email='admin@test.com',
-            password='password123'
-        )
+        # Mock Celery task to avoid broker connection issues in CI
+        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
+            return User.objects.create_superuser(
+                username='admin',
+                email='admin@test.com',
+                password='password123'
+            )
     
     @pytest.fixture
     def request_factory(self):
@@ -170,36 +173,40 @@ class TestCategoryProtection:
 @pytest.mark.django_db
 class TestCategoryProtectionIntegration:
     """Integration tests for category protection."""
-    
+
     def test_protected_categories_survive_save_attempts(self):
         """Protected categories should exist and be protected after save."""
         # Create both protected categories
         hygiene = Category.objects.create(name="Hygiene")
         go_fresh = Category.objects.create(name="Go Fresh")
-        
+
         # They should exist
         assert Category.objects.filter(name="Hygiene").exists()
         assert Category.objects.filter(name="Go Fresh").exists()
-        
+
         # Verify they are protected (readonly name field)
         admin = CategoryAdmin(Category, AdminSite())
         request = RequestFactory().get('/')
-        request.user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
-        
+        # Mock Celery task to avoid broker connection issues in CI
+        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
+            request.user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
+
         assert 'name' in admin.get_readonly_fields(request, hygiene)
         assert 'name' in admin.get_readonly_fields(request, go_fresh)
-    
+
     def test_bulk_delete_protection(self):
         """Bulk delete operations should not delete protected categories."""
         # This test verifies that has_delete_permission prevents deletion
         # In actual admin usage, bulk actions check delete permissions
         hygiene = Category.objects.create(name="Hygiene")
         regular = Category.objects.create(name="Regular")
-        
+
         admin = CategoryAdmin(Category, AdminSite())
         request = RequestFactory().get('/')
-        request.user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
-        
+        # Mock Celery task to avoid broker connection issues in CI
+        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
+            request.user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
+
         # Hygiene should not be deletable
         assert admin.has_delete_permission(request, hygiene) is False
         
