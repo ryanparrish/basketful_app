@@ -162,7 +162,8 @@ class Order(models.Model):
         ]
         go_fresh_total = sum(item.total_price() for item in go_fresh_items)
         go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
-        if go_fresh_total > go_fresh_balance:
+        # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
+        if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
             errors.append(
                 f"Go Fresh balance exceeded: "
                 f"${go_fresh_total:.2f} > ${go_fresh_balance:.2f}"

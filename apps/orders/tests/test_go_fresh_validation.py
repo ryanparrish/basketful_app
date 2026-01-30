@@ -5,8 +5,17 @@ from decimal import Decimal
 import pytest
 from django.core.exceptions import ValidationError
 from apps.account.models import GoFreshSettings
-from apps.pantry.tests.factories import ParticipantFactory, VoucherFactory, CategoryFactory, ProductFactory
+from apps.pantry.tests.factories import (
+    ParticipantFactory, VoucherFactory, CategoryFactory, 
+    ProductFactory, VoucherSettingFactory
+)
 from apps.orders.tests.factories import OrderFactory, OrderItemFactory
+
+
+@pytest.fixture(autouse=True)
+def setup_voucher_settings():
+    """Ensure VoucherSetting exists for all tests."""
+    VoucherSettingFactory.create()
 
 
 @pytest.mark.django_db
@@ -18,14 +27,17 @@ class TestGoFreshOrderValidation:
         # Setup: 4-person household gets $20 Go Fresh budget
         settings = GoFreshSettings.get_settings()
         participant = ParticipantFactory(adults=2, children=2)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=5)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create Go Fresh category and product
         go_fresh_category = CategoryFactory(name="Go Fresh")
         product = ProductFactory(category=go_fresh_category, price=Decimal("5.00"))
         
         # Create order with $15 of Go Fresh items (within $20 budget)
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=3)  # 3 * $5 = $15
         
         # Should not raise ValidationError
@@ -38,14 +50,17 @@ class TestGoFreshOrderValidation:
         """Order exceeding Go Fresh budget should fail validation."""
         # Setup: 2-person household gets $10 Go Fresh budget
         participant = ParticipantFactory(adults=2, children=0)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=5)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create Go Fresh product at $8 each
         go_fresh_category = CategoryFactory(name="Go Fresh")
         product = ProductFactory(category=go_fresh_category, price=Decimal("8.00"))
         
         # Create order with $16 of Go Fresh items (exceeds $10 budget)
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=2)  # 2 * $8 = $16
         
         # Should raise ValidationError
@@ -59,23 +74,23 @@ class TestGoFreshOrderValidation:
     
     def test_go_fresh_items_count_against_available_balance(self):
         """Go Fresh items should also count against overall available balance."""
-        # Setup: Small voucher so available balance is limited
-        participant = ParticipantFactory(adults=2, children=0)
-        voucher = VoucherFactory(
-            account=participant.accountbalance, 
-            state='applied', 
-            multiplier=1  # Only 1x multiplier = ~$40 available
-        )
-        
+        # Setup: Small balance so available balance is limited
+        participant = ParticipantFactory(adults=1, children=0)  # 1 adult = ~$20 base
+        account = participant.accountbalance
+        # Don't set base_balance - let VoucherSetting determine it
+        # With 1 adult and default setting ($20/adult), base is $20
+        # available_balance is limited to 2 vouchers max, so max $40
+        VoucherFactory(account=account, state='applied', multiplier=1)
+
         # Create Go Fresh and regular products
         go_fresh_category = CategoryFactory(name="Go Fresh")
         regular_category = CategoryFactory(name="Groceries")
-        
-        go_fresh_product = ProductFactory(category=go_fresh_category, price=Decimal("8.00"))
-        regular_product = ProductFactory(category=regular_category, price=Decimal("35.00"))
-        
-        # Create order: $8 Go Fresh + $35 regular = $43 total
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+
+        go_fresh_product = ProductFactory(category=go_fresh_category, price=Decimal("5.00"))
+        regular_product = ProductFactory(category=regular_category, price=Decimal("50.00"))
+
+        # Create order: $5 Go Fresh + $50 regular = $55 total (exceeds $20 available)
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=go_fresh_product, quantity=1)
         OrderItemFactory(order=order, product=regular_product, quantity=1)
         
@@ -88,9 +103,12 @@ class TestGoFreshOrderValidation:
     
     def test_mixed_cart_validates_all_limits(self):
         """Mixed cart with Go Fresh, Hygiene, and regular items should validate all limits."""
-        # Setup: Large household, large voucher
+        # Setup: Large household, large balance
         participant = ParticipantFactory(adults=3, children=3)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=3)
+        account = participant.accountbalance
+        account.base_balance = Decimal("300.00")  # Large balance to cover all items
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create categories and products
         go_fresh_category = CategoryFactory(name="Go Fresh")
@@ -102,7 +120,7 @@ class TestGoFreshOrderValidation:
         regular_product = ProductFactory(category=regular_category, price=Decimal("20.00"))
         
         # Create order within all limits
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=go_fresh_product, quantity=2)  # $20 Go Fresh (within $25)
         OrderItemFactory(order=order, product=hygiene_product, quantity=2)  # $30 Hygiene
         OrderItemFactory(order=order, product=regular_product, quantity=2)  # $40 Regular
@@ -115,16 +133,19 @@ class TestGoFreshOrderValidation:
     def test_go_fresh_with_case_insensitive_category(self):
         """Go Fresh validation should be case-insensitive."""
         participant = ParticipantFactory(adults=2, children=0)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=5)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create category with different casing
         go_fresh_category = CategoryFactory(name="go fresh")  # lowercase
         product = ProductFactory(category=go_fresh_category, price=Decimal("12.00"))
         
         # Create order exceeding $10 budget
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=1)
-        
+
         # Should still enforce Go Fresh limit
         with pytest.raises(ValidationError) as exc_info:
             order.clean()
@@ -134,14 +155,17 @@ class TestGoFreshOrderValidation:
     def test_zero_go_fresh_items_doesnt_fail(self):
         """Order with no Go Fresh items should not fail Go Fresh validation."""
         participant = ParticipantFactory(adults=2, children=2)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=3)
+        account = participant.accountbalance
+        account.base_balance = Decimal("200.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create regular product only
         regular_category = CategoryFactory(name="Groceries")
         product = ProductFactory(category=regular_category, price=Decimal("30.00"))
         
         # Create order with only regular items
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=2)
         
         # Should pass validation
@@ -153,14 +177,17 @@ class TestGoFreshOrderValidation:
     def test_go_fresh_total_persists_after_validation(self):
         """go_fresh_total field should be set during validation."""
         participant = ParticipantFactory(adults=3, children=2)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=5)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create Go Fresh product
         go_fresh_category = CategoryFactory(name="Go Fresh")
         product = ProductFactory(category=go_fresh_category, price=Decimal("7.50"))
         
         # Create order
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=2)  # $15.00
         
         # Run validation
@@ -184,19 +211,22 @@ class TestGoFreshEdgeCases:
         settings = GoFreshSettings.get_settings()
         settings.enabled = False
         settings.save()
-        
+
         participant = ParticipantFactory(adults=2, children=2)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=3)
+        account = participant.accountbalance
+        account.base_balance = Decimal("200.00")  # Enough for available balance
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create Go Fresh product
         go_fresh_category = CategoryFactory(name="Go Fresh")
         product = ProductFactory(category=go_fresh_category, price=Decimal("50.00"))
         
         # Create order with expensive Go Fresh item
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=1)
-        
-        # Should not fail on Go Fresh limit (since disabled), 
+
+        # Should not fail on Go Fresh limit (since disabled),
         # but may fail on available balance
         try:
             order.clean()
@@ -205,7 +235,7 @@ class TestGoFreshEdgeCases:
         except ValidationError as e:
             # If it fails, should be due to available balance, not Go Fresh
             assert "Go Fresh balance exceeded" not in str(e)
-        
+
         # Re-enable
         settings.enabled = True
         settings.save()
@@ -213,15 +243,18 @@ class TestGoFreshEdgeCases:
     def test_product_without_category_doesnt_crash(self):
         """Product without category should not cause validation to crash."""
         participant = ParticipantFactory(adults=2, children=2)
-        VoucherFactory(account=participant.accountbalance, state='applied', multiplier=3)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
         
         # Create product without category
         product = ProductFactory(category=None, price=Decimal("10.00"))
         
         # Create order
-        order = OrderFactory(account=participant.accountbalance, status='confirmed')
+        order = OrderFactory(account=account, status='confirmed')
         OrderItemFactory(order=order, product=product, quantity=1)
-        
+
         # Should not crash
         order.clean()
         
