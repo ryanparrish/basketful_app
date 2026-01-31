@@ -1,8 +1,16 @@
-
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import Dashboard from './Dashboard';
+
+vi.mock('react-admin', () => ({
+  useGetList: vi.fn(() => ({
+    total: 10,
+    isPending: false,
+  })),
+  Title: () => <div>Title</div>,
+}));
 
 describe('Dashboard page', () => {
   it('renders dashboard title', () => {
@@ -14,6 +22,6 @@ describe('Dashboard page', () => {
         </QueryClientProvider>
       </MemoryRouter>
     );
-    expect(screen.getByText(/dashboard/i)).toBeInTheDocument();
+    expect(screen.getByText(/Dashboard/i)).to.exist;
   });
 });

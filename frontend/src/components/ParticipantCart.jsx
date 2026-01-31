@@ -12,6 +12,13 @@ const ParticipantCart = () => {
     emptyCart
   } = useCart();
 
+  console.log('Cart Context State:', {
+    isEmpty,
+    totalUniqueItems,
+    items,
+    cartTotal
+  });
+
   if (isEmpty) return <h2>Your cart is empty</h2>;
 
   return (
