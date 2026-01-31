@@ -1,43 +1,30 @@
 """
-URL configuration for lyn_app project.
+URL configuration for Basketful API.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+Django admin has been removed in favor of React-Admin frontend.
+API endpoints are served at /api/v1/
 """
-from django.contrib import admin
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
+
 # First-party
 from apps.orders import views as order_views
 from apps.lifeskills import views as lifeskills_views
 from apps.account import views as account_views
 from apps.pantry import views as pantry_views
-from .views import index, admin_logout_view
-
-admin.site.site_header = "BasketFul App"
-admin.site.site_title = "Love Your Neighbor - Basketful"
-admin.site.index_title = "Welcome to Your Admin"
-
-# Override admin logout URL
-admin.site.logout_template = None  # Use custom view instead
+from .views import index
 
 urlpatterns = [
-    path('', index, name='index'),
-    path('admin/logout/', admin_logout_view, name='admin_logout'),
-    path('admin/', admin.site.urls),
+    # API v1 endpoints
+    path('api/v1/', include('apps.api.urls', namespace='api')),
+
+    # TinyMCE URLs (for email templates)
     path('tinymce/', include('tinymce.urls')),
+
+    # Legacy participant-facing views
+    path('', index, name='index'),
     path(
         'login/',
         auth_views.LoginView.as_view(
