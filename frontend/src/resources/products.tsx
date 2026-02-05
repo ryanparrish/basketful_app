@@ -138,7 +138,7 @@ export const ProductEdit = () => (
       <NumberInput source="weight_lbs" min={0} step={0.1} />
       <BooleanInput source="active" />
       <BooleanInput source="is_meat" label="Is Meat Product" />
-      <ImageInput source="image" accept="image/*">
+      <ImageInput source="image" accept={{ 'image/*': [] }}>
         <ImageField source="src" title="title" />
       </ImageInput>
     </SimpleForm>
@@ -164,7 +164,7 @@ export const ProductCreate = () => (
       <NumberInput source="weight_lbs" min={0} step={0.1} />
       <BooleanInput source="active" defaultValue={true} />
       <BooleanInput source="is_meat" label="Is Meat Product" defaultValue={false} />
-      <ImageInput source="image" accept="image/*">
+      <ImageInput source="image" accept={{ 'image/*': [] }}>
         <ImageField source="src" title="title" />
       </ImageInput>
     </SimpleForm>

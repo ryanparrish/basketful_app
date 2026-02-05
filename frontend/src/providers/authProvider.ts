@@ -3,7 +3,7 @@
  * 
  * Handles JWT authentication with the Django REST Framework backend.
  */
-import { AuthProvider } from 'react-admin';
+import type { AuthProvider } from 'react-admin';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -16,6 +16,11 @@ interface DecodedToken {
   exp: number;
   user_id: number;
   username: string;
+  email?: string;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+  groups?: string[];
+  group_ids?: number[];
 }
 
 // Helper to decode JWT payload
@@ -89,6 +94,8 @@ export const authProvider: AuthProvider = {
   logout: () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userPermissions');
+    localStorage.removeItem('permissionsCacheTime');
     return Promise.resolve();
   },
 
@@ -132,23 +139,72 @@ export const authProvider: AuthProvider = {
     return {
       id: decoded.user_id,
       fullName: decoded.username,
+      email: decoded.email,
     };
   },
 
   getPermissions: async () => {
     const accessToken = localStorage.getItem('accessToken');
     if (!accessToken) {
-      return [];
+      return null;
     }
 
     const decoded = decodeToken(accessToken);
     if (!decoded) {
-      return [];
+      return null;
     }
 
-    // You can decode permissions from the token or fetch from API
-    // For now, return empty - can be extended based on user roles
-    return [];
+    // Check if we have cached permissions (less than 30 minutes old)
+    const cachedPermissions = localStorage.getItem('userPermissions');
+    const cacheTimestamp = localStorage.getItem('permissionsCacheTime');
+    
+    if (cachedPermissions && cacheTimestamp) {
+      const cacheAge = Date.now() - parseInt(cacheTimestamp);
+      const THIRTY_MINUTES = 30 * 60 * 1000;
+      
+      if (cacheAge < THIRTY_MINUTES) {
+        return JSON.parse(cachedPermissions);
+      }
+    }
+
+    // Fetch fresh permissions from API
+    try {
+      const response = await fetch(`${API_URL}/users/me/permissions/`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch permissions');
+        // Fall back to token data
+        return {
+          groups: decoded.groups || [],
+          group_ids: decoded.group_ids || [],
+          is_staff: decoded.is_staff || false,
+          is_superuser: decoded.is_superuser || false,
+          permissions: [],
+        };
+      }
+
+      const permissions = await response.json();
+      
+      // Cache the permissions
+      localStorage.setItem('userPermissions', JSON.stringify(permissions));
+      localStorage.setItem('permissionsCacheTime', Date.now().toString());
+      
+      return permissions;
+    } catch (error) {
+      console.error('Error fetching permissions:', error);
+      // Fall back to token data
+      return {
+        groups: decoded.groups || [],
+        group_ids: decoded.group_ids || [],
+        is_staff: decoded.is_staff || false,
+        is_superuser: decoded.is_superuser || false,
+        permissions: [],
+      };
+    }
   },
 };
 

@@ -4,7 +4,8 @@
  * Custom data provider that wraps ra-data-simple-rest with JWT authentication
  * and handles the Content-Range header for pagination.
  */
-import { DataProvider, fetchUtils } from 'react-admin';
+import type { DataProvider } from 'react-admin';
+import { fetchUtils } from 'react-admin';
 import simpleRestProvider from 'ra-data-simple-rest';
 import { getAccessToken } from './authProvider';
 
@@ -42,8 +43,8 @@ export const dataProvider: DataProvider = {
 
   // Override getList to handle DRF pagination format
   getList: async (resource, params) => {
-    const { page, perPage } = params.pagination;
-    const { field, order } = params.sort;
+    const { page = 1, perPage = 25 } = params.pagination || {};
+    const { field = 'id', order = 'ASC' } = params.sort || {};
     
     const query: Record<string, string> = {
       page: String(page),

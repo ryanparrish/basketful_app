@@ -11,12 +11,14 @@ import {
   SimpleForm,
   TextInput,
   Show,
-  SimpleShowLayout,
   EditButton,
   ShowButton,
   ReferenceManyField,
   useRecordContext,
   TabbedShowLayout,
+  ReferenceInput,
+  SelectInput,
+  required,
 } from 'react-admin';
 
 export const CategoryList = () => (
@@ -104,6 +106,9 @@ export const SubcategoryEdit = () => (
   <Edit>
     <SimpleForm>
       <TextInput source="name" required />
+      <ReferenceInput source="category" reference="categories">
+        <SelectInput optionText="name" label="Category" validate={required()} />
+      </ReferenceInput>
     </SimpleForm>
   </Edit>
 );
@@ -112,6 +117,9 @@ export const SubcategoryCreate = () => (
   <Create>
     <SimpleForm>
       <TextInput source="name" required />
+      <ReferenceInput source="category" reference="categories">
+        <SelectInput optionText="name" label="Category" validate={required()} />
+      </ReferenceInput>
     </SimpleForm>
   </Create>
 );

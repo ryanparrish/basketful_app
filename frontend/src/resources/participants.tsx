@@ -19,7 +19,6 @@ import {
   SelectInput,
   ReferenceField,
   Show,
-  SimpleShowLayout,
   EditButton,
   ShowButton,
   FilterButton,
@@ -28,7 +27,11 @@ import {
   TopToolbar,
   SearchInput,
   useRecordContext,
+  TabbedShowLayout,
+  ReferenceManyField,
+  FunctionField,
 } from 'react-admin';
+import { Typography, Box } from '@mui/material';
 
 const participantFilters = [
   <SearchInput source="q" alwaysOn key="search" />,
@@ -72,22 +75,109 @@ const ParticipantTitle = () => {
 
 export const ParticipantShow = () => (
   <Show title={<ParticipantTitle />}>
-    <SimpleShowLayout>
-      <TextField source="customer_number" label="Customer Number" />
-      <TextField source="name" />
-      <EmailField source="email" />
-      <TextField source="phone_number" label="Phone" />
-      <ReferenceField source="program" reference="programs">
-        <TextField source="name" />
-      </ReferenceField>
-      <BooleanField source="active" />
-      <NumberField source="adults" />
-      <NumberField source="children" />
-      <NumberField source="infants" />
-      <TextField source="dietary_restrictions" />
-      <DateField source="created_at" showTime />
-      <DateField source="updated_at" showTime />
-    </SimpleShowLayout>
+    <TabbedShowLayout>
+      <TabbedShowLayout.Tab label="Details">
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+              Basic Information
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField source="customer_number" label="Customer Number" />
+              <TextField source="name" label="Name" />
+              <EmailField source="email" label="Email" />
+              <TextField source="phone_number" label="Phone" />
+            </Box>
+          </Box>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+              Program & Status
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <ReferenceField source="program" reference="programs" label="Program">
+                <TextField source="name" />
+              </ReferenceField>
+              <BooleanField source="active" label="Active" />
+              <DateField source="created_at" label="Created at" showTime />
+              <DateField source="updated_at" label="Updated at" showTime />
+            </Box>
+          </Box>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+              Household Size
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <NumberField source="adults" label="Adults" />
+              <NumberField source="children" label="Children" />
+              <NumberField source="infants" label="Infants" />
+            </Box>
+          </Box>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+              Additional Information
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField source="dietary_restrictions" label="Dietary Restrictions" />
+            </Box>
+          </Box>
+        </Box>
+      </TabbedShowLayout.Tab>
+      
+      <TabbedShowLayout.Tab label="Vouchers" path="vouchers">
+        <ReferenceManyField 
+          reference="vouchers" 
+          target="participant"
+          label="Recent Vouchers"
+          sort={{ field: 'created_at', order: 'DESC' }}
+          perPage={10}
+        >
+          <Datagrid rowClick="show">
+            <TextField source="voucher_number" label="Voucher #" />
+            <DateField source="valid_from" label="Valid From" />
+            <DateField source="valid_until" label="Valid Until" />
+            <BooleanField source="redeemed" />
+            <DateField source="redeemed_at" showTime />
+            <FunctionField 
+              label="Status" 
+              render={(record: any) => {
+                if (record.redeemed) return 'Redeemed';
+                const now = new Date();
+                const validUntil = new Date(record.valid_until);
+                return validUntil < now ? 'Expired' : 'Active';
+              }}
+            />
+            <ShowButton />
+          </Datagrid>
+        </ReferenceManyField>
+      </TabbedShowLayout.Tab>
+      
+      <TabbedShowLayout.Tab label="Orders" path="orders">
+        <ReferenceManyField 
+          reference="orders" 
+          target="participant"
+          label="Recent Orders"
+          sort={{ field: 'created_at', order: 'DESC' }}
+          perPage={10}
+        >
+          <Datagrid rowClick="show">
+            <TextField source="order_number" label="Order #" />
+            <DateField source="created_at" label="Order Date" showTime />
+            <ReferenceField source="voucher" reference="vouchers" link="show">
+              <TextField source="voucher_number" />
+            </ReferenceField>
+            <FunctionField 
+              label="Items" 
+              render={(record: any) => record.items?.length || 0}
+            />
+            <DateField source="pickup_date" label="Pickup Date" />
+            <ShowButton />
+          </Datagrid>
+        </ReferenceManyField>
+      </TabbedShowLayout.Tab>
+    </TabbedShowLayout>
   </Show>
 );
 

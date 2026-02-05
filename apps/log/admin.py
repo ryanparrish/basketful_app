@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path
 from django.utils.html import format_html
-from .models import EmailLog, EmailType, OrderValidationLog, UserLoginLog
+from .models import EmailLog, EmailType, OrderValidationLog, UserLoginLog, GraceAllowanceLog
 
 
 @admin.register(EmailType)
@@ -198,6 +198,103 @@ class UserLoginLogAdmin(admin.ModelAdmin):
     
     def has_add_permission(self, request):
         """Prevent manual creation."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion - audit trail."""
+        return False
+
+
+@admin.register(GraceAllowanceLog)
+class GraceAllowanceLogAdmin(admin.ModelAdmin):
+    """Admin interface for Grace Allowance Log entries."""
+    
+    list_display = [
+        'participant_display',
+        'order_link',
+        'amount_over_display',
+        'proceeded_display',
+        'created_at'
+    ]
+    list_filter = ['proceeded', 'created_at']
+    search_fields = [
+        'participant__name',
+        'participant__customer_number',
+        'participant__user__username',
+        'order__order_number'
+    ]
+    readonly_fields = [
+        'participant',
+        'order',
+        'amount_over',
+        'grace_message',
+        'proceeded',
+        'created_at'
+    ]
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Grace Allowance Details', {
+            'fields': ('participant', 'order', 'amount_over', 'proceeded', 'created_at')
+        }),
+        ('Educational Message', {
+            'fields': ('grace_message',),
+            'description': 'Message shown to participant explaining the grace allowance.'
+        }),
+    )
+    
+    def participant_display(self, obj):
+        """Display participant name and customer number."""
+        return format_html(
+            '<a href="/admin/account/participant/{}/change/">{}</a><br>'
+            '<small style="color: #666;">Customer #{}</small>',
+            obj.participant.id,
+            obj.participant.name,
+            obj.participant.customer_number
+        )
+    participant_display.short_description = 'Participant'
+    participant_display.admin_order_field = 'participant__name'
+    
+    def order_link(self, obj):
+        """Link to associated order."""
+        if obj.order:
+            return format_html(
+                '<a href="/admin/orders/order/{}/change/">{}</a>',
+                obj.order.id,
+                obj.order.order_number
+            )
+        return format_html('<span style="color: gray;">No order</span>')
+    order_link.short_description = 'Order'
+    order_link.admin_order_field = 'order__order_number'
+    
+    def amount_over_display(self, obj):
+        """Display amount over with color coding."""
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">${:.2f}</span>',
+            '#dc3545' if obj.amount_over > 0.50 else '#ffc107',
+            obj.amount_over
+        )
+    amount_over_display.short_description = 'Amount Over'
+    amount_over_display.admin_order_field = 'amount_over'
+    
+    def proceeded_display(self, obj):
+        """Display whether participant proceeded with visual indicator."""
+        if obj.proceeded:
+            return format_html(
+                '<span style="color: green; font-weight: bold;">✓ Proceeded</span>'
+            )
+        return format_html(
+            '<span style="color: gray;">✗ Reviewed Only</span>'
+        )
+    proceeded_display.short_description = 'Action Taken'
+    proceeded_display.admin_order_field = 'proceeded'
+    
+    def has_add_permission(self, request):
+        """Prevent manual creation - logs are auto-generated."""
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        """Prevent editing - audit trail."""
         return False
     
     def has_delete_permission(self, request, obj=None):

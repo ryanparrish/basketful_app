@@ -13,7 +13,6 @@ import {
   TextInput,
   SelectInput,
   Show,
-  SimpleShowLayout,
   EditButton,
   ShowButton,
   ReferenceManyField,

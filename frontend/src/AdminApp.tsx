@@ -40,12 +40,32 @@ import {
   CombinedOrderShow,
   CombinedOrderEdit,
   CombinedOrderCreate,
+  PackingListList,
+  PackingListShow,
+  TagList,
+  TagShow,
+  TagEdit,
+  TagCreate,
+  ProductLimitList,
+  ProductLimitShow,
+  ProductLimitEdit,
+  ProductLimitCreate,
+  GroupList,
+  GroupShow,
+  GroupEdit,
+  GroupCreate,
+  PermissionList,
+  PermissionShow,
+  UserList,
+  UserShow,
+  UserEdit,
+  UserCreate,
 } from './resources';
 
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
-import { BulkVoucherCreate } from './pages/BulkVoucherCreate';
-import { Settings } from './pages/Settings';
+import BulkVoucherCreate from './pages/BulkVoucherCreate';
+import Settings from './pages/Settings';
 
 // Icons
 import PeopleIcon from '@mui/icons-material/People';
@@ -55,6 +75,12 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CategoryIcon from '@mui/icons-material/Category';
 import MergeIcon from '@mui/icons-material/Merge';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import LabelIcon from '@mui/icons-material/Label';
+import RuleIcon from '@mui/icons-material/Rule';
+import GroupIcon from '@mui/icons-material/Group';
+import SecurityIcon from '@mui/icons-material/Security';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 
 const App = () => (
   <Admin
@@ -127,15 +153,64 @@ const App = () => (
       icon={MergeIcon}
       options={{ label: 'Combined Orders' }}
     />
+    <Resource
+      name="packing-lists"
+      list={PackingListList}
+      show={PackingListShow}
+      icon={ViewListIcon}
+      options={{ label: 'Packing Lists' }}
+    />
+    <Resource
+      name="tags"
+      list={TagList}
+      show={TagShow}
+      edit={TagEdit}
+      create={TagCreate}
+      icon={LabelIcon}
+      options={{ label: 'Tags' }}
+    />
+    <Resource
+      name="product-limits"
+      list={ProductLimitList}
+      show={ProductLimitShow}
+      edit={ProductLimitEdit}
+      create={ProductLimitCreate}
+      icon={RuleIcon}
+      options={{ label: 'Product Limits' }}
+    />
+
+    {/* User Management Resources */}
+    <Resource
+      name="users"
+      list={UserList}
+      show={UserShow}
+      edit={UserEdit}
+      create={UserCreate}
+      icon={ManageAccountsIcon}
+      options={{ label: 'Users' }}
+    />
+    <Resource
+      name="groups"
+      list={GroupList}
+      show={GroupShow}
+      edit={GroupEdit}
+      create={GroupCreate}
+      icon={GroupIcon}
+      options={{ label: 'Groups' }}
+    />
+    <Resource
+      name="permissions"
+      list={PermissionList}
+      show={PermissionShow}
+      icon={SecurityIcon}
+      options={{ label: 'Permissions' }}
+    />
 
     {/* Supporting Resources (no menu items) */}
     <Resource name="subcategories" list={SubcategoryList} edit={SubcategoryEdit} create={SubcategoryCreate} />
-    <Resource name="tags" />
     <Resource name="account-balances" />
     <Resource name="order-items" />
-    <Resource name="packing-lists" />
     <Resource name="coaches" />
-    <Resource name="users" />
 
     {/* Custom Routes */}
     <CustomRoutes>

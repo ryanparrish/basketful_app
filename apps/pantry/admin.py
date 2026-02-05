@@ -1,4 +1,4 @@
-# food_orders/admin.py
+hi# food_orders/admin.py
 """Admin configuration for Pantry app."""
 # Django imports
 from django.contrib import admin

@@ -109,6 +109,6 @@ class ProductLimitSerializer(serializers.ModelSerializer):
         model = ProductLimit
         fields = [
             'id', 'name', 'category', 'category_name',
-            'subcategory', 'subcategory_name', 'limit', 'notes'
+            'subcategory', 'subcategory_name', 'limit', 'limit_scope', 'notes'
         ]
         read_only_fields = ['id']

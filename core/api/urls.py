@@ -8,6 +8,9 @@ from core.api.views import (
     OrderWindowSettingsViewSet,
     EmailSettingsViewSet,
     BrandingSettingsViewSet,
+    ProgramSettingsViewSet,
+    ThemeSettingsViewSet,
+    RulesVersionViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +24,15 @@ router.register(
 )
 router.register(
     r'branding-settings', BrandingSettingsViewSet, basename='branding-setting'
+)
+router.register(
+    r'program-config', ProgramSettingsViewSet, basename='program-setting'
+)
+router.register(
+    r'theme-config', ThemeSettingsViewSet, basename='theme-setting'
+)
+router.register(
+    r'rules-version', RulesVersionViewSet, basename='rules-version'
 )
 
 urlpatterns = [

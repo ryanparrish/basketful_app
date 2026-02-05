@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group, Permission
 
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsSingletonAdmin
 from apps.account.models import (
@@ -20,6 +20,8 @@ from .serializers import (
     UserSerializer,
     UserCreateSerializer,
     UserProfileSerializer,
+    GroupSerializer,
+    PermissionSerializer,
     ParticipantSerializer,
     ParticipantCreateSerializer,
     AccountBalanceSerializer,
@@ -57,11 +59,57 @@ class UserViewSet(viewsets.ModelViewSet):
         # TODO: Implement password reset email
         return Response({'status': 'password reset email sent'})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def me(self, request):
         """Get current authenticated user."""
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='me/permissions', permission_classes=[IsAuthenticated])
+    def my_permissions(self, request):
+        """Get current user's permissions."""
+        user = request.user
+        permissions = list(user.get_all_permissions()) if not user.is_superuser else ['*']
+        groups = list(user.groups.values_list('name', flat=True))
+        
+        return Response({
+            'permissions': permissions,
+            'groups': groups,
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser
+        })
+
+
+class GroupViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Groups.
+    
+    Allows staff users to create, view, edit, and delete user groups
+    and manage their permissions.
+    """
+    queryset = Group.objects.all().prefetch_related('permissions')
+    serializer_class = GroupSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+    ordering = ['name']
+
+
+class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only ViewSet for Permissions.
+    
+    Allows staff users to view available permissions for assignment to groups.
+    """
+    queryset = Permission.objects.all().select_related('content_type')
+    serializer_class = PermissionSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['content_type__app_label', 'content_type__model']
+    search_fields = ['name', 'codename']
+    ordering_fields = ['name', 'codename']
+    ordering = ['content_type__app_label', 'content_type__model', 'codename']
 
 
 class ParticipantViewSet(viewsets.ModelViewSet):

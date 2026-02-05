@@ -6,15 +6,22 @@ All API endpoints are versioned under /api/v1/
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
+from rest_framework_simplejwt.views import TokenObtainPairView
+from apps.account.api.jwt_serializers import CustomTokenObtainPairSerializer
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """Custom token view using our custom serializer."""
+    serializer_class = CustomTokenObtainPairSerializer
+
 
 # Create router for ViewSet registration
 router = DefaultRouter()
@@ -29,7 +36,7 @@ app_name = 'api'
 
 urlpatterns = [
     # JWT Authentication endpoints
-    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
 

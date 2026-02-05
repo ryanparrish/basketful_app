@@ -173,7 +173,7 @@ class Program(models.Model):
         ],
         max_length=20
     )
-    meeting_address = models.CharField(max_length=255)
+    meeting_address = models.CharField(max_length=255, blank=True, default='')
     default_split_strategy = models.CharField(
         max_length=20,
         choices=SPLIT_STRATEGY_CHOICES,

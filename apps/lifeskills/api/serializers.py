@@ -68,4 +68,4 @@ class ProgramListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def get_participant_count(self, obj) -> int:
-        return obj.participants.count()
+        return obj.participant_set.count()

@@ -167,3 +167,130 @@ class BrandingSettings(models.Model):
             defaults={'organization_name': 'Love Your Neighbor'}
         )
         return obj
+
+
+class ProgramSettings(models.Model):
+    """Singleton model for program-wide settings including grace allowance."""
+    grace_amount = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=1.00,
+        validators=[MinValueValidator(0.00), MaxValueValidator(100.00)],
+        help_text="Dollar amount over budget allowed as 'grace' for financial literacy learning (default $1.00)"
+    )
+    grace_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable/disable grace allowance feature"
+    )
+    grace_message = models.TextField(
+        default="This helps you practice staying within budget",
+        help_text="Educational message displayed when user is within grace allowance"
+    )
+    rules_version = models.CharField(
+        max_length=32,
+        blank=True,
+        editable=False,
+        help_text="MD5 hash of business rules (auto-generated)"
+    )
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Program Setting"
+        verbose_name_plural = "Program Settings"
+    
+    def __str__(self):
+        status = "Enabled" if self.grace_enabled else "Disabled"
+        return f"Program Settings (Grace: ${self.grace_amount} - {status})"
+    
+    def save(self, *args, **kwargs):
+        """Ensure only one instance exists (singleton pattern)."""
+        if not self.pk and ProgramSettings.objects.exists():
+            existing = ProgramSettings.objects.first()
+            existing.grace_amount = self.grace_amount
+            existing.grace_enabled = self.grace_enabled
+            existing.grace_message = self.grace_message
+            existing.save()
+            return existing
+        return super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'grace_amount': 1.00,
+                'grace_enabled': True,
+                'grace_message': 'This helps you practice staying within budget'
+            }
+        )
+        return obj
+
+
+class ThemeSettings(models.Model):
+    """Singleton model for participant frontend theme configuration."""
+    primary_color = models.CharField(
+        max_length=7,
+        default="#1976d2",
+        help_text="Primary theme color (hex format, e.g., #1976d2)"
+    )
+    secondary_color = models.CharField(
+        max_length=7,
+        default="#dc004e",
+        help_text="Secondary theme color (hex format, e.g., #dc004e)"
+    )
+    app_name = models.CharField(
+        max_length=100,
+        default="Basketful",
+        help_text="Application name displayed in participant frontend"
+    )
+    logo = models.ImageField(
+        upload_to='theme/',
+        blank=True,
+        null=True,
+        help_text="Logo displayed on participant login page"
+    )
+    favicon = models.ImageField(
+        upload_to='theme/',
+        blank=True,
+        null=True,
+        help_text="Favicon for participant frontend (32x32 or 16x16)"
+    )
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Theme Setting"
+        verbose_name_plural = "Theme Settings"
+    
+    def __str__(self):
+        return f"Theme Settings ({self.app_name})"
+    
+    def save(self, *args, **kwargs):
+        """Ensure only one instance exists (singleton pattern)."""
+        if not self.pk and ThemeSettings.objects.exists():
+            existing = ThemeSettings.objects.first()
+            existing.primary_color = self.primary_color
+            existing.secondary_color = self.secondary_color
+            existing.app_name = self.app_name
+            existing.logo = self.logo
+            existing.favicon = self.favicon
+            existing.save()
+            return existing
+        return super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'primary_color': '#1976d2',
+                'secondary_color': '#dc004e',
+                'app_name': 'Basketful'
+            }
+        )
+        return obj

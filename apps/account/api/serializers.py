@@ -2,7 +2,8 @@
 Serializers for the Account app.
 """
 from rest_framework import serializers
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group, Permission
+from django.contrib.contenttypes.models import ContentType
 
 from apps.account.models import (
     UserProfile,
@@ -21,17 +22,60 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class PermissionSerializer(serializers.ModelSerializer):
+    """Serializer for Django Permission model."""
+    app_label = serializers.CharField(source='content_type.app_label', read_only=True)
+    model = serializers.CharField(source='content_type.model', read_only=True)
+    
+    class Meta:
+        model = Permission
+        fields = ['id', 'name', 'codename', 'content_type', 'app_label', 'model']
+        read_only_fields = ['id', 'app_label', 'model']
+
+
+class GroupSerializer(serializers.ModelSerializer):
+    """Serializer for Django Group model."""
+    permissions = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Permission.objects.all(),
+        required=False
+    )
+    permission_details = PermissionSerializer(source='permissions', many=True, read_only=True)
+    user_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'permissions', 'permission_details', 'user_count']
+        read_only_fields = ['id', 'user_count']
+    
+    def get_user_count(self, obj):
+        return obj.user_set.count()
+
+
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for Django User model."""
     profile = UserProfileSerializer(source='userprofile', read_only=True)
     full_name = serializers.SerializerMethodField()
+    groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Group.objects.all(),
+        required=False
+    )
+    group_details = GroupSerializer(source='groups', many=True, read_only=True)
+    user_permissions = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Permission.objects.all(),
+        required=False
+    )
+    all_permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'is_active', 'is_staff', 'date_joined', 'last_login',
-            'profile', 'full_name'
+            'is_active', 'is_staff', 'is_superuser', 'date_joined', 'last_login',
+            'profile', 'full_name', 'groups', 'group_details',
+            'user_permissions', 'all_permissions'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login']
         extra_kwargs = {
@@ -40,6 +84,12 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name() or obj.username
+    
+    def get_all_permissions(self, obj):
+        """Get all permissions (direct + from groups)."""
+        if obj.is_superuser:
+            return ['*']  # Superuser has all permissions
+        return list(obj.get_all_permissions())
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

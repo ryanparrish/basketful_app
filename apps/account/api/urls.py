@@ -6,6 +6,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     UserViewSet,
+    GroupViewSet,
+    PermissionViewSet,
     ParticipantViewSet,
     AccountBalanceViewSet,
     GoFreshSettingsViewSet,
@@ -13,6 +15,8 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'groups', GroupViewSet, basename='group')
+router.register(r'permissions', PermissionViewSet, basename='permission')
 router.register(r'participants', ParticipantViewSet, basename='participant')
 router.register(r'account-balances', AccountBalanceViewSet, basename='accountbalance')
 router.register(r'go-fresh-settings', GoFreshSettingsViewSet, basename='gofreshsettings')

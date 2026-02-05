@@ -335,3 +335,50 @@ class UserLoginLog(models.Model):
         user_display = self.user.username if self.user else self.username_attempted
         return f"{user_display} - {self.get_action_display()} at {self.timestamp}"
 
+
+class GraceAllowanceLog(models.Model):
+    """
+    Log entries for when participants use the grace allowance feature.
+    Used to track financial literacy learning moments and for admin notifications.
+    """
+    participant = models.ForeignKey(
+        'account.Participant',
+        on_delete=models.CASCADE,
+        related_name='grace_logs',
+        help_text="Participant who used grace allowance"
+    )
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='grace_logs',
+        help_text="Order associated with grace allowance usage"
+    )
+    amount_over = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        help_text="Dollar amount over budget"
+    )
+    grace_message = models.TextField(
+        help_text="Educational message displayed to participant"
+    )
+    proceeded = models.BooleanField(
+        default=False,
+        help_text="Whether participant proceeded with order after grace warning"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        app_label = 'log'
+        ordering = ['-created_at']
+        verbose_name = "Grace Allowance Log"
+        verbose_name_plural = "Grace Allowance Logs"
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['participant', '-created_at']),
+        ]
+    
+    def __str__(self):
+        action = "proceeded" if self.proceeded else "reviewed"
+        return f"{self.participant} - ${self.amount_over} over ({action}) at {self.created_at}"

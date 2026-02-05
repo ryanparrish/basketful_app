@@ -21,7 +21,7 @@ from apps.lifeskills.api.serializers import (
 
 class ProgramViewSet(viewsets.ModelViewSet):
     """ViewSet for Program model."""
-    queryset = Program.objects.all().prefetch_related('participants')
+    queryset = Program.objects.all().prefetch_related('participant_set')
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

@@ -1,7 +1,7 @@
 """Admin configuration for core app."""
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import OrderWindowSettings, EmailSettings, BrandingSettings
+from .models import OrderWindowSettings, EmailSettings, BrandingSettings, ProgramSettings, ThemeSettings
 
 
 @admin.register(OrderWindowSettings)
@@ -191,6 +191,126 @@ class BrandingSettingsAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Limit queryset to single instance."""
         return BrandingSettings.objects.all()[:1]
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of singleton."""
+        return False
+
+
+@admin.register(ProgramSettings)
+class ProgramSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Program Settings including grace allowance."""
+    
+    list_display = ['grace_amount', 'grace_enabled', 'rules_version_display', 'updated_at']
+    
+    fieldsets = (
+        ('Grace Allowance Configuration', {
+            'fields': ('grace_enabled', 'grace_amount', 'grace_message'),
+            'description': (
+                '<p><strong>Configure grace allowance for financial literacy learning.</strong></p>'
+                '<p>Grace allowance allows participants to exceed their budget by a small amount '
+                'as a learning opportunity. This helps teach financial accountability.</p>'
+                '<ul>'
+                '<li><strong>Grace Enabled:</strong> Turn on/off the grace allowance feature</li>'
+                '<li><strong>Grace Amount:</strong> Maximum dollar amount over budget allowed (default $1.00)</li>'
+                '<li><strong>Grace Message:</strong> Educational message shown to participants when using grace allowance</li>'
+                '</ul>'
+            )
+        }),
+        ('System Information', {
+            'fields': ('rules_version',),
+            'description': (
+                '<p><strong>Rules Version:</strong> Auto-generated hash tracking business rule changes. '
+                'This helps the frontend know when to refresh validation data.</p>'
+            )
+        }),
+    )
+    
+    readonly_fields = ['rules_version']
+    
+    def rules_version_display(self, obj):
+        """Display shortened version of rules hash."""
+        if obj.rules_version:
+            return format_html(
+                '<code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px;">{}</code>',
+                obj.rules_version[:12] + '...'
+            )
+        return format_html('<span style="color: gray;">Not generated</span>')
+    rules_version_display.short_description = 'Rules Version'
+    
+    def has_add_permission(self, request):
+        """Only allow one instance (singleton)."""
+        return not ProgramSettings.objects.exists()
+    
+    def get_queryset(self, request):
+        """Limit queryset to single instance."""
+        return ProgramSettings.objects.all()[:1]
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of singleton."""
+        return False
+
+
+@admin.register(ThemeSettings)
+class ThemeSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Theme Settings for participant frontend."""
+    
+    list_display = ['app_name', 'primary_color_preview', 'secondary_color_preview', 'has_logo', 'updated_at']
+    
+    fieldsets = (
+        ('Application Branding', {
+            'fields': ('app_name', 'logo', 'favicon'),
+            'description': (
+                '<p><strong>Configure branding for the participant frontend application.</strong></p>'
+                '<p>Set the application name and upload logo/favicon images.</p>'
+            )
+        }),
+        ('Color Theme', {
+            'fields': ('primary_color', 'secondary_color'),
+            'description': (
+                '<p><strong>Customize the color scheme of the participant frontend.</strong></p>'
+                '<p>Use hex color codes (e.g., #1976d2). Changes will be reflected in the mobile app '
+                'after the frontend refetches theme settings (every 4 hours or on manual refresh).</p>'
+                '<p><em>Note:</em> Theme updates are cached for 4 hours. Users may need to wait or '
+                'refresh their browser to see changes immediately.</p>'
+            )
+        }),
+    )
+    
+    def primary_color_preview(self, obj):
+        """Show color preview for primary color."""
+        return format_html(
+            '<div style="display: inline-block; width: 60px; height: 20px; '
+            'background-color: {}; border: 1px solid #ccc; border-radius: 3px; '
+            'vertical-align: middle;"></div> <code>{}</code>',
+            obj.primary_color, obj.primary_color
+        )
+    primary_color_preview.short_description = 'Primary Color'
+    
+    def secondary_color_preview(self, obj):
+        """Show color preview for secondary color."""
+        return format_html(
+            '<div style="display: inline-block; width: 60px; height: 20px; '
+            'background-color: {}; border: 1px solid #ccc; border-radius: 3px; '
+            'vertical-align: middle;"></div> <code>{}</code>',
+            obj.secondary_color, obj.secondary_color
+        )
+    secondary_color_preview.short_description = 'Secondary Color'
+    
+    def has_logo(self, obj):
+        """Display whether a logo is uploaded."""
+        if obj.logo:
+            return format_html('<span style="color: green;">✓ Uploaded</span>')
+        return format_html('<span style="color: gray;">✗ No logo</span>')
+    has_logo.short_description = 'Logo Status'
+    
+    def has_add_permission(self, request):
+        """Only allow one instance (singleton)."""
+        return not ThemeSettings.objects.exists()
+    
+    def get_queryset(self, request):
+        """Limit queryset to single instance."""
+        return ThemeSettings.objects.all()[:1]
     
     def has_delete_permission(self, request, obj=None):
         """Prevent deletion of singleton."""

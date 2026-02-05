@@ -41,6 +41,7 @@ def create_staff_user_profile_and_onboarding(
     """
     Trigger onboarding email for *new* staff users only.
     Ignore login-related saves (e.g., last_login updates).
+    Skip superusers to allow creation without Celery.
     """
     # Skip updates that only touch last_login (login event)
     if update_fields and update_fields == {"last_login"}:
@@ -50,8 +51,10 @@ def create_staff_user_profile_and_onboarding(
         # Ensure UserProfile exists
         UserProfile.objects.get_or_create(user=instance)
 
-        logger.debug("Triggering onboarding email for new staff user %s", instance.id)
-        send_new_user_onboarding_email.delay(user_id=instance.id)
+        # Skip onboarding email for superusers (allows creation without Celery)
+        if not instance.is_superuser:
+            logger.debug("Triggering onboarding email for new staff user %s", instance.id)
+            send_new_user_onboarding_email.delay(user_id=instance.id)
 
 
 @receiver(post_save, sender=Participant)
