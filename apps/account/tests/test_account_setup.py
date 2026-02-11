@@ -329,7 +329,7 @@ class TestUserOnboardingSignals:
 # ============================================================
 # Email Task Tests
 # ============================================================
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestEmailTasks:
     """
     Tests for the Celery tasks that send emails. These tests do not actually
