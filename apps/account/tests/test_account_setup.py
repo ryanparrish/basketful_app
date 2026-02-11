@@ -360,7 +360,9 @@ class TestEmailTasks:
             force=False
         )
 
-    def test_email_tasks_create_log_and_prevent_duplicates(self, test_user_fixture, mocker):
+    def test_email_tasks_create_log_and_prevent_duplicates(
+        self, test_user_fixture, email_type_onboarding, email_settings, mocker
+    ):
         """
         Tests that sending an email creates an EmailLog, and a second attempt
         to send the same email type to the same user is blocked.
@@ -368,33 +370,8 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         
-        # Create fixtures directly in test for transaction visibility
-        from apps.log.models import EmailType
-        from core.models import EmailSettings
-        
-        # Ensure EmailSettings exists
-        email_settings, _ = EmailSettings.objects.get_or_create(
-            pk=1,
-            defaults={
-                'from_email_default': 'noreply@example.com',
-                'reply_to_default': 'support@example.com'
-            }
-        )
-        
-        # Ensure EmailType exists
-        email_type, created = EmailType.objects.get_or_create(
-            name='onboarding',
-            defaults={
-                'subject': 'Welcome to {{ site_name }}',
-                'html_template': '<p>Welcome {{ user.username }}!</p>',
-                'text_template': 'Welcome {{ user.username }}!',
-                'is_active': True
-            }
-        )
-        # Ensure it's active
-        if not email_type.is_active:
-            email_type.is_active = True
-            email_type.save()
+        # Use fixtures for EmailType and EmailSettings (created outside transaction)
+        # email_type_onboarding and email_settings are already created by fixtures
         
         # Clean up any existing email logs for this user to ensure clean test state
         EmailLog.objects.filter(user=user).delete()
