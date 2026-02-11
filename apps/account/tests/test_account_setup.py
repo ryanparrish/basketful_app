@@ -371,13 +371,12 @@ class TestEmailTasks:
         user = test_user_fixture
         
         # Mock database lookups to avoid transaction visibility issues in CI
-        # Patch get_user_model to return a mock User class with working objects.get
-        mock_user_model = mocker.MagicMock()
-        mock_user_model.objects.get.return_value = user
-        mock_user_model.DoesNotExist = Exception
+        # Patch the User class directly (it's resolved at import time from get_user_model)
+        mock_user_manager = mocker.MagicMock()
+        mock_user_manager.get.return_value = user
         mocker.patch(
-            "apps.account.tasks.email.get_user_model",
-            return_value=mock_user_model
+            "apps.account.tasks.email.User.objects",
+            mock_user_manager
         )
         mocker.patch(
             "apps.account.tasks.email.get_email_type",
