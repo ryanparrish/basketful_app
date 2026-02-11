@@ -370,11 +370,14 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         
-        # Mock all database lookups to avoid transaction visibility issues in CI
-        # The task performs User.objects.get, get_email_type, and get_email_settings
+        # Mock database lookups to avoid transaction visibility issues in CI
+        # Patch get_user_model to return a mock User class with working objects.get
+        mock_user_model = mocker.MagicMock()
+        mock_user_model.objects.get.return_value = user
+        mock_user_model.DoesNotExist = Exception
         mocker.patch(
-            "apps.account.tasks.email.User.objects.get",
-            return_value=user
+            "apps.account.tasks.email.get_user_model",
+            return_value=mock_user_model
         )
         mocker.patch(
             "apps.account.tasks.email.get_email_type",
@@ -385,8 +388,26 @@ class TestEmailTasks:
             return_value=email_settings
         )
         
-        # Clean up any existing email logs for this user to ensure clean test state
-        EmailLog.objects.filter(user=user).delete()
+        # Track whether email has been sent to control duplicate prevention
+        email_sent_tracker = {"sent": False}
+        
+        def mock_has_email_been_sent(user, email_type):
+            return email_sent_tracker["sent"]
+        
+        mocker.patch(
+            "apps.account.tasks.email.has_email_been_sent",
+            side_effect=mock_has_email_been_sent
+        )
+        
+        # Mock create_email_log to track that it was called and update sent tracker
+        def mock_create_email_log(user, email_type, subject, status="sent", error_message=""):
+            email_sent_tracker["sent"] = True
+            return mocker.MagicMock()
+        
+        mocker.patch(
+            "apps.account.tasks.email.create_email_log",
+            side_effect=mock_create_email_log
+        )
         
         mock_send_message = mocker.patch(
             "apps.account.tasks.email.send_email_message"
@@ -403,19 +424,18 @@ class TestEmailTasks:
         # --- Check that the email was sent the first time ---
         assert mock_send_message.call_count == 1, \
             f"Expected 1 call but got {mock_send_message.call_count}. Task result: {result}"
-        # --- Check that a log was created in the database ---
-        assert EmailLog.objects.filter(user=user, email_type__name="onboarding").exists()
-
-        # --- Debugging: Print EmailLog entries after the first call
-        logger.debug(EmailLog.objects.all())
+        # --- Check that the email was marked as sent ---
+        assert email_sent_tracker["sent"] is True, "Email log should have been created"
 
         # --- ACT (Second Call) ---
         # --- Call the task again ---
-        send_new_user_onboarding_email(user.id)
+        result2 = send_new_user_onboarding_email(user.id)
 
         # --- ASSERT (Second Call) ---
         # --- The call count should NOT have increased, proving the duplicate was blocked ---
         assert mock_send_message.call_count == 1, "Email should not be sent a second time"
+        # Second call should return False (skipped due to duplicate)
+        assert result2 is False, "Second call should return False (duplicate blocked)"
 
     def test_email_tasks_handle_missing_user_gracefully(self, mocker):
         """
