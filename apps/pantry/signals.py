@@ -51,8 +51,11 @@ def create_staff_user_profile_and_onboarding(
         # Ensure UserProfile exists
         UserProfile.objects.get_or_create(user=instance)
 
-        # Skip onboarding email for superusers (allows creation without Celery)
-        if not instance.is_superuser:
+        # Skip onboarding email for superusers and during testing
+        from django.conf import settings
+        is_testing = getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False)
+        
+        if not instance.is_superuser and not is_testing:
             logger.debug("Triggering onboarding email for new staff user %s", instance.id)
             send_new_user_onboarding_email.delay(user_id=instance.id)
 

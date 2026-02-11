@@ -4,6 +4,7 @@ URL configuration for Basketful API.
 Django admin has been removed in favor of React-Admin frontend.
 API endpoints are served at /api/v1/
 """
+from django.contrib import admin
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from django.conf import settings
@@ -17,6 +18,9 @@ from apps.pantry import views as pantry_views
 from .views import index, health_check
 
 urlpatterns = [
+    # Django admin (required for admin namespace in tests)
+    path('admin/', admin.site.urls),
+    
     # Health check endpoint (for load balancers)
     path('api/health/', health_check, name='health_check'),
     
