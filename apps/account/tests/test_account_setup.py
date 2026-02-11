@@ -116,10 +116,10 @@ def email_settings():
     """Ensure email settings exist."""
     from core.models import EmailSettings
     settings, _ = EmailSettings.objects.get_or_create(
-        id=1,
+        pk=1,
         defaults={
-            'from_email': 'noreply@example.com',
-            'reply_to': 'support@example.com'
+            'from_email_default': 'noreply@example.com',
+            'reply_to_default': 'support@example.com'
         }
     )
     return settings
