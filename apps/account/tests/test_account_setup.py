@@ -370,8 +370,16 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         
-        # Use fixtures for EmailType and EmailSettings (created outside transaction)
-        # email_type_onboarding and email_settings are already created by fixtures
+        # Mock the database lookups to return our fixture objects
+        # This avoids transaction visibility issues between test and task in CI
+        mocker.patch(
+            "apps.account.tasks.email.get_email_type",
+            return_value=email_type_onboarding
+        )
+        mocker.patch(
+            "apps.account.tasks.email.get_email_settings",
+            return_value=email_settings
+        )
         
         # Clean up any existing email logs for this user to ensure clean test state
         EmailLog.objects.filter(user=user).delete()
