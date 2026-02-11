@@ -159,6 +159,7 @@ sys.path.append(os.path.join(BASE_DIR, 'apps'))
 
 # Installed apps
 INSTALLED_APPS = [
+    'django.contrib.admin',
     'django.contrib.contenttypes',
     'django.contrib.staticfiles',
     'django.contrib.sessions',
