@@ -369,6 +369,10 @@ class TestEmailTasks:
         """
         # --- ARRANGE ---
         user = test_user_fixture
+        
+        # Clean up any existing email logs for this user to ensure clean test state
+        EmailLog.objects.filter(user=user).delete()
+        
         mock_send_message = mocker.patch(
             "apps.account.tasks.email.send_email_message"
         )   
