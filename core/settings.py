@@ -52,7 +52,10 @@ CELERY_TASK_EAGER_PROPAGATES = env.bool(
 )
 
 # Override for test mode - detect pytest
+<<<<<<< Updated upstream
 import sys
+=======
+>>>>>>> Stashed changes
 if 'pytest' in sys.modules or any('pytest' in arg for arg in sys.argv):
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
