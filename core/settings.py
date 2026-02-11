@@ -51,6 +51,13 @@ CELERY_TASK_EAGER_PROPAGATES = env.bool(
     "CELERY_TASK_EAGER_PROPAGATES", default=False
 )
 
+# Override for test mode - detect pytest
+import sys
+if 'pytest' in sys.modules or any('pytest' in arg for arg in sys.argv):
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+
+
 environ.Env.read_env()  # reads from .env
 
 # Set defaults based on environment
@@ -393,3 +400,4 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
     'SCHEMA_PATH_PREFIX': r'/api/v1/',
 }
+

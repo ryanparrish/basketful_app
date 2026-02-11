@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 from decimal import Decimal
 from celery import Celery
 from kombu.serialization import register
@@ -11,7 +12,26 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
 # --- Define Celery app ---
 app = Celery("core")
+
+# --- Override for test mode BEFORE loading Django settings ---
+# Detect pytest via environment variable or sys.modules
+is_test = (os.environ.get('PYTEST_CURRENT_TEST') or 
+          'pytest' in sys.modules or 
+          any('pytest' in arg for arg in sys.argv))
+
+if is_test:
+    # Set eager mode before loading Django config
+    app.conf.task_always_eager = True
+    app.conf.task_eager_propagates = True
+
+# Load Django settings (this may override if CELERY_* env vars are set)
 app.config_from_object("django.conf:settings", namespace="CELERY")
+
+# Re-apply test mode after Django config to ensure it takes precedence
+if is_test:
+    app.conf.task_always_eager = True
+    app.conf.task_eager_propagates = True
+
 
 # --- Custom JSON encoder for ULID + Decimal ---
 
