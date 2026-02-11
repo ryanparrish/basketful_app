@@ -201,9 +201,9 @@ def test_pause_created_in_ordering_window_flags_immediately(
     
     # Mock both the task call and deactivation scheduling
     with mock.patch(
-        "apps.lifeskills.tasks.program_pause.update_voucher_flag_task.delay"
+        "apps.lifeskills.signals.update_voucher_flag_task.delay"
     ) as mock_task, mock.patch(
-        "apps.lifeskills.tasks.program_pause.deactivate_expired_pause_vouchers.apply_async"
+        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
     ) as mock_deactivate:
         pp = ProgramPause.objects.create(
             pause_start=pause_start,
@@ -234,9 +234,9 @@ def test_pause_extended_duration_uses_multiplier_3(participant_with_vouchers):
     pause_end = pause_start + timedelta(days=14)
     
     with mock.patch(
-        "apps.lifeskills.tasks.program_pause.update_voucher_flag_task.delay"
+        "apps.lifeskills.signals.update_voucher_flag_task.delay"
     ) as mock_task, mock.patch(
-        "apps.lifeskills.tasks.program_pause.deactivate_expired_pause_vouchers.apply_async"
+        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
     ):
         pp = ProgramPause.objects.create(
             pause_start=pause_start,
@@ -263,9 +263,9 @@ def test_pause_created_outside_ordering_window_schedules_for_future(
     pause_end = pause_start + timedelta(days=7)
     
     with mock.patch(
-        "apps.lifeskills.tasks.program_pause.update_voucher_flag_task.delay"
+        "apps.lifeskills.signals.update_voucher_flag_task.delay"
     ) as mock_immediate, mock.patch(
-        "voucher.tasks.voucher_scheduling.schedule_voucher_tasks"
+        "apps.lifeskills.signals.schedule_voucher_tasks"
     ) as mock_schedule:
         pp = ProgramPause.objects.create(
             pause_start=pause_start,
@@ -301,9 +301,9 @@ def test_voucher_balance_doubles_with_new_logic(participant_with_vouchers):
     
     # Mock Celery task execution but manually call to simulate eager mode
     with mock.patch(
-        "apps.lifeskills.tasks.program_pause.update_voucher_flag_task.delay"
+        "apps.lifeskills.signals.update_voucher_flag_task.delay"
     ) as mock_task, mock.patch(
-        "apps.lifeskills.tasks.program_pause.deactivate_expired_pause_vouchers.apply_async"
+        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
     ):
         pp = ProgramPause.objects.create(
             pause_start=pause_start,

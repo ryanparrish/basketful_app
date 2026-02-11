@@ -7,9 +7,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 # First-party imports
-from voucher.models import Voucher
-from voucher.tasks.voucher_scheduling import schedule_voucher_tasks
-from apps.log.logging import VoucherLogger
+from apps.voucher.models import Voucher
+from apps.voucher.tasks.voucher_scheduling import schedule_voucher_tasks
+from apps.log.signals import VoucherLogger
 from apps.lifeskills.tasks.program_pause import (
     update_voucher_flag_task,
     deactivate_expired_pause_vouchers,

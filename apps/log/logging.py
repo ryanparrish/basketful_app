@@ -5,10 +5,10 @@ from typing import Optional, Type
 # Django imports
 from django.db.models import Model
 # First-party imports
-from orders.models import Order
-from voucher.models import Voucher
+from apps.orders.models import Order
+from apps.voucher.models import Voucher
 # First-party imports
-from account.models import Participant
+from apps.account.models import Participant
 # Local imports
 from .models import VoucherLog
 
