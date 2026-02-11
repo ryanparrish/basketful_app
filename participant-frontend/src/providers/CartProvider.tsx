@@ -70,7 +70,7 @@ const CartContextProvider: React.FC<{ children: React.ReactNode }> = ({ children
       category: product.category_name,
       categoryId: product.category,
       productId: product.id,
-      unit: product.unit,
+      unit: product.unit || undefined,
       available: product.is_available,
     };
     
@@ -148,7 +148,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         console.log('Item added to cart:', item.id);
       }}
       onItemRemove={(item) => {
-        console.log('Item removed from cart:', item?.id);
+        console.log('Item removed from cart:', item);
       }}
     >
       <CartContextProvider>

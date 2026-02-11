@@ -138,6 +138,9 @@ __pypackages__/
 
 # Environments
 .env
+.env.production
+.env.local
+.env.*.local
 .envrc
 .venv
 env/
@@ -145,6 +148,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# SSL Certificates
+certbot/
 
 # Spyder
 .spyderproject

@@ -41,6 +41,34 @@ class ProgramPause(models.Model):
     # Core pause calculation (dynamic)
     # -------------------------------
 
+    @classmethod
+    def calculate_multiplier_for_duration(cls, pause_start, pause_end) -> int:
+        """
+        Calculate the multiplier based on pause duration.
+        
+        Rules:
+            - Short pause (<14 days) → multiplier 2
+            - Extended pause (>=14 days) → multiplier 3
+        
+        Args:
+            pause_start: DateTimeField - when pause begins
+            pause_end: DateTimeField - when pause ends
+            
+        Returns:
+            int: 2 or 3 based on duration
+        """
+        if not pause_start or not pause_end:
+            return 1
+        
+        duration = (pause_end - pause_start).days + 1
+        
+        if duration >= 14:
+            return 3
+        elif duration >= 1:
+            return 2
+        
+        return 1
+
     def _calculate_pause_status(self) -> tuple[int, str]:
         """
         Determine pause multiplier and message based on start date and
@@ -60,7 +88,10 @@ class ProgramPause(models.Model):
         duration = (self.pause_end - self.pause_start).days + 1
 
         if 11 <= days_until_start <= 14:
-            if duration >= 14:
+            multiplier = self.calculate_multiplier_for_duration(
+                self.pause_start, self.pause_end
+            )
+            if multiplier == 3:
                 return (
                     3,
                     (
@@ -68,7 +99,7 @@ class ProgramPause(models.Model):
                         f"(duration {duration} days)"
                     )
                 )
-            elif duration >= 1:
+            elif multiplier == 2:
                 return (
                     2,
                     (

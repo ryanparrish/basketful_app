@@ -5,7 +5,6 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Container,
   Typography,
   Paper,
   Button,
@@ -33,6 +32,7 @@ import { useCanCheckout, useValidation } from '../../providers/ValidationContext
 import { ValidationFeedback } from '../cart/ValidationFeedback';
 import { createOrder } from '../../shared/api/endpoints';
 import type { CartItemData } from '../../providers/CartProvider';
+import { MAX_WIDTHS, PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,7 +78,13 @@ export const CheckoutPage: React.FC = () => {
   // Order success view
   if (orderSuccess) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Box sx={{ 
+        ...useFullWidth(),
+        py: 4,
+        px: PAGE_PADDING.x,
+        maxWidth: MAX_WIDTHS.FORM,
+        mx: 'auto'
+      }}>
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <CheckCircle color="success" sx={{ fontSize: 80, mb: 2 }} />
           <Typography variant="h4" gutterBottom>
@@ -107,14 +113,20 @@ export const CheckoutPage: React.FC = () => {
             </Button>
           </Stack>
         </Paper>
-      </Container>
+      </Box>
     );
   }
 
   // Empty cart check
   if (items.length === 0) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Box sx={{ 
+        ...useFullWidth(),
+        py: 4,
+        px: PAGE_PADDING.x,
+        maxWidth: MAX_WIDTHS.FORM,
+        mx: 'auto'
+      }}>
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <ShoppingBag sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
@@ -131,12 +143,17 @@ export const CheckoutPage: React.FC = () => {
             Browse Products
           </Button>
         </Paper>
-      </Container>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3, pb: 10 }}>
+    <Box sx={{ 
+      ...useFullWidth(),
+      py: PAGE_PADDING.y,
+      pb: PAGE_PADDING.bottom,
+      px: PAGE_PADDING.x,
+    }}>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Button
@@ -273,7 +290,7 @@ export const CheckoutPage: React.FC = () => {
           Continue Shopping
         </Button>
       </Box>
-    </Container>
+    </Box>
   );
 };
 

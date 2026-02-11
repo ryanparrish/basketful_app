@@ -12,6 +12,12 @@ from .views import (
     AccountBalanceViewSet,
     GoFreshSettingsViewSet,
 )
+from .auth_views import (
+    CookieTokenObtainView,
+    CookieTokenRefreshView,
+    CookieTokenLogoutView,
+    AuthMeView,
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -22,5 +28,12 @@ router.register(r'account-balances', AccountBalanceViewSet, basename='accountbal
 router.register(r'go-fresh-settings', GoFreshSettingsViewSet, basename='gofreshsettings')
 
 urlpatterns = [
+    # Cookie-based auth endpoints
+    path('auth/login/', CookieTokenObtainView.as_view(), name='auth_login'),
+    path('auth/refresh/', CookieTokenRefreshView.as_view(), name='auth_refresh'),
+    path('auth/logout/', CookieTokenLogoutView.as_view(), name='auth_logout'),
+    path('auth/me/', AuthMeView.as_view(), name='auth_me'),
+    
+    # ViewSet routes
     path('', include(router.urls)),
 ]

@@ -10,7 +10,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
-from apps.account.api.jwt_serializers import CustomTokenObtainPairSerializer
+from apps.account.api.jwt_serializers import FlexibleTokenObtainPairSerializer
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -18,9 +18,9 @@ from drf_spectacular.views import (
 )
 
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    """Custom token view using our custom serializer."""
-    serializer_class = CustomTokenObtainPairSerializer
+class FlexibleTokenObtainPairView(TokenObtainPairView):
+    """JWT view that accepts customer_number or username for authentication."""
+    serializer_class = FlexibleTokenObtainPairSerializer
 
 
 # Create router for ViewSet registration
@@ -36,7 +36,7 @@ app_name = 'api'
 
 urlpatterns = [
     # JWT Authentication endpoints
-    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/', FlexibleTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
 

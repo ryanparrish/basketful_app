@@ -26,10 +26,10 @@ import {
   Cancel,
   Pending,
 } from '@mui/icons-material';
-import type { Order } from '../../shared/types/api';
+import type { Order, OrderListItem } from '../../shared/types/api';
 
 interface OrderCardProps {
-  order: Order;
+  order: Order | OrderListItem;
 }
 
 const getStatusConfig = (status: string) => {
@@ -49,7 +49,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = getStatusConfig(order.status);
-  const orderDate = new Date(order.created_at);
+  const orderDate = new Date(order.created_at || order.order_date);
   const formattedDate = orderDate.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -102,7 +102,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
             {itemCount} {itemCount === 1 ? 'item' : 'items'} ({totalQuantity} total)
           </Typography>
           <Typography variant="h6" color="primary" fontWeight={600}>
-            ${order.total.toFixed(2)}
+            ${(order.total || order.total_price).toFixed(2)}
           </Typography>
         </Stack>
 
@@ -128,7 +128,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
             {order.items?.map((item, idx) => (
               <ListItem key={idx} disableGutters>
                 <ListItemText
-                  primary={item.product_name || `Product #${item.product_id}`}
+                  primary={item.product_name || `Product #${item.product_id || item.product}`}
                   secondary={`Qty: ${item.quantity}`}
                 />
                 <Typography variant="body2">

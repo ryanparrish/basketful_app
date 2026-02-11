@@ -22,7 +22,7 @@ def mark_as_applied(modeladmin, request, queryset):
 
 
 @admin.register(Voucher)
-class VoucherAdmin(admin.ModelAdmin):
+class VoucherAdmin(admin.Mwe codelAdmin):
     """Admin for Voucher model with custom actions and inlines."""
     # Fields to show in the list view
     list_display = (

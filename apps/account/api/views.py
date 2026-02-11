@@ -133,6 +133,20 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             return ParticipantCreateSerializer
         return ParticipantSerializer
 
+    @action(detail=False, methods=['get'], url_path='me/balances', permission_classes=[IsAuthenticated])
+    def me_balances(self, request):
+        """Get balance summary for the current authenticated user's participant."""
+        try:
+            participant = request.user.participant
+            balances = participant.balances()
+            serializer = BalanceSummarySerializer(balances)
+            return Response(serializer.data)
+        except Participant.DoesNotExist:
+            return Response(
+                {'error': 'No participant profile found for this user'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
     @action(detail=True, methods=['get'])
     def balances(self, request, pk=None):
         """Get balance summary for a participant."""

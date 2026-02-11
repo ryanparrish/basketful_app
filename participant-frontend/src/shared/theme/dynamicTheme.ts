@@ -2,7 +2,7 @@
  * Dynamic Theme Configuration
  * Fetches theme from backend with 4-hour caching
  */
-import { createTheme, Theme, ThemeOptions } from '@mui/material/styles';
+import { createTheme, type Theme, type ThemeOptions } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { getThemeConfig } from '../api/endpoints';
 import type { ThemeConfig } from '../types/api';
@@ -22,10 +22,10 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
   const themeOptions: ThemeOptions = {
     palette: {
       primary: {
-        main: config.primary_color,
+        main: config?.primary_color || defaultTheme.primary_color,
       },
       secondary: {
-        main: config.secondary_color,
+        main: config?.secondary_color || defaultTheme.secondary_color,
       },
       background: {
         default: '#f5f5f5',
@@ -142,9 +142,10 @@ export const useThemeConfig = () => {
   }
 
   // Update theme color meta tag
+  const primaryColor = themeConfig?.primary_color || defaultTheme.primary_color;
   const themeColorMeta = document.querySelector('meta[name="theme-color"]');
   if (themeColorMeta) {
-    themeColorMeta.setAttribute('content', themeConfig.primary_color);
+    themeColorMeta.setAttribute('content', primaryColor);
   }
 
   // Update favicon if provided

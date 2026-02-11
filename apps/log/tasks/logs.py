@@ -241,31 +241,23 @@ def update_voucher_flag(
 
     now = timezone.now()
 
-    # Duration check for program pause
+    # --- Duration check (protects against premature deactivation) ---
     if program_pause_id:
         try:
             pp = ProgramPause.objects.get(id=program_pause_id)
         except ProgramPause.DoesNotExist:
             logger.warning(
-                "ProgramPause %s not found; skipping duration check.",
+                "[Task] ProgramPause %s not found; skipping duration check.",
                 program_pause_id
             )
             pp = None
 
         if pp:
-            if activate and pp.pause_start and pp.pause_start > now:
-                logger.info(
-                    "Skipping activation for vouchers %s: "
-                    "ProgramPause %s has not started yet (starts %s, now=%s).",
-                    voucher_ids,
-                    pp.id,
-                    pp.pause_start,
-                    now
-                )
-                return
+            # Only prevent premature deactivation, not activation
+            # (activation can happen during 11-14 day ordering window)
             if not activate and pp.pause_end and pp.pause_end > now:
                 logger.info(
-                    "Skipping deactivation for vouchers %s: ProgramPause %s "
+                    "[Task] Skipping deactivation for vouchers %s: ProgramPause %s "
                     "has not ended yet (ends %s, now=%s).",
                     voucher_ids,
                     pp.id,

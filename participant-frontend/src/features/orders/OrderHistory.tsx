@@ -5,7 +5,6 @@
 import React from 'react';
 import {
   Box,
-  Container,
   Typography,
   Alert,
   CircularProgress,
@@ -17,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getOrders } from '../../shared/api/endpoints';
 import { OrderCard } from './OrderCard';
 import { useNavigate } from 'react-router-dom';
+import { PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const OrderHistory: React.FC = () => {
   const navigate = useNavigate();
@@ -42,7 +42,12 @@ export const OrderHistory: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="md" sx={{ py: 3, pb: 10 }}>
+    <Box sx={{ 
+      ...useFullWidth(),
+      pt: 0,
+      pb: PAGE_PADDING.bottom,
+      px: PAGE_PADDING.x,
+    }}>
       {/* Header */}
       <Box
         sx={{
@@ -112,7 +117,7 @@ export const OrderHistory: React.FC = () => {
           ))}
         </Box>
       )}
-    </Container>
+    </Box>
   );
 };
 

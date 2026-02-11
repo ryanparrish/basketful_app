@@ -30,11 +30,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <Grid container spacing={2}>
+      <Grid container spacing={3}>
         {[...Array(8)].map((_, index) => (
           <Grid
             key={`skeleton-${index}`}
-            size={{ xs: 6, sm: 4, md: 3, lg: 2 }}
+            size={{ xs: 6, sm: 4, md: 3, lg: 3 }}
           >
             <ProductSkeleton />
           </Grid>
@@ -62,11 +62,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   }
 
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={3}>
       {products.map((product) => (
         <Grid
           key={product.id}
-          size={{ xs: 6, sm: 4, md: 3, lg: 2 }}
+          size={{ xs: 6, sm: 4, md: 3, lg: 3 }}
         >
           <ProductCard product={product} />
         </Grid>

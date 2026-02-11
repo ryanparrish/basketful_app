@@ -33,7 +33,17 @@ HASHIDS_SALT = env('HASHIDS_SALT', default='default-salt-change-in-production')
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
-DEBUG = env.bool('DEBUG', default=True)
+DEBUG = env.bool('DEBUG', default=False)
+
+# Cookie settings based on environment
+if ENVIRONMENT == 'prod':
+    AUTH_COOKIE_SECURE = True
+    AUTH_COOKIE_SAMESITE = 'Lax'
+    AUTH_COOKIE_DOMAIN = env('COOKIE_DOMAIN', default=None)
+else:
+    AUTH_COOKIE_SECURE = False
+    AUTH_COOKIE_SAMESITE = 'Lax'
+    AUTH_COOKIE_DOMAIN = None
 
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TASK_EAGER_PROPAGATES = env.bool(
@@ -157,6 +167,7 @@ INSTALLED_APPS = [
     # Django REST Framework
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'drf_spectacular',
@@ -188,6 +199,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.SecurityHeadersMiddleware',
     'core.middleware.GlobalErrorMiddleware',
 ]
 
@@ -215,6 +227,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': (
+            'django.contrib.auth.password_validation.'
+            'UserAttributeSimilarityValidator'
+        ),
+    },
     {
         'NAME': (
             'django.contrib.auth.password_validation.'
@@ -307,11 +325,20 @@ TINYMCE_DEFAULT_CONFIG = {
 # =============================================================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.account.api.authentication.CookieJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute',
+        'user': '100/minute',
+        'login': '5/minute',
+    },
     'DEFAULT_PAGINATION_CLASS': 'apps.api.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 25,
     'DEFAULT_FILTER_BACKENDS': [
@@ -334,14 +361,25 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    # Cookie settings for httpOnly cookies
+    'AUTH_COOKIE': 'access_token',
+    'AUTH_COOKIE_REFRESH': 'refresh_token',
+    'AUTH_COOKIE_HTTP_ONLY': True,
+    'AUTH_COOKIE_SECURE': AUTH_COOKIE_SECURE,
+    'AUTH_COOKIE_SAMESITE': AUTH_COOKIE_SAMESITE,
+    'AUTH_COOKIE_PATH': '/',
 }
 
 # CORS Settings - React frontend origins
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'http://127.0.0.1:5175',
 ])
 CORS_ALLOW_CREDENTIALS = True
 

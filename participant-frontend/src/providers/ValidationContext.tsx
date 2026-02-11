@@ -6,7 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCartContext } from './CartProvider';
 import { validateCart, getProgramConfig, getBalances } from '../shared/api/endpoints';
-import type { ValidationResponse, ProgramConfig, Balances, ValidationError } from '../shared/types/api';
+import type { ProgramConfig, Balances, ValidationError } from '../shared/types/api';
 
 interface ValidationState {
   isValid: boolean;
@@ -51,7 +51,7 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
     lastValidated: null,
   });
 
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<number | null>(null);
   const lastRuleVersionRef = useRef<number | null>(null);
 
   // Fetch program config

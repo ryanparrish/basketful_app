@@ -17,12 +17,22 @@ import type {
   CreateOrderRequest,
   CreateOrderResponse,
   ParticipantProfile,
+  Balances,
 } from '../types/api';
 
 // Theme & Settings (public endpoints)
 export const getThemeConfig = async (): Promise<ThemeConfig> => {
   const response = await apiClient.get('/settings/theme-config/');
-  return response.data;
+  // Handle both array and single object response
+  const data = Array.isArray(response.data) ? response.data[0] : response.data;
+  return data || {
+    primary_color: '#1976d2',
+    secondary_color: '#dc004e',
+    logo: null,
+    app_name: 'Basketful',
+    favicon: null,
+    updated_at: new Date().toISOString(),
+  };
 };
 
 export const getProgramConfig = async (): Promise<ProgramConfig> => {
@@ -115,4 +125,59 @@ export const getAccountBalance = async (): Promise<{
 }> => {
   const response = await apiClient.get('/account-balances/me/');
   return response.data;
+};
+
+// Authentication - Cookie-based with httpOnly cookies
+export const login = async (credentials: { customer_number: string; password: string; recaptcha_token?: string }) => {
+  // Use the new cookie-based auth endpoint
+  const response = await apiClient.post('/auth/login/', {
+    username: credentials.customer_number,
+    password: credentials.password,
+    recaptcha_token: credentials.recaptcha_token
+  });
+  return response.data;
+};
+
+export const logout = async (_refreshToken: string) => {
+  // Use the new cookie-based logout endpoint that blacklists tokens
+  try {
+    await apiClient.post('/auth/logout/');
+  } catch {
+    // Ignore errors - cookies will be cleared on the server
+  }
+  return { success: true };
+};
+
+export const refreshTokenRequest = async (_refreshToken: string) => {
+  // Use the new cookie-based refresh endpoint - token is read from cookie
+  const response = await apiClient.post('/auth/refresh/');
+  return response.data;
+};
+
+// Verify auth status
+export const checkAuth = async (): Promise<{ is_authenticated: boolean; user?: { id: number; username: string; email: string } }> => {
+  const response = await apiClient.get('/auth/me/');
+  return response.data;
+};
+
+// Balances (updated)
+export const getBalances = async (): Promise<Balances> => {
+  const response = await apiClient.get('/participants/me/balances/');
+  const data = response.data;
+  
+  // Ensure all balance values are numbers
+  const availableBalance = Number(data.available_balance) || 0;
+  const hygieneBalance = Number(data.hygiene_balance) || 0;
+  const goFreshBalance = Number(data.go_fresh_balance) || 0;
+  const fullBalance = Number(data.full_balance) || 0;
+  
+  return {
+    available_balance: availableBalance,
+    hygiene_balance: hygieneBalance,
+    go_fresh_balance: goFreshBalance,
+    total_voucher_amount: 0, // Not provided by backend yet
+    remaining_budget: availableBalance,
+    total_budget: fullBalance,
+    used_budget: fullBalance - availableBalance,
+  };
 };

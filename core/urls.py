@@ -14,9 +14,12 @@ from apps.orders import views as order_views
 from apps.lifeskills import views as lifeskills_views
 from apps.account import views as account_views
 from apps.pantry import views as pantry_views
-from .views import index
+from .views import index, health_check
 
 urlpatterns = [
+    # Health check endpoint (for load balancers)
+    path('api/health/', health_check, name='health_check'),
+    
     # API v1 endpoints
     path('api/v1/', include('apps.api.urls', namespace='api')),
 

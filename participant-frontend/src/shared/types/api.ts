@@ -16,6 +16,11 @@ export interface ProgramConfig {
   grace_amount: number;
   grace_enabled: boolean;
   grace_message: string;
+  rule_version: number;
+  order_window_open: boolean;
+  order_window_closes: string | null;
+  grace_period_minutes: number;
+  max_items_per_order: number | null;
   updated_at: string;
 }
 
@@ -27,16 +32,25 @@ export interface User {
   participant_id: number;
   customer_number: string;
   name: string;
+  first_name: string;
+  last_name: string;
 }
 
 export interface TokenResponse {
   access: string;
   refresh: string;
+  user: User;
 }
 
-export interface LoginCredentials {
-  username: string;
+export interface LoginRequest {
+  customer_number: string;
   password: string;
+  recaptcha_token?: string;
+}
+
+export interface AuthTokens {
+  access: string;
+  refresh: string;
 }
 
 // Products and Categories
@@ -44,13 +58,6 @@ export interface Category {
   id: number;
   name: string;
   product_count: number;
-}
-
-export interface Subcategory {
-  id: number;
-  name: string;
-  category: number;
-  category_name: string;
 }
 
 export interface Product {
@@ -61,58 +68,24 @@ export interface Product {
   image: string | null;
   category: number;
   category_name: string;
-  subcategory: number | null;
-  subcategory_name: string | null;
-  quantity_in_stock: number;
-  active: boolean;
-  is_meat: boolean;
-  weight_lbs: number | null;
-  tags: Tag[];
-}
-
-export interface Tag {
-  id: number;
-  name: string;
-  slug: string;
+  is_available: boolean;
+  unit: string | null;
 }
 
 // Cart and Validation
 export interface CartItem {
-  id: string;
   product_id: number;
-  name: string;
-  price: number;
   quantity: number;
-  image?: string | null;
-  category_name?: string;
 }
 
 export interface ValidationRequest {
-  participant_id: number;
-  items: Array<{
-    product_id: number;
-    quantity: number;
-  }>;
+  items: CartItem[];
 }
 
-export interface ValidationViolation {
-  type: 'limit' | 'balance' | 'stock' | 'window';
-  severity: 'error' | 'warning';
+export interface ValidationError {
+  type: string;
   message: string;
-  amount_over?: number;
-  grace_allowed?: boolean;
-  category_name?: string;
-  product_name?: string;
-}
-
-export interface CategoryLimit {
-  category_id: number;
-  category_name: string;
-  subcategory_id?: number;
-  subcategory_name?: string;
-  used: number;
-  max: number;
-  scope: 'per_adult' | 'per_child' | 'per_infant' | 'per_household' | 'per_order';
+  product_id?: number;
 }
 
 export interface Balances {
@@ -120,90 +93,43 @@ export interface Balances {
   hygiene_balance: number;
   go_fresh_balance: number;
   total_voucher_amount: number;
+  remaining_budget: number;
+  total_budget: number;
+  used_budget: number;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  violations: ValidationViolation[];
+  errors: ValidationError[];
+  warnings: ValidationError[];
   balances: Balances;
-  limits: CategoryLimit[];
-  rules_version: string;
-  cart_total: number;
-}
-
-export interface RulesVersionResponse {
-  rules_version: string;
-}
-
-// Order Window
-export interface OrderWindowStatus {
-  id: number;
-  hours_before_class: number;
-  hours_before_close: number;
-  enabled: boolean;
-  is_open: boolean;
-  opens_at: string | null;
-  closes_at: string | null;
-  next_class_time: string | null;
 }
 
 // Orders
 export interface OrderItem {
   id: number;
   product: number;
+  product_id: number;
   product_name: string;
-  product_category: string;
   quantity: number;
   price: number;
-  price_at_order: number;
   total: number;
 }
 
 export interface Order {
   id: number;
   order_number: string;
-  account: number;
-  participant_name: string;
-  participant_customer_number: string;
-  program_name: string;
   order_date: string;
-  status: 'pending' | 'confirmed' | 'packing' | 'completed' | 'cancelled';
-  paid: boolean;
-  go_fresh_total: number;
+  status: string;
   items: OrderItem[];
   total_price: number;
-  is_combined: boolean;
-  validation_logs: ValidationLog[];
+  total: number;
   created_at: string;
-  updated_at: string;
-}
-
-export interface OrderListItem {
-  id: number;
-  order_number: string;
-  participant_name: string;
-  participant_customer_number: string;
-  status: Order['status'];
-  paid: boolean;
-  total_price: number;
-  item_count: number;
-  order_date: string;
-  created_at: string;
-}
-
-export interface ValidationLog {
-  id: number;
-  order: number;
-  error_message: string;
-  created_at: string;
+  notes?: string;
 }
 
 export interface CreateOrderRequest {
-  account: number;
-  items: Array<{
-    product: number;
-    quantity: number;
-  }>;
+  items: CartItem[];
 }
 
 export interface CreateOrderResponse {
@@ -211,30 +137,38 @@ export interface CreateOrderResponse {
   order_number: string;
 }
 
-// Participant Profile
-export interface ParticipantProfile {
-  id: number;
-  customer_number: string;
-  name: string;
-  email: string;
-  phone_number: string;
-  program: number;
-  program_name: string;
-  active: boolean;
-  adults: number;
-  children: number;
-  infants: number;
-  dietary_restrictions: string;
-  account_balance_id: number;
-  available_balance: number;
-  hygiene_balance: number;
-  go_fresh_balance: number;
-}
-
-// API Response wrappers
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
   previous: string | null;
   results: T[];
+}
+
+export interface RulesVersionResponse {
+  rules_version: string;
+}
+
+export interface OrderWindowStatus {
+  is_open: boolean;
+  closes_at: string | null;
+}
+
+export interface OrderListItem {
+  id: number;
+  order_number: string;
+  order_date: string;
+  status: string;
+  total_price: number;
+  item_count: number;
+  items?: OrderItem[];
+  total?: number;
+  created_at?: string;
+  notes?: string;
+}
+
+export interface ParticipantProfile {
+  id: number;
+  customer_number: string;
+  name: string;
+  email: string;
 }

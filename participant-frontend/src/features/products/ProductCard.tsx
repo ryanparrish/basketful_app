@@ -32,6 +32,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
   const { addItem, updateItemQuantity, removeItem } = useCartContext();
   const { isInCart, quantity } = useItemInCart(product.id);
   const { getErrorsForProduct, getWarningsForProduct } = useValidation();
+  const [showAddAnimation, setShowAddAnimation] = React.useState(false);
 
   const errors = getErrorsForProduct(product.id);
   const warnings = getWarningsForProduct(product.id);
@@ -44,6 +45,9 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
     } else {
       addItem(product, 1);
     }
+    // Trigger animation
+    setShowAddAnimation(true);
+    setTimeout(() => setShowAddAnimation(false), 1000);
   };
 
   const handleRemove = () => {
@@ -96,6 +100,55 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
           <Chip label="Unavailable" size="small" />
         )}
       </Box>
+
+      {/* Quick Add Button - Top Left */}
+      {!isInCart && !isUnavailable && (
+        <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 1 }}>
+          <IconButton
+            size="small"
+            onClick={handleAdd}
+            sx={{
+              bgcolor: 'primary.main',
+              color: 'white',
+              '&:hover': {
+                bgcolor: 'primary.dark',
+              },
+              boxShadow: 2,
+            }}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
+
+      {/* Add to Cart Animation */}
+      {showAddAnimation && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 10,
+            pointerEvents: 'none',
+            animation: 'fadeOutUp 1s ease-out',
+            '@keyframes fadeOutUp': {
+              '0%': {
+                opacity: 1,
+                transform: 'translate(-50%, -50%) scale(1)',
+              },
+              '100%': {
+                opacity: 0,
+                transform: 'translate(-50%, -100%) scale(1.5)',
+              },
+            },
+          }}
+        >
+          <Typography variant="h4" color="success.main" sx={{ fontWeight: 'bold' }}>
+            +1
+          </Typography>
+        </Box>
+      )}
 
       {/* Quantity Badge */}
       {isInCart && (

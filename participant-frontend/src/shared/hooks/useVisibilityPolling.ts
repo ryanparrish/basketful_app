@@ -29,7 +29,7 @@ export const useVisibilityPolling = ({
   enabled = true,
   immediate = false,
 }: UseVisibilityPollingOptions) => {
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<number | null>(null);
   const isVisibleRef = useRef(!document.hidden);
 
   const startPolling = useCallback(() => {

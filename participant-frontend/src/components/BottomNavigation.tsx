@@ -65,7 +65,7 @@ export const BottomNavigation: React.FC = () => {
       <Box
         sx={{
           position: 'fixed',
-          bottom: 70,
+          bottom: { xs: 70, lg: 16 },
           right: 16,
           zIndex: 1000,
         }}

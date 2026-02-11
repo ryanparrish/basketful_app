@@ -1,5 +1,5 @@
 # core/middleware.py
-"""Middleware for global error handling and logging."""
+"""Middleware for global error handling, logging, and security headers."""
 import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -8,6 +8,58 @@ from django.shortcuts import redirect
 from apps.log.models import OrderValidationLog
 
 logger = logging.getLogger("custom_validation")
+
+
+class SecurityHeadersMiddleware:
+    """
+    Middleware that adds security headers to all responses.
+    
+    Headers added:
+    - Content-Security-Policy: Restricts resource loading
+    - X-Content-Type-Options: Prevents MIME type sniffing
+    - X-Frame-Options: Prevents clickjacking
+    - Strict-Transport-Security: Enforces HTTPS
+    - Referrer-Policy: Controls referrer information
+    - Permissions-Policy: Restricts browser features
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        
+        # Content-Security-Policy
+        # Allow self, inline styles (needed for MUI), and Google reCAPTCHA
+        csp_directives = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "img-src 'self' data: https:",
+            "frame-src 'self' https://www.google.com",
+            "connect-src 'self' http://localhost:* https://www.google.com",
+        ]
+        response['Content-Security-Policy'] = '; '.join(csp_directives)
+        
+        # Prevent MIME type sniffing
+        response['X-Content-Type-Options'] = 'nosniff'
+        
+        # Prevent clickjacking (except for admin which may need iframes)
+        if not request.path.startswith('/admin/'):
+            response['X-Frame-Options'] = 'DENY'
+        
+        # HSTS - only in production with HTTPS
+        if settings.ENVIRONMENT == 'prod':
+            response['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+        
+        # Referrer policy - send origin only for cross-origin requests
+        response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        
+        # Permissions policy - disable unnecessary browser features
+        response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        
+        return response
 
 
 class GlobalErrorMiddleware:

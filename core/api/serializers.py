@@ -118,14 +118,20 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
 
 class ProgramSettingsSerializer(serializers.ModelSerializer):
     """Serializer for ProgramSettings model."""
+    recaptcha_site_key = serializers.SerializerMethodField()
 
     class Meta:
         model = ProgramSettings
         fields = [
             'id', 'grace_amount', 'grace_enabled', 'grace_message',
-            'rules_version', 'created_at', 'updated_at'
+            'rules_version', 'recaptcha_site_key', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'rules_version', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'rules_version', 'recaptcha_site_key', 'created_at', 'updated_at']
+
+    def get_recaptcha_site_key(self, obj):
+        """Get reCAPTCHA site key from Django settings."""
+        from django.conf import settings
+        return getattr(settings, 'RECAPTCHA_PUBLIC_KEY', None)
 
 
 class ThemeSettingsSerializer(serializers.ModelSerializer):
