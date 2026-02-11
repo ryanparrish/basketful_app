@@ -349,11 +349,13 @@ class TestUpdateVoucherFlagWithProgramPause:
         
         # Create a future pause (outside 11-14 day window, so no immediate activation)
         # Using 20 days in future to be outside the ordering window
-        pause = ProgramPause.objects.create(
+        pause = ProgramPause(
             pause_start=now + timedelta(days=20),
             pause_end=now + timedelta(days=25),
             reason='Future Pause'
         )
+        pause._skip_signal = True
+        pause.save()
         
         # Try to activate - new logic allows activation during ordering window
         # but since we're outside the window (20 days), it should still activate
@@ -381,12 +383,14 @@ class TestUpdateVoucherFlagWithProgramPause:
         voucher.multiplier = 2
         voucher.save()
         
-        # Create a current/future pause
-        pause = ProgramPause.objects.create(
+        # Create a current/future pause (skip signal to avoid interference)
+        pause = ProgramPause(
             pause_start=now - timedelta(days=1),
             pause_end=now + timedelta(days=5),
             reason='Current Pause'
         )
+        pause._skip_signal = True
+        pause.save()
         
         # Try to deactivate - should skip
         update_voucher_flag(
@@ -407,12 +411,14 @@ class TestUpdateVoucherFlagWithProgramPause:
         """Test successful activation when pause has started."""
         now = timezone.now()
         
-        # Create a pause that has started
-        pause = ProgramPause.objects.create(
+        # Create a pause that has started (skip signal to avoid interference)
+        pause = ProgramPause(
             pause_start=now - timedelta(days=1),
             pause_end=now + timedelta(days=5),
             reason='Active Pause'
         )
+        pause._skip_signal = True
+        pause.save()
         
         # Activate - should succeed
         update_voucher_flag(
@@ -438,12 +444,14 @@ class TestUpdateVoucherFlagWithProgramPause:
         voucher.multiplier = 2
         voucher.save()
         
-        # Create a pause that has ended
-        pause = ProgramPause.objects.create(
+        # Create a pause that has ended (skip signal to avoid interference)
+        pause = ProgramPause(
             pause_start=now - timedelta(days=10),
             pause_end=now - timedelta(days=1),
             reason='Ended Pause'
         )
+        pause._skip_signal = True
+        pause.save()
         
         # Deactivate - should succeed
         update_voucher_flag(
