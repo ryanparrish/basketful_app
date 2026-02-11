@@ -91,6 +91,40 @@ def test_user_fixture():
     )
 
 
+@pytest.fixture
+def email_type_onboarding():
+    """Create or get onboarding email type for testing."""
+    from apps.log.models import EmailType
+    email_type, _ = EmailType.objects.get_or_create(
+        name='onboarding',
+        defaults={
+            'subject': 'Welcome to {{ site_name }}',
+            'html_template': '<p>Welcome {{ user.username }}!</p>',
+            'text_template': 'Welcome {{ user.username }}!',
+            'is_active': True
+        }
+    )
+    # Ensure it's active even if it already existed
+    if not email_type.is_active:
+        email_type.is_active = True
+        email_type.save()
+    return email_type
+
+
+@pytest.fixture
+def email_settings():
+    """Ensure email settings exist."""
+    from core.models import EmailSettings
+    settings, _ = EmailSettings.objects.get_or_create(
+        id=1,
+        defaults={
+            'from_email': 'noreply@example.com',
+            'reply_to': 'support@example.com'
+        }
+    )
+    return settings
+
+
 # ============================================================
 # Participant and Account Signal Tests
 # ============================================================
@@ -326,7 +360,9 @@ class TestEmailTasks:
             force=False
         )
 
-    def test_email_tasks_create_log_and_prevent_duplicates(self, test_user_fixture, mocker):
+    def test_email_tasks_create_log_and_prevent_duplicates(
+        self, test_user_fixture, email_type_onboarding, email_settings, mocker
+    ):
         """
         Tests that sending an email creates an EmailLog, and a second attempt
         to send the same email type to the same user is blocked.

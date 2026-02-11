@@ -378,6 +378,11 @@ class TestUpdateVoucherFlagWithProgramPause:
         """Test that deactivation is skipped if pause hasn't ended yet."""
         now = timezone.now()
         
+        # Ensure voucher starts fresh (no residual state from other tests)
+        voucher.program_pause_flag = False
+        voucher.multiplier = 1
+        voucher.save()
+        
         # Set up voucher with flag active
         voucher.program_pause_flag = True
         voucher.multiplier = 2
