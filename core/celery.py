@@ -15,15 +15,9 @@ app = Celery("core")
 
 # --- Override for test mode BEFORE loading Django settings ---
 # Detect pytest via environment variable or sys.modules
-<<<<<<< Updated upstream
-is_test = (os.environ.get('PYTEST_CURRENT_TEST') or 
-          'pytest' in sys.modules or 
-          any('pytest' in arg for arg in sys.argv))
-=======
 is_test = (os.environ.get('PYTEST_CURRENT_TEST') or
            'pytest' in sys.modules or
            any('pytest' in arg for arg in sys.argv))
->>>>>>> Stashed changes
 
 if is_test:
     # Set eager mode before loading Django config
