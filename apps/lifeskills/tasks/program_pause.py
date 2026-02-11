@@ -156,6 +156,7 @@ def update_voucher_flag_task(
         logger.exception("[Task] Error updating vouchers: %s", voucher_ids)
         raise self.retry(exc=exc)
 
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def deactivate_expired_pause_vouchers(self, program_pause_id):
     """

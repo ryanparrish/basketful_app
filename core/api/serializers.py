@@ -44,7 +44,7 @@ class OrderWindowSettingsSerializer(serializers.ModelSerializer):
             window_closes = next_class.date - timedelta(hours=obj.hours_before_close)
             
             return window_opens <= now <= window_closes
-        except:
+        except Exception:
             # If can't determine, default to closed for safety
             return False
     
@@ -65,7 +65,7 @@ class OrderWindowSettingsSerializer(serializers.ModelSerializer):
             
             window_opens = next_class.date - timedelta(hours=obj.hours_before_class)
             return window_opens.isoformat() if window_opens > now else None
-        except:
+        except Exception:
             return None
     
     def get_next_closes_at(self, obj):
@@ -85,7 +85,7 @@ class OrderWindowSettingsSerializer(serializers.ModelSerializer):
             
             window_closes = next_class.date - timedelta(hours=obj.hours_before_close)
             return window_closes.isoformat() if window_closes > now else None
-        except:
+        except Exception:
             return None
 
 

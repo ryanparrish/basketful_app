@@ -27,7 +27,7 @@ def update_rules_version(sender, instance, **kwargs):
         program_settings = ProgramSettings.objects.first()
         if program_settings:
             rule_data.append(f"program:{program_settings.grace_amount}:{program_settings.grace_enabled}")
-    except:
+    except Exception:
         pass
     
     # OrderWindowSettings
@@ -35,7 +35,7 @@ def update_rules_version(sender, instance, **kwargs):
         order_window = OrderWindowSettings.objects.first()
         if order_window:
             rule_data.append(f"window:{order_window.hours_before_class}:{order_window.hours_before_close}:{order_window.enabled}")
-    except:
+    except Exception:
         pass
     
     # ProductLimits
@@ -43,7 +43,7 @@ def update_rules_version(sender, instance, **kwargs):
         limits = ProductLimit.objects.values_list('id', 'limit', 'limit_scope', 'category_id', 'subcategory_id')
         for limit_data in limits:
             rule_data.append(f"limit:{':'.join(map(str, limit_data))}")
-    except:
+    except Exception:
         pass
     
     # GoFreshSettings
@@ -51,7 +51,7 @@ def update_rules_version(sender, instance, **kwargs):
         go_fresh = GoFreshSettings.objects.first()
         if go_fresh:
             rule_data.append(f"gofresh:{go_fresh.enabled}:{go_fresh.amount_1_2}:{go_fresh.amount_3_5}:{go_fresh.amount_6_plus}")
-    except:
+    except Exception:
         pass
     
     # Generate MD5 hash
@@ -68,7 +68,7 @@ def update_rules_version(sender, instance, **kwargs):
             program_settings = ProgramSettings.objects.first()
             if program_settings and program_settings.rules_version != rules_hash:
                 ProgramSettings.objects.filter(pk=program_settings.pk).update(rules_version=rules_hash)
-        except:
+        except Exception:
             pass
 
 
