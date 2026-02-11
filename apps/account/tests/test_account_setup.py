@@ -370,8 +370,12 @@ class TestEmailTasks:
         # --- ARRANGE ---
         user = test_user_fixture
         
-        # Mock the database lookups to return our fixture objects
-        # This avoids transaction visibility issues between test and task in CI
+        # Mock all database lookups to avoid transaction visibility issues in CI
+        # The task performs User.objects.get, get_email_type, and get_email_settings
+        mocker.patch(
+            "apps.account.tasks.email.User.objects.get",
+            return_value=user
+        )
         mocker.patch(
             "apps.account.tasks.email.get_email_type",
             return_value=email_type_onboarding
