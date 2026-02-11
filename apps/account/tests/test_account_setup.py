@@ -329,7 +329,7 @@ class TestUserOnboardingSignals:
 # ============================================================
 # Email Task Tests
 # ============================================================
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestEmailTasks:
     """
     Tests for the Celery tasks that send emails. These tests do not actually
@@ -373,16 +373,29 @@ class TestEmailTasks:
         # Clean up any existing email logs for this user to ensure clean test state
         EmailLog.objects.filter(user=user).delete()
         
+        # Verify fixtures are properly set up
+        from apps.log.models import EmailType
+        assert EmailType.objects.filter(name='onboarding', is_active=True).exists(), \
+            "EmailType 'onboarding' not found or not active"
+        from core.models import EmailSettings
+        assert EmailSettings.objects.filter(pk=1).exists(), \
+            "EmailSettings not found"
+        
         mock_send_message = mocker.patch(
             "apps.account.tasks.email.send_email_message"
         )   
         
         # --- ACT (First Call) ---
-        send_new_user_onboarding_email(user.id)
+        result = send_new_user_onboarding_email(user.id)
+        
+        # Debug: Check what the task returned
+        logger.debug(f"Task returned: {result}")
+        logger.debug(f"Mock call count: {mock_send_message.call_count}")
 
         # --- ASSERT (First Call) ---
         # --- Check that the email was sent the first time ---
-        assert mock_send_message.call_count == 1
+        assert mock_send_message.call_count == 1, \
+            f"Expected 1 call but got {mock_send_message.call_count}. Task result: {result}"
         # --- Check that a log was created in the database ---
         assert EmailLog.objects.filter(user=user, email_type__name="onboarding").exists()
 
