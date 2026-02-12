@@ -100,12 +100,19 @@ def calculate_full_balance(account_balance) -> Decimal:
 def calculate_hygiene_balance(account_balance) -> Decimal:
     """
     Compute the hygiene-specific balance for an account.
-    Defined as 1/3 of the full balance.
+    Uses configurable ratio from HygieneSettings (default: 1/3 of available balance).
     """
     if not account_balance:
         return Decimal(0)
 
-    return account_balance.available_balance / Decimal(3)
+    # Import here to avoid circular dependency
+    from apps.account.models import HygieneSettings
+    
+    settings = HygieneSettings.get_settings()
+    if not settings.enabled:
+        return Decimal(0)
+
+    return account_balance.available_balance * settings.hygiene_ratio
 
 
 def calculate_go_fresh_balance(account_balance) -> Decimal:

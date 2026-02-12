@@ -11,6 +11,7 @@ from .views import (
     ParticipantViewSet,
     AccountBalanceViewSet,
     GoFreshSettingsViewSet,
+    HygieneSettingsViewSet,
 )
 from .auth_views import (
     CookieTokenObtainView,
@@ -26,6 +27,7 @@ router.register(r'permissions', PermissionViewSet, basename='permission')
 router.register(r'participants', ParticipantViewSet, basename='participant')
 router.register(r'account-balances', AccountBalanceViewSet, basename='accountbalance')
 router.register(r'go-fresh-settings', GoFreshSettingsViewSet, basename='gofreshsettings')
+router.register(r'hygiene-settings', HygieneSettingsViewSet, basename='hygienesettings')
 
 urlpatterns = [
     # Cookie-based auth endpoints

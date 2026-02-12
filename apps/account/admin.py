@@ -12,7 +12,7 @@ from django.apps import apps
 # Local app imports
 from .models import Participant
 from .forms import CustomUserCreationForm, ParticipantAdminForm
-from .models import UserProfile, AccountBalance, GoFreshSettings
+from .models import UserProfile, AccountBalance, GoFreshSettings, HygieneSettings
 from .utils.user_utils import _generate_admin_username, create_participant_user
 from .utils.balance_utils import calculate_base_balance
 from .tasks.email import send_password_reset_email, send_new_user_onboarding_email
@@ -447,5 +447,49 @@ class GoFreshSettingsAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Prevent deletion of the settings."""
         return False
+
+
+@admin.register(HygieneSettings)
+class HygieneSettingsAdmin(admin.ModelAdmin):
+    """Admin interface for Hygiene Settings (singleton)."""
+    
+    list_display = ['get_hygiene_summary', 'enabled']
+    
+    fieldsets = (
+        ('Hygiene Balance Configuration', {
+            'fields': ('hygiene_ratio',),
+            'description': (
+                '<p><strong>Hygiene Ratio:</strong> The percentage of available balance allocated for hygiene products.</p>'
+                '<ul>'
+                '<li><strong>0.3333</strong> = 1/3 of balance (default)</li>'
+                '<li><strong>0.5000</strong> = 1/2 of balance</li>'
+                '<li><strong>0.2500</strong> = 1/4 of balance</li>'
+                '</ul>'
+                '<p>⚠️ <strong>Impact:</strong> Changes affect hygiene balance calculations immediately for all participants.</p>'
+            )
+        }),
+        ('Feature Control', {
+            'fields': ('enabled',),
+            'description': 'Enable or disable hygiene balance calculation system-wide.'
+        }),
+    )
+    
+    def get_hygiene_summary(self, obj):
+        """Display hygiene configuration summary."""
+        if obj:
+            percentage = float(obj.hygiene_ratio * 100)
+            return f"Hygiene Ratio: {obj.hygiene_ratio} ({percentage:.2f}%)"
+        return "No settings configured"
+    
+    get_hygiene_summary.short_description = 'Configuration'
+    
+    def has_add_permission(self, request):
+        """Prevent adding multiple instances (singleton)."""
+        return not HygieneSettings.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of the settings."""
+        return False
+
 
 

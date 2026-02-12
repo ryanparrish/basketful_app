@@ -15,6 +15,7 @@ from apps.account.models import (
     Participant,
     AccountBalance,
     GoFreshSettings,
+    HygieneSettings,
 )
 from .serializers import (
     UserSerializer,
@@ -26,6 +27,7 @@ from .serializers import (
     ParticipantCreateSerializer,
     AccountBalanceSerializer,
     GoFreshSettingsSerializer,
+    HygieneSettingsSerializer,
     BalanceSummarySerializer,
 )
 
@@ -200,3 +202,34 @@ class GoFreshSettingsViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class HygieneSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for HygieneSettings singleton.
+    
+    Only one instance exists - use list/retrieve to get settings,
+    update/partial_update to modify.
+    """
+    queryset = HygieneSettings.objects.all()
+    serializer_class = HygieneSettingsSerializer
+    permission_classes = [IsAuthenticated, IsSingletonAdmin]
+
+    def get_object(self):
+        """Always return the singleton instance."""
+        return HygieneSettings.get_settings()
+
+    def list(self, request, *args, **kwargs):
+        """Return the singleton as a single object."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """Create/update the singleton."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+

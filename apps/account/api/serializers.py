@@ -10,6 +10,7 @@ from apps.account.models import (
     Participant,
     AccountBalance,
     GoFreshSettings,
+    HygieneSettings,
 )
 
 
@@ -202,9 +203,19 @@ class GoFreshSettingsSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class HygieneSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for HygieneSettings singleton."""
+
+    class Meta:
+        model = HygieneSettings
+        fields = ['id', 'hygiene_ratio', 'enabled']
+        read_only_fields = ['id']
+
+
 class BalanceSummarySerializer(serializers.Serializer):
     """Serializer for balance summary endpoint."""
     full_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
     available_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
     hygiene_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
     go_fresh_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+

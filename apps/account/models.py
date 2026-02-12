@@ -266,3 +266,44 @@ class GoFreshSettings(models.Model):
         return f"Go Fresh Settings (Small: ${self.small_household_budget}, Medium: ${self.medium_household_budget}, Large: ${self.large_household_budget})"
 
 
+class HygieneSettings(models.Model):
+    """
+    Singleton model for hygiene balance calculation settings.
+    Controls what percentage of available balance is allocated for hygiene products.
+    """
+    hygiene_ratio = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal('0.3333'),
+        help_text="Ratio of available balance allocated for hygiene (e.g., 0.3333 = 1/3)"
+    )
+    enabled = models.BooleanField(
+        default=True,
+        help_text="Enable hygiene balance calculation"
+    )
+
+    class Meta:
+        verbose_name = "Hygiene Settings"
+        verbose_name_plural = "Hygiene Settings"
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton pattern
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'hygiene_ratio': Decimal('0.3333'),
+                'enabled': True
+            }
+        )
+        return obj
+
+    def __str__(self) -> str:
+        return f"Hygiene Settings (Ratio: {self.hygiene_ratio}, Enabled: {self.enabled})"
+
+
