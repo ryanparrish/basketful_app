@@ -202,7 +202,7 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
     for participant in Participant.objects.filter(
         active=True, 
         program__isnull=False
-    ).select_related('program', 'account'):
+    ).select_related('program', 'accountbalance'):
         
         can_order, context = can_place_order(participant)
         window_closes = context.get('window_closes')
