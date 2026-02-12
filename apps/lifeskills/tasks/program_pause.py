@@ -91,15 +91,22 @@ def update_voucher_flag_task(
             pp = None
 
         if pp:
-            if activate and pp.pause_start and pp.pause_start > now:
+            # Check if we're in the ordering window (11-14 days before pause starts)
+            # or if the pause has already started
+            days_until_start = (pp.pause_start - now).days if pp.pause_start else 0
+            in_ordering_window = 11 <= days_until_start <= 14
+            pause_started = pp.pause_start and pp.pause_start <= now
+            
+            if activate and pp.pause_start and not (in_ordering_window or pause_started):
                 logger.info(
                     "[Task] Skipping activation for vouchers %s: "
-                    "ProgramPause %s has not started yet "
-                    "(starts %s, now=%s).",
+                    "ProgramPause %s is outside ordering window "
+                    "(starts %s, now=%s, days until start=%d).",
                     voucher_ids,
                     pp.id,
                     pp.pause_start,
-                    now
+                    now,
+                    days_until_start
                 )
                 return
             if not activate and pp.pause_end and pp.pause_end > now:
