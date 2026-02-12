@@ -1,6 +1,8 @@
 {% extends 'admin/base.html' %}
+{% load static %}
 
 {% block extrastyle %}{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/admin-extra.css' %}">
 <style>
 html[data-theme="light"], :root {
   --primary: #3c4f5e;
