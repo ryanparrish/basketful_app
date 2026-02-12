@@ -272,10 +272,10 @@ class HygieneSettings(models.Model):
     Controls what percentage of available balance is allocated for hygiene products.
     """
     hygiene_ratio = models.DecimalField(
-        max_digits=5,
-        decimal_places=4,
-        default=Decimal('0.3333'),
-        help_text="Ratio of available balance allocated for hygiene (e.g., 0.3333 = 1/3)"
+        max_digits=30,
+        decimal_places=28,
+        default=Decimal('1') / Decimal('3'),
+        help_text="Ratio of available balance allocated for hygiene (e.g., 0.333... = 1/3)"
     )
     enabled = models.BooleanField(
         default=True,
@@ -297,7 +297,7 @@ class HygieneSettings(models.Model):
         obj, created = cls.objects.get_or_create(
             pk=1,
             defaults={
-                'hygiene_ratio': Decimal('0.3333'),
+                'hygiene_ratio': Decimal('1') / Decimal('3'),
                 'enabled': True
             }
         )

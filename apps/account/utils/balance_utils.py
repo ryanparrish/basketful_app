@@ -112,6 +112,12 @@ def calculate_hygiene_balance(account_balance) -> Decimal:
     if not settings.enabled:
         return Decimal(0)
 
+    # Check if ratio is approximately 1/3 (accounting for database precision)
+    one_third = Decimal('1') / Decimal('3')
+    if abs(settings.hygiene_ratio - one_third) < Decimal('0.0000000001'):
+        # Use direct division for better precision
+        return account_balance.available_balance / Decimal('3')
+    
     return account_balance.available_balance * settings.hygiene_ratio
 
 

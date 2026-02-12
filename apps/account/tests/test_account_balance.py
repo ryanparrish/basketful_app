@@ -468,10 +468,11 @@ class TestHygieneBalanceCalculation:
     """Test calculate_hygiene_balance utility function."""
 
     def test_hygiene_balance_calculation(self, account_balance, vouchers, voucher_setting):
-        """Test hygiene balance is 1/3 of available balance."""
+        """Test hygiene balance uses HygieneSettings ratio."""
         available = calculate_available_balance(account_balance, limit=2)
         hygiene = calculate_hygiene_balance(account_balance)
 
+        # With default 1/3 ratio, hygiene should be 1/3 of available
         expected = available / Decimal('3')
         assert hygiene == expected
 
@@ -517,7 +518,7 @@ class TestAccountBalanceProperties:
         assert isinstance(result, Decimal)
         assert result >= Decimal('0')
 
-        # Should be 1/3 of available balance
+        # With default 1/3 ratio, should be 1/3 of available balance
         expected = account_balance.available_balance / Decimal('3')
         assert result == expected
 
@@ -527,7 +528,7 @@ class TestAccountBalanceProperties:
         available = account_balance.available_balance
         hygiene = account_balance.hygiene_balance
 
-        # Hygiene should always be 1/3 of available
+        # With default 1/3 ratio, hygiene should be 1/3 of available
         assert hygiene == available / Decimal('3')
 
         # Available should be <= full (since it's limited)
