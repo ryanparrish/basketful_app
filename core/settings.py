@@ -167,6 +167,9 @@ sys.path.append(os.path.join(BASE_DIR, 'apps'))
 
 # Installed apps
 INSTALLED_APPS = [
+    # Local apps - listed first to override Django admin templates
+    'apps.pantry.apps.PantryConfig',
+    # Django contrib apps
     'django.contrib.admin',
     'django.contrib.contenttypes',
     'django.contrib.staticfiles',
@@ -187,13 +190,12 @@ INSTALLED_APPS = [
     'anymail',
     'storages',
     'tinymce',
-    # Local apps
+    # Other local apps
     'apps.api',
     'apps.log',
     'apps.lifeskills',
     'apps.voucher',
     'apps.account',
-    'apps.pantry.apps.PantryConfig',
     'apps.orders',
     'core',
 ]
