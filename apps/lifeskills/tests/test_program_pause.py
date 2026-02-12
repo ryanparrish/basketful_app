@@ -333,11 +333,10 @@ def test_voucher_balance_doubles_with_new_logic(participant_with_vouchers):
     assert v2.program_pause_flag is True
     assert v2.multiplier == 2
     
-    # Note: Balance calculation has double multiplication issue
-    # voucher_amnt includes multiplier, then multiplied again
-    # So balance is 4x instead of 2x (this is the bug we discovered)
+    # Balance should be doubled (2x) during pause
+    # The multiplier is applied in calculate_available_balance
     balance_during_pause = account.available_balance
-    assert balance_during_pause == initial_balance * 4  # Known bug
+    assert balance_during_pause == initial_balance * 2
 
 
 @pytest.mark.django_db(transaction=True)
