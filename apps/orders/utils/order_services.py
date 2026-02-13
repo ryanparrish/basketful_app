@@ -2,13 +2,18 @@
 """Utility services for Order processing."""
 # Standard library imports  
 import logging
+import hashlib
+import json
+import time
 from io import BytesIO
+from datetime import datetime, timedelta
+from contextlib import contextmanager
 from hashids import Hashids
 # Django imports
 from django.conf import settings
+from django.core.cache import cache
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +26,130 @@ if not SALT:
 
 # Initialize Hashids once
 hashids = Hashids(salt=SALT, min_length=MIN_LENGTH)
+
+# --- Idempotency and Distributed Lock Utilities ---
+
+def generate_idempotency_key(participant_id: int, cart_items: list) -> str:
+    """
+    Generate idempotency key from participant + cart + timestamp (minute precision).
+    
+    Args:
+        participant_id: The participant's ID
+        cart_items: List of dicts with 'product_id' and 'quantity'
+    
+    Returns:
+        SHA256 hash string to use as idempotency key
+    """
+    # Sort cart items by product_id for consistency
+    sorted_cart = sorted(cart_items, key=lambda x: x.get('product_id', 0))
+    cart_str = json.dumps(sorted_cart, sort_keys=True)
+    
+    # Use minute-level timestamp for 5-minute window
+    timestamp_minute = datetime.now().strftime('%Y-%m-%d %H:%M')
+    
+    # Generate hash
+    key_data = f"{participant_id}:{cart_str}:{timestamp_minute}"
+    return hashlib.sha256(key_data.encode()).hexdigest()
+
+
+def generate_cart_hash(cart_items: list) -> str:
+    """
+    Generate hash of cart contents for duplicate detection.
+    
+    Args:
+        cart_items: List of dicts with 'product_id' and 'quantity'
+    
+    Returns:
+        SHA256 hash of cart contents
+    """
+    sorted_cart = sorted(cart_items, key=lambda x: x.get('product_id', 0))
+    cart_str = json.dumps(sorted_cart, sort_keys=True)
+    return hashlib.sha256(cart_str.encode()).hexdigest()
+
+
+@contextmanager
+def distributed_order_lock(participant_id: int, timeout: int = 10):
+    """
+    Context manager for Redis-based distributed lock with fallback.
+    
+    Args:
+        participant_id: The participant's ID
+        timeout: Lock timeout in seconds
+    
+    Yields:
+        bool: True if lock acquired, False otherwise
+    
+    Example:
+        with distributed_order_lock(participant.id) as acquired:
+            if acquired:
+                # Process order
+                pass
+            else:
+                # Handle concurrent request
+                pass
+    """
+    lock_key = f"order_lock:participant:{participant_id}"
+    lock_acquired = False
+    
+    try:
+        # Try to acquire lock with Redis
+        lock_acquired = cache.add(lock_key, "locked", timeout)
+        
+        if not lock_acquired:
+            logger.warning(
+                f"Failed to acquire order lock for participant {participant_id}. "
+                "Possible concurrent order submission."
+            )
+        
+        yield lock_acquired
+        
+    except Exception as e:
+        # Redis unavailable - log warning but allow through (graceful degradation)
+        logger.warning(
+            f"Redis unavailable for distributed lock (participant {participant_id}): {e}. "
+            "Allowing request to proceed without lock."
+        )
+        yield True  # Allow through when Redis is down
+        
+    finally:
+        # Release lock if we acquired it
+        if lock_acquired:
+            try:
+                cache.delete(lock_key)
+            except Exception as e:
+                logger.error(f"Failed to release lock for participant {participant_id}: {e}")
+
+
+def check_duplicate_submission(idempotency_key: str, ttl_seconds: int = 300) -> bool:
+    """
+    Check if this submission is a duplicate within the TTL window.
+    
+    Args:
+        idempotency_key: The idempotency key to check
+        ttl_seconds: Time-to-live in seconds (default: 5 minutes)
+    
+    Returns:
+        bool: True if duplicate, False if new submission
+    """
+    cache_key = f"order_idempotency:{idempotency_key}"
+    
+    try:
+        # Check if key exists
+        if cache.get(cache_key):
+            logger.warning(f"Duplicate order submission detected: {idempotency_key}")
+            return True
+        
+        # Mark as submitted
+        cache.set(cache_key, "submitted", ttl_seconds)
+        return False
+        
+    except Exception as e:
+        # Redis unavailable - log warning but allow through
+        logger.warning(
+            f"Redis unavailable for idempotency check: {e}. "
+            "Allowing request to proceed without duplicate detection."
+        )
+        return False  # Treat as new when Redis is down
 
 # --- Utility functions ---
 

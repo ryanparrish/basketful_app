@@ -8,12 +8,14 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.contrib import messages
 from django.utils import timezone
+from django.utils.html import format_html
 import io
 import zipfile
+import json
 # First-party imports
 from apps.voucher.models import Voucher
 # Local imports
-from .models import Order, CombinedOrder, PackingSplitRule, PackingList
+from .models import Order, FailedOrderAttempt, CombinedOrder, PackingSplitRule, PackingList
 from .inline import OrderItemInline
 from .forms import CreateCombinedOrderForm
 from .utils.order_helper import OrderHelper
@@ -635,3 +637,195 @@ class PackingListAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         """Packing lists are read-only."""
         return False
+
+
+@admin.register(FailedOrderAttempt)
+class FailedOrderAttemptAdmin(admin.ModelAdmin):
+    """Admin for Failed Order Attempts with comprehensive debugging."""
+    
+    list_display = (
+        'created_at',
+        'participant_link',
+        'user_link',
+        'total_attempted',
+        'error_summary_short',
+        'program_pause_indicator',
+        'balance_status',
+    )
+    
+    list_filter = (
+        'created_at',
+        'program_pause_active',
+        'participant',
+    )
+    
+    search_fields = (
+        'participant__name',
+        'user__username',
+        'error_summary',
+        'idempotency_key',
+        'ip_address',
+    )
+    
+    readonly_fields = (
+        'participant',
+        'user',
+        'idempotency_key',
+        'cart_snapshot_display',
+        'cart_hash',
+        'total_attempted',
+        'food_total',
+        'hygiene_total',
+        'full_balance',
+        'available_balance',
+        'hygiene_balance',
+        'program_pause_active',
+        'program_pause_name',
+        'voucher_multiplier',
+        'active_voucher_count',
+        'validation_errors_display',
+        'error_summary',
+        'ip_address',
+        'user_agent',
+        'created_at',
+    )
+    
+    ordering = ('-created_at',)
+    
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Order Context', {
+            'fields': (
+                'participant',
+                'user',
+                'idempotency_key',
+                'created_at',
+                'ip_address',
+                'user_agent',
+            )
+        }),
+        ('Cart Details', {
+            'fields': (
+                'cart_snapshot_display',
+                'cart_hash',
+                'total_attempted',
+                'food_total',
+                'hygiene_total',
+            )
+        }),
+        ('Balances at Time of Failure', {
+            'fields': (
+                'full_balance',
+                'available_balance',
+                'hygiene_balance',
+            ),
+            'description': 'Account balances at the time of failure'
+        }),
+        ('Program Pause Context', {
+            'fields': (
+                'program_pause_active',
+                'program_pause_name',
+                'voucher_multiplier',
+                'active_voucher_count',
+            ),
+            'description': 'Program pause and voucher information'
+        }),
+        ('Validation Errors', {
+            'fields': (
+                'error_summary',
+                'validation_errors_display',
+            ),
+            'classes': ('wide',),
+        }),
+    )
+    
+    def participant_link(self, obj):
+        """Link to participant admin."""
+        if obj.participant:
+            url = f"/admin/account/participant/{obj.participant.id}/change/"
+            return format_html('<a href="{}">{}</a>', url, obj.participant.name)
+        return '-'
+    participant_link.short_description = 'Participant'
+    
+    def user_link(self, obj):
+        """Link to user admin."""
+        if obj.user:
+            url = f"/admin/auth/user/{obj.user.id}/change/"
+            return format_html('<a href="{}">{}</a>', url, obj.user.username)
+        return '-'
+    user_link.short_description = 'User'
+    
+    def error_summary_short(self, obj):
+        """Truncated error summary for list display."""
+        if obj.error_summary:
+            summary = obj.error_summary[:100]
+            if len(obj.error_summary) > 100:
+                summary += '...'
+            return summary
+        return '-'
+    error_summary_short.short_description = 'Error'
+    
+    def program_pause_indicator(self, obj):
+        """Visual indicator for program pause status."""
+        if obj.program_pause_active:
+            return format_html(
+                '<span style="color: orange; font-weight: bold;">⚠ {}</span>',
+                obj.program_pause_name or 'Active'
+            )
+        return format_html('<span style="color: green;">✓ Normal</span>')
+    program_pause_indicator.short_description = 'Program Pause'
+    
+    def balance_status(self, obj):
+        """Show balance comparison."""
+        if obj.food_total and obj.available_balance:
+            if obj.food_total > obj.available_balance:
+                return format_html(
+                    '<span style="color: red;">${:.2f} > ${:.2f}</span>',
+                    obj.food_total,
+                    obj.available_balance
+                )
+            return format_html(
+                '<span style="color: green;">${:.2f} ≤ ${:.2f}</span>',
+                obj.food_total,
+                obj.available_balance
+            )
+        return '-'
+    balance_status.short_description = 'Balance Check'
+    
+    def cart_snapshot_display(self, obj):
+        """Pretty print cart snapshot."""
+        if obj.cart_snapshot:
+            return format_html(
+                '<pre style="max-height: 300px; overflow: auto;">{}</pre>',
+                json.dumps(obj.cart_snapshot, indent=2)
+            )
+        return '-'
+    cart_snapshot_display.short_description = 'Cart Contents'
+    
+    def validation_errors_display(self, obj):
+        """Pretty print validation errors."""
+        if obj.validation_errors:
+            errors = obj.validation_errors
+            if isinstance(errors, list):
+                formatted = '\n'.join(f"• {err}" for err in errors)
+            else:
+                formatted = str(errors)
+            return format_html(
+                '<pre style="max-height: 300px; overflow: auto;">{}</pre>',
+                formatted
+            )
+        return '-'
+    validation_errors_display.short_description = 'Detailed Errors'
+    
+    def has_add_permission(self, request):
+        """Failed attempts are created automatically."""
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        """Failed attempts are read-only for audit integrity."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Only allow bulk cleanup via management command."""
+        return request.user.is_superuser

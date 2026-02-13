@@ -351,6 +351,7 @@ REST_FRAMEWORK = {
         'anon': '20/minute',
         'user': '100/minute',
         'login': '5/minute',
+        'order_submission': '3/minute',  # Order submission rate limiting
     },
     'DEFAULT_PAGINATION_CLASS': 'apps.api.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 25,

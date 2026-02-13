@@ -7,11 +7,12 @@ from rest_framework import serializers
 from apps.orders.models import (
     Order,
     OrderItem,
-    OrderValidationLog,
+    FailedOrderAttempt,
     CombinedOrder,
     PackingSplitRule,
     PackingList,
 )
+from apps.log.models import OrderValidationLog
 from apps.pantry.api.serializers import ProductListSerializer
 
 
@@ -48,8 +49,39 @@ class OrderValidationLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderValidationLog
-        fields = ['id', 'order', 'error_message', 'created_at']
+        fields = ['id', 'order', 'message', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class FailedOrderAttemptSerializer(serializers.ModelSerializer):
+    """Serializer for FailedOrderAttempt model."""
+    participant_name = serializers.CharField(
+        source='participant.name', read_only=True
+    )
+    validation_errors_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FailedOrderAttempt
+        fields = [
+            'id', 'participant', 'participant_name', 'user', 
+            'idempotency_key', 'cart_hash', 'total_attempted',
+            'food_total', 'hygiene_total', 'full_balance', 
+            'available_balance', 'hygiene_balance', 
+            'program_pause_active', 'program_pause_name',
+            'voucher_multiplier', 'active_voucher_count',
+            'validation_errors', 'validation_errors_display',
+            'error_summary', 'ip_address', 'user_agent', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_validation_errors_display(self, obj):
+        """Format validation errors as readable text."""
+        if not obj.validation_errors:
+            return None
+        errors = obj.validation_errors
+        if isinstance(errors, list):
+            return '\n'.join(f"• {err}" for err in errors)
+        return str(errors)
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -114,7 +146,7 @@ class OrderListSerializer(serializers.ModelSerializer):
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating Orders."""
+    """Serializer for creating Orders with comprehensive validation."""
     items = OrderItemCreateSerializer(many=True, required=False)
 
     class Meta:
@@ -122,10 +154,38 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         fields = ['account', 'items']
 
     def create(self, validated_data):
+        """
+        Create order using OrderOrchestration with idempotency and validation.
+        """
+        from apps.orders.utils.order_utils import OrderOrchestration
+        from apps.orders.utils.order_validation import OrderItemData
+        
         items_data = validated_data.pop('items', [])
-        order = Order.objects.create(**validated_data)
-        for item_data in items_data:
-            OrderItem.objects.create(order=order, **item_data)
+        account = validated_data.get('account')
+        
+        # Convert to OrderItemData objects
+        order_items = [
+            OrderItemData(
+                product=item_data['product'],
+                quantity=item_data['quantity']
+            )
+            for item_data in items_data
+        ]
+        
+        # Get request context for audit
+        request = self.context.get('request')
+        user = request.user if request else None
+        request_meta = self.context.get('request_meta', {})
+        
+        # Use OrderOrchestration.create_order (handles all validation & logging)
+        orchestrator = OrderOrchestration()
+        order = orchestrator.create_order(
+            account=account,
+            order_items_data=order_items,
+            user=user,
+            request_meta=request_meta
+        )
+        
         return order
 
 

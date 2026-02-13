@@ -71,7 +71,7 @@ def review_order(request):
 @login_required
 @transaction.atomic
 def submit_order(request):
-    """Submit the current cart as a new order."""
+    """Submit the current cart as a new order with comprehensive validation."""
     cart = request.session.get("cart", {})
     if not cart:
         messages.warning(request, "Your cart is empty.")
@@ -87,14 +87,35 @@ def submit_order(request):
         if products.get(int(pid))
     ]
 
+    # Extract request metadata for audit
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0]
+        return request.META.get('REMOTE_ADDR')
+    
+    request_meta = {
+        'ip': get_client_ip(request),
+        'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500]
+    }
+
     order_utils = OrderOrchestration()
 
     try:
-        order = order_utils.create_order(account, order_items_data=order_items)
-        order.confirm()  # calls clean() internally, runs all validation
+        # create_order now handles all validation, idempotency, and error logging
+        order = order_utils.create_order(
+            account=account,
+            order_items_data=order_items,
+            user=request.user,
+            request_meta=request_meta
+        )
+        
+        # Confirm the order (just sets status to confirmed)
+        order.confirm()
 
     except ValidationError as e:
-        messages.error(request, e)
+        # Error already logged by create_order as FailedOrderAttempt
+        messages.error(request, str(e))
         return redirect("review_order")
 
     # Clear cart and store last order

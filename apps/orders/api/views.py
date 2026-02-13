@@ -2,6 +2,8 @@
 ViewSets for the Orders app.
 """
 from decimal import Decimal
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -16,11 +18,12 @@ from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsOwnerOrAdmin
 from apps.orders.models import (
     Order,
     OrderItem,
-    OrderValidationLog,
+    FailedOrderAttempt,
     CombinedOrder,
     PackingSplitRule,
     PackingList,
 )
+from apps.log.models import OrderValidationLog
 from apps.orders.api.serializers import (
     OrderSerializer,
     OrderListSerializer,
@@ -28,11 +31,13 @@ from apps.orders.api.serializers import (
     OrderItemSerializer,
     OrderItemCreateSerializer,
     OrderValidationLogSerializer,
+    FailedOrderAttemptSerializer,
     CombinedOrderSerializer,
     CombinedOrderListSerializer,
     PackingSplitRuleSerializer,
     PackingListSerializer,
 )
+from apps.orders.api.throttles import OrderSubmissionThrottle
 from core.models import ProgramSettings
 
 
@@ -70,6 +75,58 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Non-staff users can only see their own orders
             qs = qs.filter(user=user)
         return qs
+
+    def get_throttles(self):
+        """Apply throttling only to create action."""
+        if self.action == 'create':
+            return [OrderSubmissionThrottle()]
+        return super().get_throttles()
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create order with throttling, idempotency, and comprehensive error logging.
+        """
+        # Extract metadata for audit
+        ip_address = self.get_client_ip(request)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
+        
+        # Add metadata to serializer context
+        request_meta = {
+            'ip': ip_address,
+            'user_agent': user_agent,
+        }
+        
+        serializer = self.get_serializer(
+            data=request.data,
+            context={'request': request, 'request_meta': request_meta}
+        )
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            # The serializer's create method will call OrderOrchestration.create_order
+            # which now handles idempotency, distributed lock, and validation
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except ValidationError as e:
+            # Validation errors are already logged by OrderOrchestration.create_order
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def get_client_ip(self, request):
+        """Extract client IP address from request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
@@ -389,6 +446,139 @@ class OrderViewSet(viewsets.ModelViewSet):
         finally:
             # Clean up temp order and items
             temp_order.delete()
+
+    @action(
+        detail=False, 
+        methods=['get'], 
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='failure-analytics'
+    )
+    def failure_analytics(self, request):
+        """
+        Get comprehensive failure analytics for order submissions.
+        
+        Query params:
+        - days: Number of days to analyze (default: 7, max: 90)
+        - participant_id: Filter by specific participant
+        
+        Returns:
+        - total_failures: Total failed attempts
+        - failure_rate: Percentage of failures vs successes
+        - common_errors: Top error types with counts
+        - by_day: Daily breakdown of failures
+        - top_participants: Participants with most failures
+        - balance_issues: Count of balance-related failures
+        """
+        days = min(int(request.query_params.get('days', 7)), 90)
+        participant_id = request.query_params.get('participant_id')
+        
+        since = timezone.now() - timedelta(days=days)
+        
+        # Base queryset
+        failures_qs = FailedOrderAttempt.objects.filter(created_at__gte=since)
+        if participant_id:
+            failures_qs = failures_qs.filter(participant_id=participant_id)
+        
+        # Total failures
+        total_failures = failures_qs.count()
+        
+        # Calculate failure rate (failures vs total orders)
+        total_orders = Order.objects.filter(order_date__gte=since).count()
+        failure_rate = (
+            (total_failures / (total_failures + total_orders) * 100)
+            if (total_failures + total_orders) > 0
+            else 0
+        )
+        
+        # Common error types
+        from collections import Counter
+        error_counter = Counter()
+        
+        for failure in failures_qs.only('error_summary'):
+            # Extract error type from summary
+            error = failure.error_summary or 'Unknown error'
+            # Take first 100 chars as error type
+            error_type = error[:100]
+            error_counter[error_type] += 1
+        
+        common_errors = [
+            {'error': err, 'count': count}
+            for err, count in error_counter.most_common(10)
+        ]
+        
+        # Failures by day
+        from django.db.models.functions import TruncDate
+        by_day = list(
+            failures_qs
+            .annotate(date=TruncDate('created_at'))
+            .values('date')
+            .annotate(count=Count('id'))
+            .order_by('date')
+        )
+        
+        # Top participants with failures
+        top_participants = list(
+            failures_qs
+            .values('participant__name', 'participant_id')
+            .annotate(failure_count=Count('id'))
+            .order_by('-failure_count')[:10]
+        )
+        
+        # Balance-related failures
+        balance_failures = failures_qs.filter(
+            Q(error_summary__icontains='balance') |
+            Q(error_summary__icontains='exceeded')
+        ).count()
+        
+        return Response({
+            'period': {
+                'days': days,
+                'since': since.isoformat(),
+                'until': timezone.now().isoformat(),
+            },
+            'summary': {
+                'total_failures': total_failures,
+                'total_orders': total_orders,
+                'failure_rate': round(failure_rate, 2),
+                'balance_related': balance_failures,
+            },
+            'common_errors': common_errors,
+            'by_day': by_day,
+            'top_participants': top_participants,
+        })
+
+    @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='recent-failures'
+    )
+    def recent_failures(self, request):
+        """
+        Get recent failed order attempts with full details.
+        
+        Query params:
+        - limit: Number of records (default: 50, max: 200)
+        - participant_id: Filter by participant
+        """
+        limit = min(int(request.query_params.get('limit', 50)), 200)
+        participant_id = request.query_params.get('participant_id')
+        
+        qs = FailedOrderAttempt.objects.select_related(
+            'participant', 'user'
+        ).order_by('-created_at')
+        
+        if participant_id:
+            qs = qs.filter(participant_id=participant_id)
+        
+        failures = qs[:limit]
+        serializer = FailedOrderAttemptSerializer(failures, many=True)
+        
+        return Response({
+            'count': len(failures),
+            'limit': limit,
+            'results': serializer.data
+        })
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):

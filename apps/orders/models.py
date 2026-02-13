@@ -12,6 +12,7 @@ from django.db import models, transaction
 from django.core.exceptions import ValidationError
 # Local imports
 from apps.pantry.models import CategoryLimitValidator
+from apps.log.models import OrderValidationLog
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +25,51 @@ class OrderItemData:
     delete: bool = False
 
 
-class OrderValidationLog(models.Model):
-    """Stores validation errors for orders."""
-    order = models.ForeignKey(
-        "Order",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="validation_logs"
-    )
-    error_message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+class FailedOrderAttempt(models.Model):
+    """Audit log for failed order attempts with debugging context."""
+    # Identity
+    participant = models.ForeignKey("account.Participant", on_delete=models.CASCADE, related_name="failed_attempts")
+    user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
+    idempotency_key = models.CharField(max_length=64, unique=True, db_index=True)
+    
+    # Cart snapshot
+    cart_snapshot = models.JSONField(help_text="[{product_id, product_name, quantity, price}]")
+    cart_hash = models.CharField(max_length=64, db_index=True)
+    
+    # Financial totals
+    total_attempted = models.DecimalField(max_digits=8, decimal_places=2)
+    food_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    hygiene_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    
+    # Balance context at time of attempt
+    full_balance = models.DecimalField(max_digits=8, decimal_places=2)
+    available_balance = models.DecimalField(max_digits=8, decimal_places=2)
+    hygiene_balance = models.DecimalField(max_digits=8, decimal_places=2)
+    
+    # Program pause context
+    program_pause_active = models.BooleanField(default=False)
+    program_pause_name = models.CharField(max_length=255, blank=True)
+    voucher_multiplier = models.IntegerField(default=1)
+    active_voucher_count = models.IntegerField(default=0)
+    
+    # Validation errors
+    validation_errors = models.JSONField(help_text="[{type, message, amount_over}]")
+    error_summary = models.TextField()
+    
+    # Metadata
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['participant', '-created_at']),
+            models.Index(fields=['cart_hash', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.participant} - ${self.total_attempted} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 
 class Order(models.Model):
@@ -84,10 +119,13 @@ class Order(models.Model):
         return sum(item.total_price() for item in self.items.all())
 
     def confirm(self):
-        """Confirm the order after validation."""
-        self.full_clean()
+        """
+        Confirm the order after validation.
+        NOTE: Validation should happen BEFORE this method is called.
+        This method only updates status to confirmed.
+        """
         self.status = "confirmed"
-        self.save()
+        self.save(update_fields=['status'])
 
     @staticmethod
     def _generate_order_number():
@@ -198,7 +236,7 @@ class Order(models.Model):
                     with transaction.atomic():
                         OrderValidationLog.objects.create(
                             order=self,
-                            error_message=str(msg)
+                            message=str(msg)
                         )
                 except Exception as log_error:
                     # Don't let logging failures prevent validation errors
