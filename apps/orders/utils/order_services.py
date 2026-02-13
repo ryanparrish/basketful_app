@@ -29,6 +29,7 @@ hashids = Hashids(salt=SALT, min_length=MIN_LENGTH)
 
 # --- Idempotency and Distributed Lock Utilities ---
 
+
 def generate_idempotency_key(participant_id: int, cart_items: list) -> str:
     """
     Generate idempotency key from participant + cart + timestamp (minute precision).
