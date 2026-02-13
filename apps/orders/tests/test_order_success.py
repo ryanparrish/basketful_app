@@ -16,7 +16,8 @@ from django.urls import reverse
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 
-from apps.orders.models import Order, OrderItem, OrderValidationLog
+from apps.orders.models import Order, OrderItem
+from apps.log.models import OrderValidationLog
 from apps.orders.tests.factories import (
     UserFactory,
     ParticipantFactory,
@@ -353,19 +354,19 @@ class TestOrderValidationEdgeCases:
             status="pending"
         )
         
-        # Create log entry using the correct field name
+        # Create log entry using the correct field name (changed to 'message')
         log = OrderValidationLog.objects.create(
             order=order,
-            error_message="Test error message"
+            message="Test error message"
         )
         
-        assert log.error_message == "Test error message"
+        assert log.message == "Test error message"
         assert log.order == order
         
-        # Verify field name (should not have 'message' field)
+        # Verify field name (should have 'message' field, not 'error_message')
         field_names = [f.name for f in OrderValidationLog._meta.get_fields()]
-        assert 'error_message' in field_names
-        assert 'message' not in field_names
+        assert 'message' in field_names
+        assert 'error_message' not in field_names
 
 
 @pytest.mark.django_db
