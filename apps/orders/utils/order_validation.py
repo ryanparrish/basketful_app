@@ -72,4 +72,37 @@ class OrderValidation:
         # Step 2: Enforce hygiene balance
         OrderValidation.enforce_hygiene_balance(items, participant, account_balance)
 
+        # Step 3: Validate available balance for food items (non-hygiene)
+        food_items = [
+            item for item in items
+            if getattr(item.product.category, "name", "").lower() != "hygiene"
+        ]
+        food_total = sum(item.product.price * item.quantity for item in food_items)
+        available_balance = getattr(account_balance, "available_balance", 0)
+        
+        if food_total > available_balance:
+            msg = (
+                f"Food items total ${food_total:.2f} exceeds available voucher "
+                f"balance ${available_balance:.2f}."
+            )
+            logger.warning("[Validator] %s - Food total exceeds balance", participant)
+            raise ValidationError(f"[{participant}] {msg}")
+
+        # Step 4: Validate Go Fresh balance (if enabled)
+        go_fresh_balance = getattr(account_balance, "go_fresh_balance", 0)
+        if go_fresh_balance > 0:
+            go_fresh_items = [
+                item for item in items
+                if item.product.category and item.product.category.name.lower() == "go fresh"
+            ]
+            go_fresh_total = sum(item.product.price * item.quantity for item in go_fresh_items)
+            
+            if go_fresh_total > go_fresh_balance:
+                msg = (
+                    f"Go Fresh items total ${go_fresh_total:.2f} exceeds Go Fresh "
+                    f"balance ${go_fresh_balance:.2f}."
+                )
+                logger.warning("[Validator] %s - Go Fresh total exceeds balance", participant)
+                raise ValidationError(f"[{participant}] {msg}")
+
 
