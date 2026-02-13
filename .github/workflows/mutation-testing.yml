@@ -1,0 +1,162 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      paths:
+        description: 'Specific paths to mutate (e.g., apps/orders/models.py)'
+        required: false
+        type: string
+
+jobs:
+  mutation-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: basketful_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install mutmut
+
+      - name: Run mutation tests
+        env:
+          DJANGO_SETTINGS_MODULE: core.settings
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-mutation
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-mutation
+          DEBUG: 'True'
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          CELERY_TASK_ALWAYS_EAGER: 'True'
+          MAILGUN_API_KEY: test-key
+          MAILGUN_SENDER_DOMAIN: test.example.com
+          DEFAULT_FROM_EMAIL: test@example.com
+        run: |
+          PATHS="${{ github.event.inputs.paths }}"
+          if [ -z "$PATHS" ]; then
+            PATHS="apps/orders/models.py,apps/orders/utils/order_utils.py,apps/account/models.py"
+          fi
+          
+          echo "🧬 Running mutation tests on: $PATHS"
+          mutmut run --paths-to-mutate="$PATHS" || true
+          
+          mutmut results > mutation-results.txt
+          echo "Results saved to mutation-results.txt"
+          cat mutation-results.txt
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          mutmut html || true
+
+      - name: Parse mutation score
+        if: always()
+        id: mutation-score
+        run: |
+          if [ -f mutation-results.txt ]; then
+            SCORE=$(grep -oP '(?<=mutation score: )\d+\.\d+' mutation-results.txt || echo "0.0")
+            KILLED=$(grep -oP '(?<=Killed: )\d+' mutation-results.txt || echo "0")
+            SURVIVED=$(grep -oP '(?<=Survived: )\d+' mutation-results.txt || echo "0")
+            TIMEOUT=$(grep -oP '(?<=Timeout: )\d+' mutation-results.txt || echo "0")
+            
+            echo "score=$SCORE" >> $GITHUB_OUTPUT
+            echo "killed=$KILLED" >> $GITHUB_OUTPUT
+            echo "survived=$SURVIVED" >> $GITHUB_OUTPUT
+            echo "timeout=$TIMEOUT" >> $GITHUB_OUTPUT
+            
+            echo "## 🧬 Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Mutation Score:** ${SCORE}%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Killed: $KILLED" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ Survived: $SURVIVED" >> $GITHUB_STEP_SUMMARY
+            echo "- ⏱️ Timeout: $TIMEOUT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload mutation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ github.run_number }}
+          path: |
+            htmlmut/
+            mutation-results.txt
+            .mutmut-cache
+          retention-days: 90
+
+      - name: Create tracking issue
+        if: always() && steps.mutation-score.outputs.survived != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const survived = '${{ steps.mutation-score.outputs.survived }}';
+            const score = '${{ steps.mutation-score.outputs.score }}';
+            
+            const body = `## 🧬 Mutation Testing Report
+            
+            **Date:** ${new Date().toISOString().split('T')[0]}
+            **Mutation Score:** ${score}%
+            **Survived Mutations:** ${survived}
+            
+            ### What This Means
+            ${survived} mutations survived, meaning these code changes were not caught by tests.
+            
+            ### Next Steps
+            1. Download the [mutation report artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            2. Review the HTML report to see which mutations survived
+            3. Write tests to kill high-risk survivors
+            
+            ### View Report
+            Run locally: \`mutmut show\` to see survivors
+            
+            ---
+            *This issue is auto-generated weekly. Close when mutations are addressed.*`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Mutation Testing Report: ${score}% (${survived} survivors)`,
+              body: body,
+              labels: ['mutation-testing', 'testing']
+            });

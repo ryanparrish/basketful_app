@@ -1,5 +1,9 @@
 # Basketful - Food Pantry Management System
 
+[![codecov](https://codecov.io/gh/ryanparrish/basketful_app/branch/main/graph/badge.svg)](https://codecov.io/gh/ryanparrish/basketful_app)
+[![CI](https://github.com/ryanparrish/basketful_app/workflows/CI%20-%20Test%20and%20Lint/badge.svg)](https://github.com/ryanparrish/basketful_app/actions)
+[![Mutation Testing](https://img.shields.io/badge/mutation-pending-yellow)](https://github.com/ryanparrish/basketful_app/actions/workflows/mutation-testing.yml)
+
 Basketful is a comprehensive Django-based application for managing food pantry operations, participant accounts, vouchers, and orders.
 
 ## Features
