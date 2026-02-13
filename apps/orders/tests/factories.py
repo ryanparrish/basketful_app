@@ -57,11 +57,51 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
     @factory.post_generation
     def create_account_balance(obj, create, extracted, **kwargs):
         if create:
+            # Calculate expected balance from VoucherSetting based on actual household size
+            from apps.account.utils.balance_utils import calculate_base_balance
+            calculated_balance = calculate_base_balance(obj)
+            
             # Use get_or_create to avoid conflicts with signal
-            AccountBalance.objects.get_or_create(
+            account, created = AccountBalance.objects.get_or_create(
                 participant=obj,
-                defaults={'base_balance': Decimal("100.00")}
+                defaults={'base_balance': calculated_balance}
             )
+            if not created:
+                account.base_balance = calculated_balance
+                account.save()
+            
+            # CRITICAL: Refresh from database to clear caches
+            obj.refresh_from_db()
+    
+    @factory.post_generation
+    def high_balance(obj, create, extracted, **kwargs):
+        """
+        Optional hook to create high-multiplier vouchers for sufficient test balance.
+        Use ParticipantFactory(high_balance=True) to enable.
+        """
+        if not create or not extracted:
+            return
+        
+        # Get the account
+        account = AccountBalance.objects.get(participant=obj)
+        
+        # Ensure vouchers have sufficient balance for testing, but only when explicitly requested.
+        # Only create vouchers if participant has no user (signals won't create them).
+        # With base_balance=20 and multiplier=50, 2 vouchers = 2 * (20*50) = 2000 available.
+        if not obj.user:
+            existing_vouchers = list(account.vouchers.filter(state="applied", voucher_type="grocery"))
+            
+            # Only create high-multiplier vouchers if none exist
+            # (avoid interfering with explicit test voucher setup)
+            if not existing_vouchers:
+                for i in range(2):
+                    Voucher.objects.create(
+                        account=account,
+                        voucher_type="grocery",
+                        state="applied",
+                        active=True,
+                        multiplier=50
+                    )
 
 
 class CategoryFactory(factory.django.DjangoModelFactory):
@@ -85,6 +125,7 @@ class ProductFactory(factory.django.DjangoModelFactory):
 class VoucherFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Voucher
+        skip_postgeneration_save = True
 
     account = factory.SubFactory(AccountBalanceFactory)
     voucher_type = 'grocery'

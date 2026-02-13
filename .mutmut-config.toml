@@ -1,5 +1,6 @@
 [mutmut]
 paths_to_mutate = "apps/"
+tests_dir = "apps/"
 
 exclude_patterns = [
     "*/migrations/*",

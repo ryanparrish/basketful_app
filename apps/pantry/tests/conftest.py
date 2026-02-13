@@ -38,6 +38,31 @@ from apps.pantry.models import Product
 # ============================================================
 
 
+# ============================================================
+# Test Configuration - Database Setup
+# ============================================================
+
+@pytest.fixture(scope='function', autouse=True)
+def ensure_voucher_setting(db):
+    """
+    Ensure there's an active VoucherSetting for all tests.
+    This is required for calculate_base_balance to work correctly.
+    """
+    from apps.voucher.models import VoucherSetting
+    # Create if doesn't exist
+    if not VoucherSetting.objects.filter(active=True).exists():
+        VoucherSetting.objects.create(
+            adult_amount=20,
+            child_amount=12.5,
+            infant_modifier=2.5,
+            active=True
+        )
+
+
+# ============================================================
+# Voucher Fixtures
+# ============================================================
+
 @pytest.fixture
 def voucher_setting_fixture():
     """
@@ -119,7 +144,7 @@ def order_formset_setup():
     veg_product = ProductFactory(name="Carrot", price=Decimal("1.00"), category=veg_cat, weight_lbs=0.2)
 
     # --- Participant and Order ---
-    participant = ParticipantFactory()
+    participant = ParticipantFactory(high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
 
     return {

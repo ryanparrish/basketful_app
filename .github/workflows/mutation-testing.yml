@@ -50,7 +50,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
@@ -79,9 +79,9 @@ jobs:
           fi
           
           echo "🧬 Running mutation tests on: $PATHS"
-          mutmut run --paths-to-mutate="$PATHS" || true
+          mutmut run --paths-to-mutate="$PATHS" --tests-dir=apps/ || true
           
-          mutmut results > mutation-results.txt
+          mutmut results > mutation-results.txt || echo "No results yet" > mutation-results.txt
           echo "Results saved to mutation-results.txt"
           cat mutation-results.txt
 

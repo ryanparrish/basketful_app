@@ -27,12 +27,12 @@ fi
 
 # Run mutations
 echo -e "\n${GREEN}Running mutations...${NC}\n"
-mutmut run --paths-to-mutate="$TARGET" || true
+mutmut run --paths-to-mutate="$TARGET" --tests-dir=apps/ || true
 
 # Generate reports
 echo -e "\n${GREEN}Generating reports...${NC}"
-mutmut results | tee mutation-results.txt
-mutmut html
+mutmut results | tee mutation-results.txt || echo "No mutations completed yet" > mutation-results.txt
+mutmut html || echo "Could not generate HTML report"
 
 # Parse and display score
 echo ""

@@ -144,16 +144,56 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
         if not create:
             return  # Do nothing if the instance isn't being saved to the database.
 
+        # Calculate balance based on current household size
+        from apps.account.utils.balance_utils import calculate_base_balance
+        calculated_balance = calculate_base_balance(self)
+        
         # --- Create and link the AccountBalance instance ---
-        # The `self` here refers to the Participant instance that was just created.
-        # Use get_or_create to avoid errors if signal already created it
         account, created = AccountBalance.objects.get_or_create(
             participant=self,
-            defaults={'base_balance': 100}
+            defaults={'base_balance': calculated_balance}
         )
         if not created:
-            account.base_balance = 100
+            account.base_balance = calculated_balance
             account.save()
+        
+        # CRITICAL: Refresh from database to get the updated base_balance
+        # after the update_base_balance_on_change signal has processed
+        self.refresh_from_db()
+        
+    @factory.post_generation
+    def high_balance(self, create, extracted, **kwargs):
+        """
+        Optional hook to create high-multiplier vouchers for sufficient test balance.
+        Use ParticipantFactory(high_balance=True) to enable.
+        """
+        if not create or not extracted:
+            return
+        
+        # Get the account
+        account = AccountBalance.objects.get(participant=self)
+        
+        # Ensure vouchers have sufficient balance for testing.
+        # Vouchers are created by signals, so we just update their multipliers.
+        # With base_balance=20 and multiplier=50, 2 vouchers = 2 * (20*50) = 2000 available balance.
+        from apps.voucher.models import Voucher
+        existing_vouchers = list(account.vouchers.filter(state="applied", voucher_type="grocery").order_by('created_at')[:2])
+        
+        # Update existing vouchers to have high multipliers
+        for voucher in existing_vouchers:
+            voucher.multiplier = 50
+            voucher.save()
+        
+        # Create additional vouchers if needed to reach 2 total
+        if len(existing_vouchers) < 2:
+            for i in range(2 - len(existing_vouchers)):
+                Voucher.objects.create(
+                    account=account,
+                    voucher_type="grocery",
+                    state="applied",
+                    active=True,
+                    multiplier=50
+                )
 
 # --- Factory for the Voucher Model ---
 
@@ -179,6 +219,7 @@ class VoucherFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = Voucher
+        skip_postgeneration_save = True
 
     multiplier = 1  # default multiplier
     state = "applied"  # default state for tests

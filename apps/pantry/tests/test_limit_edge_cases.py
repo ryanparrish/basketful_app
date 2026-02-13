@@ -28,7 +28,7 @@ from apps.pantry.tests.factories import (
 @pytest.mark.django_db
 def test_zero_infants_with_per_infant_scope():
     """Test that per_infant scope with 0 infants allows nothing."""
-    participant = ParticipantFactory(adults=2, children=2, diaper_count=0)
+    participant = ParticipantFactory(adults=2, children=2, diaper_count=0, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     category = CategoryFactory(name="Baby Formula")
@@ -52,7 +52,7 @@ def test_zero_infants_with_per_infant_scope():
 @pytest.mark.django_db
 def test_zero_children_with_per_child_scope():
     """Test that per_child scope with 0 children allows nothing."""
-    participant = ParticipantFactory(adults=2, children=0)
+    participant = ParticipantFactory(adults=2, children=0, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     category = CategoryFactory(name="Kids Cereal")
@@ -76,7 +76,7 @@ def test_zero_children_with_per_child_scope():
 @pytest.mark.django_db
 def test_multiple_products_same_category_aggregate():
     """Test that multiple products in same category are aggregated."""
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = ParticipantFactory(adults=1, children=0, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     category = CategoryFactory(name="Protein")
@@ -118,7 +118,7 @@ def test_multiple_products_same_category_aggregate():
 @pytest.mark.django_db
 def test_no_limit_set_allows_unlimited():
     """Test that categories without ProductLimit allow unlimited quantities."""
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = ParticipantFactory(adults=1, children=0, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     # Category with no ProductLimit
@@ -135,7 +135,7 @@ def test_no_limit_set_allows_unlimited():
 @pytest.mark.django_db
 def test_mixed_limited_and_unlimited_products():
     """Test ordering from both limited and unlimited categories."""
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = ParticipantFactory(adults=1, children=0, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     # Limited category
