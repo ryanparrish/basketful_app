@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import django
+import pytest
 
 os.environ['DJANGO_SETTINGS_MODULE'] = 'core.settings'
 django.setup()
@@ -8,6 +9,7 @@ django.setup()
 from apps.pantry.tests.factories import ParticipantFactory
 from apps.voucher.models import VoucherSetting
 
+@pytest.mark.django_db
 # Ensure VoucherSetting exists
 if not VoucherSetting.objects.filter(active=True).exists():
     VoucherSetting.objects.create(adult_amount=20, child_amount=12.5, infant_modifier=2.5, active=True)
