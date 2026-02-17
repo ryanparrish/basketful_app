@@ -685,7 +685,7 @@ def test_per_order_scope_unique_to_subcategory():
 @pytest.mark.django_db
 def test_mixed_scopes_across_categories_all_independent():
     """Test that different scopes across multiple categories all work independently."""
-    participant = ParticipantFactory(adults=2, children=2, diaper_count=1)
+    participant = ParticipantFactory(adults=2, children=2, diaper_count=1, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     # Category with per_adult scope

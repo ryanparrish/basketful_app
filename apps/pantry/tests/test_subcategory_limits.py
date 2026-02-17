@@ -25,10 +25,10 @@ from apps.pantry.tests.factories import (
 
 
 @pytest.mark.django_db
-def test_subcategory_limit_enforced():
+def test_subcategory_limit_enforced(high_balance_participant):
     """Test that limits on subcategories are enforced separately.
     """
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = high_balance_participant
     order = OrderFactory(account=participant.accountbalance)
     
     # Create category with two subcategories
