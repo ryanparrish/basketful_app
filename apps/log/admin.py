@@ -108,10 +108,10 @@ class EmailTypeAdmin(admin.ModelAdmin):
                 'display_name': email_type.display_name,
             })
         except EmailType.DoesNotExist:
+            logger.exception("Error generating email preview for EmailType id=%s", pk)
             return JsonResponse({
                 'success': False,
                 'error': 'Email type not found',
-            logger.exception("Error generating email preview for EmailType id=%s", pk)
             }, status=404)
         except Exception as e:
             return JsonResponse({
