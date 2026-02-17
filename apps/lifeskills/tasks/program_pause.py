@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.voucher.models import Voucher
 from apps.lifeskills.models import ProgramPause
+from apps.lifeskills.utils import set_voucher_pause_state
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def update_voucher_flag_task(
     # --- Duration check (protects against premature toggles) ---
     if program_pause_id:
         try:
-            pp = ProgramPause.objects.get(id=program_pause_id)
+            pp = ProgramPause.objects.all_pauses().get(id=program_pause_id)
         except ProgramPause.DoesNotExist:
             logger.warning(
                 "[Task] ProgramPause %s not found; skipping duration check.",
@@ -120,45 +121,16 @@ def update_voucher_flag_task(
                 )
                 return
 
+    # Use utility function for actual voucher updates
     try:
-        vouchers = Voucher.objects.filter(id__in=voucher_ids)
-
-        for voucher in vouchers:
-            target_flag = activate
-            target_multiplier = multiplier if activate else 1
-            updated_fields = []
-
-            # --- Compare current state vs target state ---
-            if voucher.program_pause_flag != target_flag:
-                voucher.program_pause_flag = target_flag
-                updated_fields.append("program_pause_flag")
-            if voucher.multiplier != target_multiplier:
-                voucher.multiplier = target_multiplier
-                updated_fields.append("multiplier")
-
-            if updated_fields:
-                voucher.save(update_fields=updated_fields)
-                logger.info(
-                    (
-                        "[Task] Voucher ID=%s updated: "
-                        "program_pause_flag=%s, multiplier=%s"
-                    ),
-                    voucher.id,
-                    voucher.program_pause_flag,
-                    voucher.multiplier
-                )
-            else:
-                # --- Explicitly log idempotent skip ---
-                logger.info(
-                    (
-                        "[Task] Voucher ID=%s already up-to-date. "
-                        "(program_pause_flag=%s, multiplier=%s)"
-                    ),
-                    voucher.id,
-                    voucher.program_pause_flag,
-                    voucher.multiplier
-                )
-                
+        updated, skipped = set_voucher_pause_state(voucher_ids, activate=activate, multiplier=multiplier)
+        logger.info(
+            "[Task] Processed %d vouchers (updated=%d, skipped=%d) for ProgramPause ID=%s",
+            len(voucher_ids),
+            updated,
+            skipped,
+            program_pause_id
+        )
     except Exception as exc:
         logger.exception("[Task] Error updating vouchers: %s", voucher_ids)
         raise self.retry(exc=exc)
@@ -236,11 +208,11 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
         )
         
         for participant in participants_to_deactivate:
-            if not hasattr(participant, 'account'):
+            if not hasattr(participant, 'accountbalance'):
                 continue
             
             # Get vouchers with pause flag set
-            vouchers_to_deactivate = participant.account.vouchers.filter(
+            vouchers_to_deactivate = participant.accountbalance.vouchers.filter(
                 program_pause_flag=True,
                 active=True
             )
@@ -250,16 +222,13 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
                     vouchers_to_deactivate.values_list('id', flat=True)
                 )
                 
-                # Deactivate these vouchers
-                for voucher in vouchers_to_deactivate:
-                    voucher.program_pause_flag = False
-                    voucher.multiplier = 1
-                    voucher.save(update_fields=['program_pause_flag', 'multiplier'])
+                # Deactivate using utility
+                updated, skipped = set_voucher_pause_state(voucher_ids, activate=False)
                 
                 logger.info(
                     "[Deactivation Task] Deactivated %d vouchers for "
                     "participant %s (ID=%s)",
-                    len(voucher_ids),
+                    updated,
                     participant.name,
                     participant.id
                 )
@@ -287,3 +256,141 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
             "Task will not reschedule for ProgramPause ID=%s",
             program_pause_id
         )
+    
+    # Schedule final cleanup at pause_end as safety net
+    try:
+        pp = ProgramPause.objects.all_pauses().get(id=program_pause_id)
+        now = timezone.now()
+        
+        if pp.pause_end and pp.pause_end > now:
+            from datetime import timedelta
+            final_cleanup_time = pp.pause_end + timedelta(minutes=5)
+            
+            logger.info(
+                "[Deactivation Task] Scheduling final cleanup at %s "
+                "(pause_end + 5min buffer)",
+                final_cleanup_time
+            )
+            final_cleanup_after_pause_end.apply_async(
+                args=[program_pause_id],
+                eta=final_cleanup_time
+            )
+    except ProgramPause.DoesNotExist:
+        logger.warning(
+            "[Deactivation Task] ProgramPause ID=%s not found for final cleanup scheduling",
+            program_pause_id
+        )
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def final_cleanup_after_pause_end(self, program_pause_id):
+    """
+    Final cleanup task that runs after pause_end to ensure all vouchers are reset.
+    Also marks the pause as archived.
+    
+    Args:
+        program_pause_id (int): ID of the ProgramPause instance
+    """
+    try:
+        pp = ProgramPause.objects.all_pauses().get(id=program_pause_id)
+    except ProgramPause.DoesNotExist:
+        logger.warning(
+            "[Final Cleanup] ProgramPause ID=%s not found.",
+            program_pause_id
+        )
+        return
+    
+    now = timezone.now()
+    
+    # Only run if pause has actually ended
+    if pp.pause_end and pp.pause_end > now:
+        logger.info(
+            "[Final Cleanup] Pause hasn't ended yet (ends %s, now=%s). Skipping.",
+            pp.pause_end, now
+        )
+        return
+    
+    # Find all vouchers still flagged
+    flagged_vouchers = Voucher.objects.filter(
+        program_pause_flag=True,
+        active=True
+    )
+    
+    if flagged_vouchers.exists():
+        voucher_ids = list(flagged_vouchers.values_list('id', flat=True))
+        updated, skipped = set_voucher_pause_state(voucher_ids, activate=False)
+        
+        logger.info(
+            "[Final Cleanup] Reset %d vouchers for ProgramPause ID=%s",
+            updated,
+            program_pause_id
+        )
+    else:
+        logger.info(
+            "[Final Cleanup] No flagged vouchers found for ProgramPause ID=%s",
+            program_pause_id
+        )
+    
+    # Mark pause as archived
+    if not pp.archived:
+        pp.archived = True
+        pp.archived_at = now
+        pp.save(update_fields=['archived', 'archived_at'])
+        logger.info(
+            "[Final Cleanup] Marked ProgramPause ID=%s as archived",
+            program_pause_id
+        )
+
+
+@shared_task(bind=True)
+def cleanup_expired_pause_flags(self):
+    """
+    Daily task that finds expired pauses and cleans up any remaining flagged vouchers.
+    Provides safety net for missed cleanups.
+    """
+    now = timezone.now()
+    
+    # Find all pauses (including archived) that have ended
+    expired_pauses = ProgramPause.objects.all_pauses().filter(
+        pause_end__lt=now
+    )
+    
+    total_pauses_processed = 0
+    total_vouchers_cleaned = 0
+    
+    for pause in expired_pauses:
+        # Find vouchers still flagged
+        flagged_vouchers = Voucher.objects.filter(
+            program_pause_flag=True,
+            active=True
+        )
+        
+        if flagged_vouchers.exists():
+            voucher_ids = list(flagged_vouchers.values_list('id', flat=True))
+            updated, skipped = set_voucher_pause_state(voucher_ids, activate=False)
+            
+            if updated > 0:
+                logger.info(
+                    "[Daily Cleanup] Reset %d stale vouchers for ProgramPause ID=%s",
+                    updated,
+                    pause.id
+                )
+                total_vouchers_cleaned += updated
+        
+        # Mark as archived if not already
+        if not pause.archived:
+            pause.archived = True
+            pause.archived_at = now
+            pause.save(update_fields=['archived', 'archived_at'])
+            logger.info(
+                "[Daily Cleanup] Marked ProgramPause ID=%s as archived",
+                pause.id
+            )
+        
+        total_pauses_processed += 1
+    
+    logger.info(
+        "[Daily Cleanup] Processed %d expired pauses, cleaned %d vouchers",
+        total_pauses_processed,
+        total_vouchers_cleaned
+    )

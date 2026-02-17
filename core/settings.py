@@ -15,6 +15,7 @@ import environ
 from pathlib import Path
 from datetime import timedelta
 import sys
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -312,6 +313,10 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 CELERY_BEAT_SCHEDULE = {
     'create_weekly_combined_orders': {
         'task': 'orders.tasks.create_weekly_combined_orders',
+    },
+    'cleanup-expired-pause-flags': {
+        'task': 'apps.lifeskills.tasks.program_pause.cleanup_expired_pause_flags',
+        'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM
     },
 }
 

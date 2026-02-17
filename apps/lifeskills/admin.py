@@ -32,13 +32,50 @@ def validate_address(address):
 @admin.register(ProgramPause)
 class ProgramPauseAdmin(admin.ModelAdmin):
     """Admin for ProgramPause with active pause notification."""
-    list_display = ("reason", "pause_start", "pause_end", "is_active_gate")
+    list_display = ("reason", "pause_start", "pause_end", "is_active_gate", "archived_status")
+    list_filter = ('archived',)
+    actions = ['archive_pauses', 'unarchive_pauses']
+
+    def get_queryset(self, request):
+        """Show both archived and active pauses in admin."""
+        return ProgramPause.objects.all_pauses()
+
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion - use archive instead."""
+        return False
+
+    def archived_status(self, obj):
+        """Display archived status with icon."""
+        if obj.archived:
+            return format_html('<span title="Archived on {}">{} Archived</span>', obj.archived_at, '🗄️')
+        return "Active"
+    archived_status.short_description = "Status"
+
+    def archive_pauses(self, request, queryset):
+        """Admin action to archive selected pauses."""
+        count = 0
+        for pause in queryset:
+            if not pause.archived:
+                pause.archive()
+                count += 1
+        self.message_user(request, f"{count} pause(s) archived and vouchers cleaned up.", messages.SUCCESS)
+    archive_pauses.short_description = "Archive selected pauses"
+
+    def unarchive_pauses(self, request, queryset):
+        """Admin action to unarchive selected pauses."""
+        count = 0
+        for pause in queryset:
+            if pause.archived:
+                pause.unarchive()
+                count += 1
+        self.message_user(request, f"{count} pause(s) unarchived.", messages.SUCCESS)
+    unarchive_pauses.short_description = "Unarchive selected pauses"
 
     def changelist_view(self, request, extra_context=None):
         response = super().changelist_view(request, extra_context)
 
-        all_pauses = ProgramPause.objects.all()
-        active_pauses = [p for p in all_pauses if p.is_active_gate]
+        all_pauses = ProgramPause.objects.all_pauses()
+        active_pauses = [p for p in all_pauses if p.is_active_gate and not p.archived]
         if active_pauses:
             self.message_user(
                 request,
