@@ -132,7 +132,16 @@ jobs:
           MAILGUN_SENDER_DOMAIN: test.example.com
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
-          pytest --cov=apps --cov-report=xml --cov-report=html
+          pytest --cov=apps --cov-report=xml --cov-report=html --cov-report=term-missing
+
+      - name: Print coverage summary
+        if: always()
+        run: |
+          echo "=== Coverage Summary ==="
+          coverage report --skip-covered --sort=cover
+          echo ""
+          echo "=== Coverage by Module ==="
+          coverage report --skip-empty
 
       - name: Upload coverage reports
         if: always()

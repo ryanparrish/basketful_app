@@ -56,7 +56,27 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install mutmut
+          pip install mutmut pytest-django
+
+      - name: Verify test environment
+        env:
+          DJANGO_SETTINGS_MODULE: core.settings
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-mutation
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-mutation
+          DEBUG: 'True'
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          CELERY_TASK_ALWAYS_EAGER: 'True'
+          MAILGUN_API_KEY: test-key
+          MAILGUN_SENDER_DOMAIN: test.example.com
+          DEFAULT_FROM_EMAIL: test@example.com
+        run: |
+          echo "Testing that pytest works..."
+          pytest apps/ -v --co -q | head -20
+          echo ""
+          echo "Pytest can discover tests successfully"
 
       - name: Run mutation tests
         env:
@@ -79,10 +99,28 @@ jobs:
           fi
           
           echo "🧬 Running mutation tests on: $PATHS"
-          mutmut run --paths-to-mutate="$PATHS" --tests-dir=apps/ || true
+          echo "Checking if files exist:"
+          for path in $(echo $PATHS | tr ',' ' '); do
+            if [ -f "$path" ]; then
+              echo "  ✓ $path ($(wc -l < $path) lines)"
+            else
+              echo "  ✗ $path (NOT FOUND)"
+            fi
+          done
           
-          mutmut results > mutation-results.txt || echo "No results yet" > mutation-results.txt
-          echo "Results saved to mutation-results.txt"
+          echo ""
+          echo "Running mutmut..."
+          mutmut run --paths-to-mutate="$PATHS" --runner="pytest -x --tb=short" --use-coverage || true
+          
+          echo ""
+          echo "Mutmut status:"
+          mutmut results || echo "No mutations were performed"
+          
+          echo ""
+          echo "Generating results file..."
+          mutmut results > mutation-results.txt || echo "No mutations found - check paths and test discovery" > mutation-results.txt
+          
+          echo "Results:"
           cat mutation-results.txt
 
       - name: Generate HTML report
