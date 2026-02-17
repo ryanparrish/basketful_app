@@ -78,6 +78,25 @@ jobs:
           echo ""
           echo "Pytest can discover tests successfully"
 
+      - name: Generate coverage data
+        env:
+          DJANGO_SETTINGS_MODULE: core.settings
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-mutation
+          DOMAIN_NAME: test.example.com
+          HASHIDS_SALT: test-hashids-salt-mutation
+          DEBUG: 'True'
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          CELERY_TASK_ALWAYS_EAGER: 'True'
+          MAILGUN_API_KEY: test-key
+          MAILGUN_SENDER_DOMAIN: test.example.com
+          DEFAULT_FROM_EMAIL: test@example.com
+        run: |
+          echo "Generating coverage data for mutation testing..."
+          pytest --cov=apps --cov-report= -q
+          echo "Coverage data generated (.coverage file created)"
+
       - name: Run mutation tests
         env:
           DJANGO_SETTINGS_MODULE: core.settings
