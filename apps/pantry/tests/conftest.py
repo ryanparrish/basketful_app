@@ -64,6 +64,17 @@ def ensure_voucher_setting(db):
 # ============================================================
 
 @pytest.fixture
+def high_balance_participant():
+    """
+    Creates a Participant with high voucher balance for tests requiring unlimited funds.
+    
+    This fixture is useful for tests that focus on business logic validation
+    (like category limits) and should not be constrained by voucher balance limits.
+    """
+    return ParticipantFactory(adults=1, children=0, high_balance=True)
+
+
+@pytest.fixture
 def voucher_setting_fixture():
     """
     Creates a default, active `VoucherSetting` object in the database.

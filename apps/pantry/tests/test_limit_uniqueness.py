@@ -27,9 +27,9 @@ from apps.pantry.tests.factories import (
 
 
 @pytest.mark.django_db
-def test_different_categories_have_independent_limits():
+def test_different_categories_have_independent_limits(high_balance_participant):
     """Test that limits on different categories are enforced independently."""
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = high_balance_participant
     order = OrderFactory(account=participant.accountbalance)
     
     # Create two separate categories with different limits
@@ -90,9 +90,9 @@ def test_different_categories_have_independent_limits():
 
 
 @pytest.mark.django_db
-def test_subcategories_have_independent_limits_from_parent_category():
+def test_subcategories_have_independent_limits_from_parent_category(high_balance_participant):
     """Test that subcategory limits don't affect parent category limits."""
-    participant = ParticipantFactory(adults=1, children=0)
+    participant = high_balance_participant
     order = OrderFactory(account=participant.accountbalance)
     
     # Create meat category with a general limit
@@ -241,7 +241,7 @@ def test_multiple_subcategories_each_have_unique_limits():
 @pytest.mark.django_db
 def test_frozen_meat_limit_does_not_enforce_regular_meat_limit():
     """Test that a frozen meat limit is completely independent from regular meat."""
-    participant = ParticipantFactory(adults=2, children=1)  # household of 3
+    participant = ParticipantFactory(adults=2, children=1, high_balance=True)  # household of 3
     order = OrderFactory(account=participant.accountbalance)
     
     # Create meat category
@@ -460,7 +460,7 @@ def test_per_adult_scope_unique_to_category():
 @pytest.mark.django_db
 def test_per_child_scope_unique_to_subcategory():
     """Test that per_child scope is calculated independently per subcategory."""
-    participant = ParticipantFactory(adults=1, children=4)
+    participant = ParticipantFactory(adults=1, children=4, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     # Parent category
@@ -520,7 +520,7 @@ def test_per_child_scope_unique_to_subcategory():
 @pytest.mark.django_db
 def test_per_infant_scope_unique_to_subcategory():
     """Test that per_infant scope is calculated independently per subcategory."""
-    participant = ParticipantFactory(adults=1, children=2, diaper_count=2)
+    participant = ParticipantFactory(adults=1, children=2, diaper_count=2, high_balance=True)
     order = OrderFactory(account=participant.accountbalance)
     
     # Parent category
