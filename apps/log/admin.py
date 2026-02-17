@@ -4,6 +4,9 @@ from django.http import JsonResponse
 from django.urls import path
 from django.utils.html import format_html
 from .models import EmailLog, EmailType, OrderValidationLog, UserLoginLog, GraceAllowanceLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @admin.register(EmailType)
@@ -108,11 +111,12 @@ class EmailTypeAdmin(admin.ModelAdmin):
             return JsonResponse({
                 'success': False,
                 'error': 'Email type not found',
+            logger.exception("Error generating email preview for EmailType id=%s", pk)
             }, status=404)
         except Exception as e:
             return JsonResponse({
                 'success': False,
-                'error': str(e),
+                'error': 'An internal error occurred while generating the preview.',
             }, status=500)
 
 
