@@ -40,8 +40,10 @@ def set_voucher_pause_state(voucher_ids, activate=False, multiplier=1):
         
         for voucher in vouchers:
             # Check if already in target state (idempotent)
-            if (voucher.program_pause_flag == target_flag and 
-                voucher.multiplier == target_multiplier):
+            if (
+                voucher.program_pause_flag == target_flag
+                and voucher.multiplier == target_multiplier
+            ):
                 skipped_count += 1
                 continue
             
