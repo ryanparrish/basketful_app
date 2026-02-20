@@ -467,7 +467,7 @@ class TestCompletePauseLifecycle:
                 assert v.program_pause_flag is False
         
         # Step 4: Fast forward past pause_end and run final cleanup
-        with freeze_time("2024-01-22 10:10:00"):  # Past pause_end + 5 min
+        with freeze_time("2024-02-04 10:10:00"):  # Past pause_end + 5 min
             final_cleanup_after_pause_end(pause.id)
             
             # Vouchers should be reset

@@ -167,6 +167,9 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
     
     now = timezone.now()
     buffer_minutes = 5
+    is_eager_request = bool(
+        getattr(getattr(self, "request", None), "is_eager", False)
+    )
     
     logger.info(
         "[Deactivation Task] Running for ProgramPause ID=%s at %s",
@@ -246,10 +249,17 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
             earliest_next,
             buffer_minutes
         )
-        deactivate_expired_pause_vouchers.apply_async(
-            args=[program_pause_id],
-            eta=earliest_next
-        )
+        if is_eager_request and earliest_next > now:
+            logger.info(
+                "[Deactivation Task] Eager task request detected; "
+                "skipping recursive eta reschedule for ProgramPause ID=%s",
+                program_pause_id
+            )
+        else:
+            deactivate_expired_pause_vouchers.apply_async(
+                args=[program_pause_id],
+                eta=earliest_next
+            )
     else:
         logger.info(
             "[Deactivation Task] All order windows closed. "
@@ -271,10 +281,17 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
                 "(pause_end + 5min buffer)",
                 final_cleanup_time
             )
-            final_cleanup_after_pause_end.apply_async(
-                args=[program_pause_id],
-                eta=final_cleanup_time
-            )
+            if is_eager_request and final_cleanup_time > now:
+                logger.info(
+                    "[Deactivation Task] Eager task request detected; "
+                    "skipping final cleanup eta scheduling for ProgramPause ID=%s",
+                    program_pause_id
+                )
+            else:
+                final_cleanup_after_pause_end.apply_async(
+                    kwargs={"pause_id": program_pause_id},
+                    eta=final_cleanup_time
+                )
     except ProgramPause.DoesNotExist:
         logger.warning(
             "[Deactivation Task] ProgramPause ID=%s not found for final cleanup scheduling",
@@ -283,7 +300,9 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def final_cleanup_after_pause_end(self, program_pause_id):
+def final_cleanup_after_pause_end(
+    self, program_pause_id=None, pause_id=None
+):
     """
     Final cleanup task that runs after pause_end to ensure all vouchers are reset.
     Also marks the pause as archived.
@@ -291,6 +310,14 @@ def final_cleanup_after_pause_end(self, program_pause_id):
     Args:
         program_pause_id (int): ID of the ProgramPause instance
     """
+    # Backward compatibility: support both arg names.
+    if program_pause_id is None:
+        program_pause_id = pause_id
+
+    if program_pause_id is None:
+        logger.warning("[Final Cleanup] No ProgramPause ID supplied.")
+        return
+
     try:
         pp = ProgramPause.objects.all_pauses().get(id=program_pause_id)
     except ProgramPause.DoesNotExist:
