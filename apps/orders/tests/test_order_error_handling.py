@@ -30,8 +30,13 @@ def test_failed_validation_creates_failed_attempt_record():
     account.base_balance = Decimal("30.00")
     account.save()
 
+    # Force a deterministic hygiene validation failure.
+    hygiene_balance = account.hygiene_balance
+    failing_price = hygiene_balance + Decimal("0.01")
+    assert failing_price > account.hygiene_balance
+
     hygiene = CategoryFactory(name="Hygiene")
-    product = ProductFactory(category=hygiene, price=Decimal("20.00"))
+    product = ProductFactory(category=hygiene, price=failing_price)
     items = [OrderItemData(product=product, quantity=1)]
 
     orchestration = OrderOrchestration()
@@ -45,9 +50,8 @@ def test_failed_validation_creates_failed_attempt_record():
         )
 
     attempt = FailedOrderAttempt.objects.filter(participant=participant).latest("created_at")
-    assert attempt.total_attempted == Decimal("20.00")
+    assert attempt.total_attempted == failing_price
     assert attempt.food_total == Decimal("0.00")
-    assert attempt.hygiene_total == Decimal("20.00")
+    assert attempt.hygiene_total == failing_price
     assert attempt.active_voucher_count >= 0
     assert attempt.validation_errors
-

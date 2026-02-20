@@ -30,7 +30,6 @@ class OrderOrchestration:
     # ----------------------------
     # Create Confirm, cancel, clone
     # ----------------------------
-    @transaction.atomic
     def create_order(
         self,
         account,
@@ -133,26 +132,26 @@ class OrderOrchestration:
                     order_items_data, participant, account
                 )
                 
-                # STEP 2: All validation passed - create Order record
-                order = Order.objects.create(account=account, status="pending")
-                order.save()
-                
-                # STEP 3: Bulk create order items
-                items_bulk = [
-                    OrderItem(
-                        order=order,
-                        product=item.product,
-                        quantity=item.quantity,
-                        price=item.product.price,
-                        price_at_order=item.product.price,
-                    )
-                    for item in order_items_data
-                ]
-                
-                if not items_bulk:
-                    raise ValidationError("Order must have at least one valid item.")
-                
-                OrderItem.objects.bulk_create(items_bulk)
+                # STEP 2: All validation passed - create Order and items atomically.
+                with transaction.atomic():
+                    order = Order.objects.create(account=account, status="pending")
+                    order.save()
+
+                    items_bulk = [
+                        OrderItem(
+                            order=order,
+                            product=item.product,
+                            quantity=item.quantity,
+                            price=item.product.price,
+                            price_at_order=item.product.price,
+                        )
+                        for item in order_items_data
+                    ]
+
+                    if not items_bulk:
+                        raise ValidationError("Order must have at least one valid item.")
+
+                    OrderItem.objects.bulk_create(items_bulk)
                 
                 # STEP 4: Reset failure count on success
                 if user:
