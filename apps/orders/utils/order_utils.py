@@ -95,6 +95,18 @@ class OrderOrchestration:
             
             raise ValidationError(error_msg)
         
+        # Precompute totals for failed-attempt logging.
+        food_total = Decimal('0.00')
+        hygiene_total = Decimal('0.00')
+        for item in order_items_data:
+            item_total = item.product.price * item.quantity
+            category_name = getattr(item.product.category, 'name', '').lower()
+            if category_name == 'hygiene':
+                hygiene_total += item_total
+            else:
+                food_total += item_total
+        total_attempted = food_total + hygiene_total
+
         # Acquire distributed lock
         with distributed_order_lock(account.participant.id, timeout=10) as lock_acquired:
             if not lock_acquired:
@@ -121,26 +133,11 @@ class OrderOrchestration:
                     order_items_data, participant, account
                 )
                 
-                # STEP 2: Calculate totals for audit
-                food_total = Decimal('0.00')
-                hygiene_total = Decimal('0.00')
-                
-                for item in order_items_data:
-                    item_total = item.product.price * item.quantity
-                    category_name = getattr(item.product.category, 'name', '').lower()
-                    
-                    if category_name == 'hygiene':
-                        hygiene_total += item_total
-                    else:
-                        food_total += item_total
-                
-                total_attempted = food_total + hygiene_total
-                
-                # STEP 3: All validation passed - create Order record
+                # STEP 2: All validation passed - create Order record
                 order = Order.objects.create(account=account, status="pending")
                 order.save()
                 
-                # STEP 4: Bulk create order items
+                # STEP 3: Bulk create order items
                 items_bulk = [
                     OrderItem(
                         order=order,
@@ -157,7 +154,7 @@ class OrderOrchestration:
                 
                 OrderItem.objects.bulk_create(items_bulk)
                 
-                # STEP 5: Reset failure count on success
+                # STEP 4: Reset failure count on success
                 if user:
                     reset_failure_count(user.id)
                 
@@ -169,26 +166,29 @@ class OrderOrchestration:
                 return order
                 
             except ValidationError as e:
-                # STEP 6: Log failed attempt with full context
+                # STEP 5: Log failed attempt with full context
                 error_messages = e.message_dict if hasattr(e, 'message_dict') else [str(e)]
                 error_summary = str(e)
+                participant = getattr(account, "participant", None)
                 
                 # Get program pause info
                 program_pause_active = False
-                program_pause_name = None
-                voucher_multiplier = Decimal('1.0')
+                program_pause_name = ""
+                voucher_multiplier = 1
                 
                 try:
-                    from apps.voucher.models import ProgramPauseVoucher
-                    active_pause = ProgramPauseVoucher.objects.filter(
-                        participant=participant,
+                    from apps.voucher.models import Voucher
+                    active_pause_vouchers = Voucher.objects.filter(
+                        account=account,
                         active=True
-                    ).first()
+                    )
+                    pause_voucher = active_pause_vouchers.filter(
+                        program_pause_flag=True
+                    ).order_by("-multiplier").first()
                     
-                    if active_pause:
+                    if pause_voucher:
                         program_pause_active = True
-                        program_pause_name = active_pause.name
-                        voucher_multiplier = Decimal(str(active_pause.multiplier))
+                        voucher_multiplier = pause_voucher.multiplier
                 except Exception as pause_err:
                     logger.error(f"Error getting program pause info: {pause_err}")
                 
@@ -197,8 +197,9 @@ class OrderOrchestration:
                 try:
                     from apps.voucher.models import Voucher
                     active_voucher_count = Voucher.objects.filter(
-                        participant=participant,
-                        status='active'
+                        account=account,
+                        active=True,
+                        state='applied'
                     ).count()
                 except Exception as voucher_err:
                     logger.error(f"Error counting vouchers: {voucher_err}")
@@ -295,5 +296,3 @@ class OrderOrchestration:
         # Now update self.order AFTER cloning
         self.order = new_order
         return new_order
-
-

@@ -91,34 +91,38 @@ def distributed_order_lock(participant_id: int, timeout: int = 10):
     """
     lock_key = f"order_lock:participant:{participant_id}"
     lock_acquired = False
-    
+    lock_via_cache = False
+
     try:
-        # Try to acquire lock with Redis
+        # Try to acquire lock with Redis/cache.
         lock_acquired = cache.add(lock_key, "locked", timeout)
-        
+        lock_via_cache = True
+
         if not lock_acquired:
             logger.warning(
                 f"Failed to acquire order lock for participant {participant_id}. "
                 "Possible concurrent order submission."
             )
-        
-        yield lock_acquired
-        
     except Exception as e:
-        # Redis unavailable - log warning but allow through (graceful degradation)
+        # Redis unavailable - allow request to continue without lock.
         logger.warning(
             f"Redis unavailable for distributed lock (participant {participant_id}): {e}. "
             "Allowing request to proceed without lock."
         )
-        yield True  # Allow through when Redis is down
-        
+        lock_acquired = True
+        lock_via_cache = False
+
+    try:
+        yield lock_acquired
     finally:
-        # Release lock if we acquired it
-        if lock_acquired:
+        # Release lock only if cache lock was actually acquired.
+        if lock_via_cache and lock_acquired:
             try:
                 cache.delete(lock_key)
             except Exception as e:
-                logger.error(f"Failed to release lock for participant {participant_id}: {e}")
+                logger.error(
+                    f"Failed to release lock for participant {participant_id}: {e}"
+                )
 
 
 def check_duplicate_submission(idempotency_key: str, ttl_seconds: int = 300) -> bool:
