@@ -7,15 +7,33 @@ on:
   workflow_dispatch:
     inputs:
       paths:
-        description: 'Specific paths to mutate (e.g., apps/orders/models.py)'
+        description: 'Specific path(s) to mutate, comma-separated (e.g., apps/orders/models.py)'
         required: false
         type: string
 
+concurrency:
+  group: mutation-testing-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  mutation-test:
+  mutation-test-default:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.paths == '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 180
-    
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: orders-models
+            target: apps/orders/models.py
+            test_scope: apps/orders/tests
+          - label: orders-utils
+            target: apps/orders/utils/order_utils.py
+            test_scope: apps/orders/tests
+          - label: account-models
+            target: apps/account/models.py
+            test_scope: apps/account/tests
+
     services:
       postgres:
         image: postgres:15
@@ -30,7 +48,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
+
       redis:
         image: redis:7
         ports:
@@ -59,7 +77,7 @@ jobs:
           pip install mutmut pytest-django
 
       - name: Verify test environment
-        env:
+        env: &mutation_env
           DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
           REDIS_URL: redis://localhost:6379/0
@@ -73,10 +91,139 @@ jobs:
           MAILGUN_SENDER_DOMAIN: test.example.com
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
-          echo "Testing that pytest works..."
-          pytest apps/ -v --co -q | head -20
+          echo "Testing test discovery for ${{ matrix.test_scope }}..."
+          pytest "${{ matrix.test_scope }}" -v --co -q | head -20
           echo ""
-          echo "Pytest can discover tests successfully"
+          echo "Pytest discovery succeeded"
+
+      - name: Generate coverage data
+        env: *mutation_env
+        run: |
+          echo "Generating coverage data for ${{ matrix.target }}..."
+          pytest "${{ matrix.test_scope }}" --cov="${{ matrix.target }}" --cov-report= -q
+          echo "Coverage data generated (.coverage file created)"
+
+      - name: Run mutation tests
+        env: *mutation_env
+        run: |
+          TARGET="${{ matrix.target }}"
+          TEST_SCOPE="${{ matrix.test_scope }}"
+
+          echo "🧬 Running mutation tests on: $TARGET"
+          if [ ! -f "$TARGET" ]; then
+            echo "Target file not found: $TARGET"
+            exit 1
+          fi
+          echo "  ✓ $TARGET ($(wc -l < "$TARGET") lines)"
+          echo ""
+          echo "Running mutmut..."
+          mutmut run \
+            --paths-to-mutate="$TARGET" \
+            --runner="pytest -x --tb=short $TEST_SCOPE" \
+            --use-coverage || true
+
+          echo ""
+          echo "Mutmut status:"
+          mutmut results || echo "No mutations were performed"
+
+          echo ""
+          echo "Generating results file..."
+          mutmut results > mutation-results.txt || echo "No mutations found - check paths and test discovery" > mutation-results.txt
+          cat mutation-results.txt
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          mutmut html || true
+          mkdir -p htmlmut .mutmut-cache
+          touch mutation-results.txt
+
+      - name: Parse mutation score
+        if: always()
+        id: mutation-score
+        run: |
+          SCORE="0.0"
+          KILLED="0"
+          SURVIVED="0"
+          TIMEOUT="0"
+
+          if [ -f mutation-results.txt ]; then
+            SCORE=$(grep -oP '(?<=mutation score: )\d+\.\d+' mutation-results.txt || echo "0.0")
+            KILLED=$(grep -oP '(?<=Killed: )\d+' mutation-results.txt || echo "0")
+            SURVIVED=$(grep -oP '(?<=Survived: )\d+' mutation-results.txt || echo "0")
+            TIMEOUT=$(grep -oP '(?<=Timeout: )\d+' mutation-results.txt || echo "0")
+          fi
+
+          echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+          echo "killed=$KILLED" >> "$GITHUB_OUTPUT"
+          echo "survived=$SURVIVED" >> "$GITHUB_OUTPUT"
+          echo "timeout=$TIMEOUT" >> "$GITHUB_OUTPUT"
+
+          echo "## 🧬 Mutation Testing Results (${{ matrix.target }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Mutation Score:** ${SCORE}%" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ✅ Killed: $KILLED" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⚠️ Survived: $SURVIVED" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⏱️ Timeout: $TIMEOUT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload mutation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ github.run_number }}-${{ matrix.label }}
+          path: |
+            htmlmut/
+            mutation-results.txt
+            .mutmut-cache
+          retention-days: 90
+
+  mutation-test-custom:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.paths != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: basketful_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install mutmut pytest-django
 
       - name: Generate coverage data
         env:
@@ -93,9 +240,7 @@ jobs:
           MAILGUN_SENDER_DOMAIN: test.example.com
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
-          echo "Generating coverage data for mutation testing..."
-          pytest --cov=apps --cov-report= -q
-          echo "Coverage data generated (.coverage file created)"
+          pytest apps/ --cov=apps --cov-report= -q
 
       - name: Run mutation tests
         env:
@@ -113,107 +258,21 @@ jobs:
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
           PATHS="${{ github.event.inputs.paths }}"
-          if [ -z "$PATHS" ]; then
-            PATHS="apps/orders/models.py,apps/orders/utils/order_utils.py,apps/account/models.py"
-          fi
-          
           echo "🧬 Running mutation tests on: $PATHS"
-          echo "Checking if files exist:"
-          for path in $(echo $PATHS | tr ',' ' '); do
-            if [ -f "$path" ]; then
-              echo "  ✓ $path ($(wc -l < $path) lines)"
-            else
-              echo "  ✗ $path (NOT FOUND)"
-            fi
-          done
-          
-          echo ""
-          echo "Running mutmut..."
           mutmut run --paths-to-mutate="$PATHS" --runner="pytest -x --tb=short" --use-coverage || true
-          
-          echo ""
-          echo "Mutmut status:"
-          mutmut results || echo "No mutations were performed"
-          
-          echo ""
-          echo "Generating results file..."
           mutmut results > mutation-results.txt || echo "No mutations found - check paths and test discovery" > mutation-results.txt
-          
-          echo "Results:"
-          cat mutation-results.txt
-
-      - name: Generate HTML report
-        if: always()
-        run: |
           mutmut html || true
-
-      - name: Parse mutation score
-        if: always()
-        id: mutation-score
-        run: |
-          if [ -f mutation-results.txt ]; then
-            SCORE=$(grep -oP '(?<=mutation score: )\d+\.\d+' mutation-results.txt || echo "0.0")
-            KILLED=$(grep -oP '(?<=Killed: )\d+' mutation-results.txt || echo "0")
-            SURVIVED=$(grep -oP '(?<=Survived: )\d+' mutation-results.txt || echo "0")
-            TIMEOUT=$(grep -oP '(?<=Timeout: )\d+' mutation-results.txt || echo "0")
-            
-            echo "score=$SCORE" >> $GITHUB_OUTPUT
-            echo "killed=$KILLED" >> $GITHUB_OUTPUT
-            echo "survived=$SURVIVED" >> $GITHUB_OUTPUT
-            echo "timeout=$TIMEOUT" >> $GITHUB_OUTPUT
-            
-            echo "## 🧬 Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Mutation Score:** ${SCORE}%" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Killed: $KILLED" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚠️ Survived: $SURVIVED" >> $GITHUB_STEP_SUMMARY
-            echo "- ⏱️ Timeout: $TIMEOUT" >> $GITHUB_STEP_SUMMARY
-          fi
+          mkdir -p htmlmut .mutmut-cache
+          touch mutation-results.txt
+          cat mutation-results.txt
 
       - name: Upload mutation reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mutation-report-${{ github.run_number }}
+          name: mutation-report-${{ github.run_number }}-custom
           path: |
             htmlmut/
             mutation-results.txt
             .mutmut-cache
           retention-days: 90
-
-      - name: Create tracking issue
-        if: always() && steps.mutation-score.outputs.survived != '0'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const survived = '${{ steps.mutation-score.outputs.survived }}';
-            const score = '${{ steps.mutation-score.outputs.score }}';
-            
-            const body = `## 🧬 Mutation Testing Report
-            
-            **Date:** ${new Date().toISOString().split('T')[0]}
-            **Mutation Score:** ${score}%
-            **Survived Mutations:** ${survived}
-            
-            ### What This Means
-            ${survived} mutations survived, meaning these code changes were not caught by tests.
-            
-            ### Next Steps
-            1. Download the [mutation report artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            2. Review the HTML report to see which mutations survived
-            3. Write tests to kill high-risk survivors
-            
-            ### View Report
-            Run locally: \`mutmut show\` to see survivors
-            
-            ---
-            *This issue is auto-generated weekly. Close when mutations are addressed.*`;
-            
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Mutation Testing Report: ${score}% (${survived} survivors)`,
-              body: body,
-              labels: ['mutation-testing', 'testing']
-            });
