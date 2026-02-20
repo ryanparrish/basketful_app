@@ -92,7 +92,8 @@ jobs:
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
           echo "Testing test discovery for ${{ matrix.test_scope }}..."
-          pytest "${{ matrix.test_scope }}" -v --co -q | head -20
+          pytest "${{ matrix.test_scope }}" -v --co -q > /tmp/pytest-collect.txt
+          sed -n '1,20p' /tmp/pytest-collect.txt
           echo ""
           echo "Pytest discovery succeeded"
 
@@ -135,8 +136,9 @@ jobs:
         if: always()
         run: |
           mutmut html || true
-          mkdir -p htmlmut .mutmut-cache
-          touch mutation-results.txt
+          [ -e htmlmut ] || mkdir -p htmlmut
+          [ -e mutation-results.txt ] || echo "No mutation results generated." > mutation-results.txt
+          [ -e .mutmut-cache ] || touch .mutmut-cache
 
       - name: Parse mutation score
         if: always()
@@ -262,8 +264,9 @@ jobs:
           mutmut run --paths-to-mutate="$PATHS" --runner="pytest -x --tb=short" --use-coverage || true
           mutmut results > mutation-results.txt || echo "No mutations found - check paths and test discovery" > mutation-results.txt
           mutmut html || true
-          mkdir -p htmlmut .mutmut-cache
-          touch mutation-results.txt
+          [ -e htmlmut ] || mkdir -p htmlmut
+          [ -e mutation-results.txt ] || echo "No mutation results generated." > mutation-results.txt
+          [ -e .mutmut-cache ] || touch .mutmut-cache
           cat mutation-results.txt
 
       - name: Upload mutation reports
