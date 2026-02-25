@@ -1,12 +1,13 @@
 # CI/CD (GitHub Actions)
 
-> Last updated: January 2026
+> Last updated: February 2026
 
 This document describes the continuous integration setup for the Basketful project.
 
-## Workflow File
+## Workflow Files
 
-**Location:** `.github/workflows/ci.yml`
+- `.github/workflows/ci.yml` - Backend tests and backend Docker image
+- `.github/workflows/frontend-ci.yml` - React frontend build checks and frontend Docker images
 
 ## Services
 
@@ -102,3 +103,25 @@ python manage.py makemigrations --check --dry-run
 
 - [TESTING.md](TESTING.md) — Test commands and organization
 - [SETUP.md](SETUP.md) — Development environment setup
+
+## Frontend Container Pipeline
+
+The frontend workflow builds and validates:
+
+- `frontend` (admin React app)
+- `participant-frontend` (participant React app)
+
+Current build checks:
+
+- Admin: `npm run build`
+- Participant: `npx vite build`
+
+On `push` to `main` or `develop`, it also builds and pushes:
+
+- `${DOCKER_USERNAME}/basketful-admin`
+- `${DOCKER_USERNAME}/basketful-participant`
+
+### Required GitHub Secrets
+
+- `DOCKER_USERNAME`
+- `DOCKER_PASSWORD`

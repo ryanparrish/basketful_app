@@ -20,11 +20,10 @@ import {
 } from '@mui/material';
 import {
   ShoppingCart as ShoppingCartIcon,
-  Menu as MenuIcon,
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
 } from '@mui/icons-material';
-import { useLogout, useGetIdentity, useNavigation } from '@refinedev/core';
+import { useLogout, useGetIdentity, useGo } from '@refinedev/core';
 import { useQuery } from '@tanstack/react-query';
 import { useCartContext } from '../../providers/CartProvider';
 import { CartDrawer } from '../../features/cart';
@@ -34,7 +33,7 @@ import type { User } from '../../shared/types/api';
 export const CustomHeader: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { go } = useNavigation();
+  const go = useGo();
   const { mutate: logout } = useLogout();
   const { data: user } = useGetIdentity<User>();
   const { totalItems } = useCartContext();

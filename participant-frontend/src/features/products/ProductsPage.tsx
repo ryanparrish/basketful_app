@@ -20,7 +20,6 @@ import { CONTAINER_PADDING, useFullWidth } from '../../shared/constants/layout';
 export const ProductsPage: React.FC = () => {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   // Context available for future cart visibility logic
   useContext(DesktopLayoutContext);
   
@@ -43,7 +42,7 @@ export const ProductsPage: React.FC = () => {
   }, [searchParams]);
   
   const { isOpen: orderWindowOpen } = useOrderWindow();
-  const { remainingBudget, isOverBudget } = useCartValidation();
+  const { isOverBudget } = useCartValidation();
 
   // Fetch products
   const {

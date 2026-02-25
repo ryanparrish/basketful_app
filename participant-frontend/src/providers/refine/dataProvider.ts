@@ -45,11 +45,11 @@ export const dataProvider: DataProvider = {
     meta,
   }: GetListParams): Promise<{ data: TData[]; total: number }> => {
     const endpoint = getResourceEndpoint(resource);
-    const { current = 1, pageSize = 10 } = pagination ?? {};
+    const { currentPage = 1, pageSize = 10 } = pagination ?? {};
 
     // Build query params
     const params: Record<string, unknown> = {
-      page: current,
+      page: currentPage,
       page_size: pageSize,
     };
 

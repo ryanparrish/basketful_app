@@ -4,10 +4,10 @@
  */
 import React from 'react';
 import { Refine, Authenticated } from '@refinedev/core';
-import { RefineThemes, ThemedLayout, ErrorComponent, RefineSnackbarProvider, useNotificationProvider } from '@refinedev/mui';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
-import routerProvider, { NavigateToResource, CatchAllNavigate } from '@refinedev/react-router';
-import { ThemeProvider, CssBaseline, Box, CircularProgress, useMediaQuery, useTheme, createTheme } from '@mui/material';
+import { ThemedLayout, ErrorComponent, RefineSnackbarProvider, useNotificationProvider } from '@refinedev/mui';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import routerProvider, { CatchAllNavigate } from '@refinedev/react-router';
+import { ThemeProvider, CssBaseline, Box, CircularProgress } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -71,9 +71,6 @@ const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 // Custom layout that wraps Refine's ThemedLayout
 const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-
   return (
     <AppProviders>
       {/* Fixed header outside ThemedLayout to avoid double spacing */}
@@ -99,18 +96,10 @@ const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const ThemedApp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme: dynamicTheme, isLoading } = useThemeConfig();
 
-  // Merge dynamic theme colors with Refine's theme structure
+  // Use the dynamic MUI theme directly to avoid cross-version component type mismatches.
   const activeTheme = React.useMemo(() => {
     if (isLoading) return defaultMuiTheme;
-    
-    // Create a new theme that merges RefineThemes.Blue with our dynamic colors
-    return createTheme({
-      ...dynamicTheme,
-      components: {
-        ...RefineThemes.Blue.components,
-        ...dynamicTheme.components,
-      },
-    });
+    return dynamicTheme;
   }, [dynamicTheme, isLoading]);
 
   return (
@@ -174,7 +163,6 @@ const App: React.FC = () => {
             options={{
               syncWithLocation: true,
               warnWhenUnsavedChanges: false,
-              useNewQueryKeys: true,
             }}
           >
             <Routes>

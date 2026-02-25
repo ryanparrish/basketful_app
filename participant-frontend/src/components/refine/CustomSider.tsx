@@ -16,7 +16,6 @@ import {
   Badge,
   Collapse,
   Skeleton,
-  IconButton,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
@@ -25,7 +24,6 @@ import {
   ExpandLess,
   ExpandMore,
   Category as CategoryIcon,
-  Home as HomeIcon,
   Receipt as ReceiptIcon,
   AccountCircle as AccountIcon,
   Storefront as StorefrontIcon,
@@ -40,11 +38,7 @@ import { CartDrawer } from '../../features/cart';
 
 const SIDER_WIDTH = 260;
 
-interface CustomSiderProps {
-  collapsed?: boolean;
-}
-
-export const CustomSider: React.FC<CustomSiderProps> = ({ collapsed = false }) => {
+export const CustomSider: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const go = useGo();
