@@ -116,10 +116,21 @@ Current build checks:
 - Admin: `npm run build`
 - Participant: `npx vite build`
 
-On `push` to `main` or `develop`, it also builds and pushes:
+On `push` to `main`, `develop`, or git tags like `v1.2.3`, it also builds and pushes:
 
 - `${DOCKER_USERNAME}/basketful-admin`
 - `${DOCKER_USERNAME}/basketful-participant`
+
+Frontend image tag strategy:
+
+- `develop` pushes: publishes `latest` (staging)
+- `vX.Y.Z` tag pushes: publishes version tag `X.Y.Z` and `prod-latest`
+- branch and sha tags are also published for traceability
+
+Admin base path strategy in CI:
+
+- `develop` builds: `VITE_BASE_PATH=/new/admin/`
+- `main` and release tag builds: `VITE_BASE_PATH=/admin/`
 
 ### Required GitHub Secrets
 

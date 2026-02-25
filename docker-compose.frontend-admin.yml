@@ -1,0 +1,12 @@
+services:
+  admin-frontend:
+    image: ${DOCKER_USERNAME}/basketful-admin:${FRONTEND_IMAGE_TAG:-latest}
+    pull_policy: always
+    ports:
+      - "${ADMIN_FRONTEND_PORT:-8081}:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

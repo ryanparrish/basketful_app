@@ -413,11 +413,17 @@ def generate_packing_list_pdf(packing_list) -> BytesIO:
             
             product_name = item.product.name if item.product else 'Unknown Product'
             quantity = item.quantity
-            
-            # Checkbox (proportional size)
+
+            # Keep qty next to the item text for faster visual scanning when packing.
             p.rect(60, y - 3, checkbox_size, checkbox_size)
-            p.drawString(60 + checkbox_size + 10, y, f"{product_name}")
-            p.drawString(width - 100, y, f"Qty: {quantity}")
+            text_x = 60 + checkbox_size + 10
+            qty_text = f"x{quantity}"
+            qty_width = 32 if font_size >= 12 else 28
+
+            p.setFont("Helvetica-Bold", font_size)
+            p.drawString(text_x, y, qty_text)
+            p.setFont("Helvetica", font_size)
+            p.drawString(text_x + qty_width, y, product_name)
             y -= line_spacing
         
         # Draw page number

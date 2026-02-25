@@ -92,6 +92,9 @@ celerybeat.pid
 # Docker
 docker-compose.override.yml
 docker-compose*.yml
+!docker-compose.prod.images.yml
+!docker-compose.frontend-admin.yml
+!docker-compose.frontend-participant.yml
 #Dockerfile
 .docker/
 .dockerignore

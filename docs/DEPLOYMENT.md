@@ -315,6 +315,62 @@ docker-compose -f docker-compose.prod.yml exec api python manage.py collectstati
 docker-compose -f docker-compose.prod.yml exec api python manage.py createsuperuser
 ```
 
+### 5. Deploy Using Pulled Frontend Images (No Local `dist` Mounts)
+
+Use this if you want Docker Compose to pull the frontend images built by CI:
+
+- `${DOCKER_USERNAME}/basketful-admin`
+- `${DOCKER_USERNAME}/basketful-participant`
+
+Add to `.env.production`:
+
+```bash
+DOCKER_USERNAME=your-dockerhub-username
+FRONTEND_IMAGE_TAG=latest
+```
+
+For production release pinning, set `FRONTEND_IMAGE_TAG` to a released version (example: `1.2.3`) that came from a git tag push like `v1.2.3`.
+
+Deploy:
+
+```bash
+docker-compose -f docker-compose.prod.images.yml --env-file .env.production pull
+docker-compose -f docker-compose.prod.images.yml --env-file .env.production up -d --build
+```
+
+This uses:
+
+- `docker-compose.prod.images.yml`
+- `nginx/conf.d/default.images.conf`
+
+### 6. Run Frontends as Separate Compose Stacks
+
+If you want admin and participant frontends fully separate from backend compose, run:
+
+```bash
+# Admin frontend only
+docker-compose -f docker-compose.frontend-admin.yml --env-file .env.production pull
+docker-compose -f docker-compose.frontend-admin.yml --env-file .env.production up -d
+
+# Participant frontend only
+docker-compose -f docker-compose.frontend-participant.yml --env-file .env.production pull
+docker-compose -f docker-compose.frontend-participant.yml --env-file .env.production up -d
+```
+
+Required env vars:
+
+```bash
+DOCKER_USERNAME=your-dockerhub-username
+FRONTEND_IMAGE_TAG=latest
+ADMIN_FRONTEND_PORT=8081
+PARTICIPANT_FRONTEND_PORT=8082
+```
+
+Compose files:
+
+- `docker-compose.frontend-admin.yml`
+- `docker-compose.frontend-participant.yml`
+
 ---
 
 ## Option 2: Platform as a Service (Render)
@@ -585,6 +641,8 @@ curl https://yourdomain.com/api/health/
 
 # Check services
 docker-compose -f docker-compose.prod.yml ps
+# Image-based frontend deployment:
+docker-compose -f docker-compose.prod.images.yml ps
 ```
 
 ### Logs
@@ -595,6 +653,8 @@ docker-compose -f docker-compose.prod.yml logs -f api
 
 # View Celery logs
 docker-compose -f docker-compose.prod.yml logs -f celery
+# Image-based frontend deployment:
+docker-compose -f docker-compose.prod.images.yml logs -f nginx
 ```
 
 ### Updates
@@ -608,6 +668,8 @@ docker-compose -f docker-compose.prod.yml up -d --build
 
 # Run migrations
 docker-compose -f docker-compose.prod.yml exec api python manage.py migrate
+# Image-based frontend deployment:
+docker-compose -f docker-compose.prod.images.yml exec api python manage.py migrate
 ```
 
 ---
