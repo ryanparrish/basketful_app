@@ -30,6 +30,7 @@ import {
   TabbedShowLayout,
   ReferenceManyField,
   FunctionField,
+  type RaRecord,
 } from 'react-admin';
 import { Typography, Box } from '@mui/material';
 
@@ -142,7 +143,7 @@ export const ParticipantShow = () => (
             <DateField source="redeemed_at" showTime />
             <FunctionField 
               label="Status" 
-              render={(record: any) => {
+              render={(record: RaRecord) => {
                 if (record.redeemed) return 'Redeemed';
                 const now = new Date();
                 const validUntil = new Date(record.valid_until);
@@ -170,7 +171,7 @@ export const ParticipantShow = () => (
             </ReferenceField>
             <FunctionField 
               label="Items" 
-              render={(record: any) => record.items?.length || 0}
+              render={(record: RaRecord) => record.items?.length || 0}
             />
             <DateField source="pickup_date" label="Pickup Date" />
             <ShowButton />

@@ -99,7 +99,7 @@ export const Settings = () => {
         if (voucherResponse.data.length > 0) {
           setVoucher(voucherResponse.data[0] as VoucherSettings);
         }
-      } catch (error) {
+      } catch {
         notify('Error loading settings', { type: 'error' });
       }
       setLoading(false);
@@ -119,7 +119,7 @@ export const Settings = () => {
         previousData: orderWindow,
       });
       notify('Order window settings saved', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error saving settings', { type: 'error' });
     }
     setSaving(false);
@@ -136,7 +136,7 @@ export const Settings = () => {
         previousData: email,
       });
       notify('Email settings saved', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error saving settings', { type: 'error' });
     }
     setSaving(false);
@@ -153,7 +153,7 @@ export const Settings = () => {
         previousData: branding,
       });
       notify('Branding settings saved', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error saving settings', { type: 'error' });
     }
     setSaving(false);
@@ -170,7 +170,7 @@ export const Settings = () => {
         previousData: voucher,
       });
       notify('Voucher settings saved', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error saving settings', { type: 'error' });
     }
     setSaving(false);

@@ -21,6 +21,7 @@ import {
   required,
   email,
   useRecordContext,
+  type RaRecord,
 } from 'react-admin';
 import { Chip, Box } from '@mui/material';
 
@@ -38,7 +39,7 @@ export const UserList = () => (
       <BooleanField source="is_active" />
       <FunctionField
         label="Groups"
-        render={(record: any) => (
+        render={(record: RaRecord) => (
           <span>{record.groups?.length || 0} groups</span>
         )}
       />
@@ -54,7 +55,7 @@ export const UserShow = () => {
 
     return (
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-        {record.group_details.map((group: any) => (
+        {record.group_details.map((group: RaRecord) => (
           <Chip
             key={group.id}
             label={group.name}

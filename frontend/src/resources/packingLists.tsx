@@ -12,6 +12,7 @@ import {
   Button,
   useNotify,
   ListButton,
+  type RaRecord,
 } from 'react-admin';
 import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -48,7 +49,7 @@ const DownloadPackingListPdfButton = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       notify('PDF downloaded successfully', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error downloading PDF', { type: 'error' });
     }
   };
@@ -100,7 +101,7 @@ const CategoriesField = () => {
 
   return (
     <Box>
-      {record.categories.map((category: any) => (
+      {record.categories.map((category: RaRecord) => (
         <Chip
           key={category.id}
           label={category.name}
@@ -156,7 +157,7 @@ export const PackingListList = () => (
       <TextField source="packer_name" label="Packer" />
       <FunctionField
         label="Orders"
-        render={(record: any) => record.orders?.length || 0}
+        render={(record: RaRecord) => record.orders?.length || 0}
       />
       <DateField source="created_at" showTime />
     </Datagrid>

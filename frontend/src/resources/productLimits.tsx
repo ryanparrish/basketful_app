@@ -20,6 +20,7 @@ import {
   required,
   ReferenceField,
   FunctionField,
+  type RaRecord,
 } from 'react-admin';
 
 // Limit scope choices matching Django model
@@ -32,7 +33,7 @@ const limitScopeChoices = [
 ];
 
 // Helper function to format limit explanation
-const getLimitExplanation = (record: any) => {
+const getLimitExplanation = (record: RaRecord) => {
   if (!record) return '';
   
   const scope = record.limit_scope || 'per_household';
@@ -58,7 +59,7 @@ export const ProductLimitList = () => (
       <NumberField source="limit" />
       <FunctionField 
         label="Limit Scope" 
-        render={(record: any) => {
+        render={(record: RaRecord) => {
           const choice = limitScopeChoices.find(c => c.id === record.limit_scope);
           return choice ? choice.name : record.limit_scope;
         }}
@@ -86,7 +87,7 @@ export const ProductLimitShow = () => (
       <NumberField source="limit" />
       <FunctionField 
         label="Limit Scope" 
-        render={(record: any) => {
+        render={(record: RaRecord) => {
           const choice = limitScopeChoices.find(c => c.id === record.limit_scope);
           return choice ? choice.name : record.limit_scope;
         }}

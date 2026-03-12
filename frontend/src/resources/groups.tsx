@@ -16,6 +16,7 @@ import {
   FunctionField,
   required,
   useRecordContext,
+  type RaRecord,
 } from 'react-admin';
 import { Chip, Box } from '@mui/material';
 
@@ -27,13 +28,13 @@ export const GroupList = () => (
       <TextField source="name" />
       <FunctionField
         label="Permissions"
-        render={(record: any) => (
+        render={(record: RaRecord) => (
           <span>{record.permissions?.length || 0} permissions</span>
         )}
       />
       <FunctionField
         label="Users"
-        render={(record: any) => (
+        render={(record: RaRecord) => (
           <span>{record.user_count || 0} users</span>
         )}
       />
@@ -49,7 +50,7 @@ export const GroupShow = () => {
 
     return (
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-        {record.permission_details.map((perm: any) => (
+        {record.permission_details.map((perm: RaRecord) => (
           <Chip
             key={perm.id}
             label={`${perm.app_label}.${perm.codename}`}
@@ -68,7 +69,7 @@ export const GroupShow = () => {
         <TextField source="name" />
         <FunctionField
           label="Users"
-          render={(record: any) => `${record.user_count || 0} users`}
+          render={(record: RaRecord) => `${record.user_count || 0} users`}
         />
         <FunctionField
           label="Permissions"
@@ -86,7 +87,7 @@ export const GroupEdit = () => (
       <TextInput source="name" validate={required()} fullWidth />
       <ReferenceArrayInput source="permissions" reference="permissions">
         <SelectArrayInput
-          optionText={(choice: any) =>
+          optionText={(choice: RaRecord) =>
             `${choice.app_label}.${choice.codename} - ${choice.name}`
           }
           fullWidth
@@ -103,7 +104,7 @@ export const GroupCreate = () => (
       <TextInput source="name" validate={required()} fullWidth />
       <ReferenceArrayInput source="permissions" reference="permissions">
         <SelectArrayInput
-          optionText={(choice: any) =>
+          optionText={(choice: RaRecord) =>
             `${choice.app_label}.${choice.codename} - ${choice.name}`
           }
           fullWidth

@@ -102,6 +102,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           build-args: |
+            VITE_API_URL=/api/v1
             VITE_BASE_PATH=${{ matrix.name == 'admin' && (github.ref == 'refs/heads/develop' && '/new/admin/' || '/admin/') || '/' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

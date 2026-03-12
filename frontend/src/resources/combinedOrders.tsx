@@ -29,6 +29,7 @@ import {
   ReferenceArrayInput,
   SelectArrayInput,
   required,
+  type RaRecord,
 } from 'react-admin';
 import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -76,7 +77,7 @@ const DownloadPrimaryPdfButton = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       notify('PDF downloaded successfully', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error downloading PDF', { type: 'error' });
     }
   };
@@ -118,7 +119,7 @@ const DownloadAllPackingListsButton = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       notify('ZIP downloaded successfully', { type: 'success' });
-    } catch (error) {
+    } catch {
       notify('Error downloading ZIP', { type: 'error' });
     }
   };
@@ -160,7 +161,7 @@ const UncombineButton = () => {
       notify('Combined order uncombined successfully', { type: 'success' });
       navigate('/combined-orders');
       refresh();
-    } catch (error) {
+    } catch {
       notify('Error uncombining order', { type: 'error' });
     }
   };
@@ -226,7 +227,7 @@ const PackingListsField = () => {
 
   return (
     <Box>
-      {record.packing_lists.map((pl: any) => (
+      {record.packing_lists.map((pl: RaRecord) => (
         <Card key={pl.id} sx={{ mb: 1 }}>
           <CardContent>
             <Typography variant="subtitle2">{pl.packer_name}</Typography>
