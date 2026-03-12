@@ -92,7 +92,8 @@ jobs:
             type=ref,event=branch,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
             type=match,pattern=v(.*),group=1,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=develop-latest,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=prod-latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and push image
