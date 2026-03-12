@@ -220,3 +220,14 @@ __marimo__/
 htmlmut/
 mutation-results.txt
 CLAUDE.md
+
+# macOS
+.DS_Store
+
+# Generated files
+*.dot
+coverage/
+
+# Local CI / mutation testing artifacts
+.venv-ci/
+.mutmut-cache
