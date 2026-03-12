@@ -273,3 +273,7 @@ All production deployments go through git:
 3. SSH to the VPS and run `docker compose -f docker-compose.prod.images.yml pull && docker compose -f docker-compose.prod.images.yml up -d`
 
 The frontend env var `VITE_API_URL` must always be `/api/v1` (relative). Nginx on the VPS proxies `/api/` to Django internally — an absolute URL like `http://localhost:8000` baked into a production image will cause CORS failures on any domain.
+
+### Nginx Configuration
+
+**Do not create or edit nginx config files in this repo.** The `nginx/` directory has been removed. All nginx configuration lives directly on the production server and is managed manually there. If you need to understand the routing, SSH to the server — do not recreate config files here.
