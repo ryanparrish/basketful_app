@@ -4,10 +4,11 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  
+  const cartBasePath = env.VITE_BASE_PATH || '/cart/'
+
   return {
     plugins: [react()],
-    base: '/',
+    base: mode === 'production' ? cartBasePath : '/',
     build: {
       outDir: 'dist',
       sourcemap: mode !== 'production',
