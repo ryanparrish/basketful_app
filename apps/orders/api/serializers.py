@@ -98,7 +98,7 @@ class OrderSerializer(serializers.ModelSerializer):
         source='account.participant.program.name', read_only=True
     )
     is_combined = serializers.BooleanField(read_only=True)
-    validation_logs = OrderValidationLogSerializer(many=True, read_only=True)
+    validation_logs = OrderValidationLogSerializer(many=True, read_only=True, source='ordervalidationlog_set')
 
     class Meta:
         model = Order

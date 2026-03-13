@@ -312,7 +312,8 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 
 CELERY_BEAT_SCHEDULE = {
     'create_weekly_combined_orders': {
-        'task': 'orders.tasks.create_weekly_combined_orders',
+        'task': 'apps.orders.tasks.weekly_orders.create_weekly_combined_orders',
+        'schedule': crontab(hour=6, minute=0, day_of_week=1),  # Mondays at 6 AM
     },
     'cleanup-expired-pause-flags': {
         'task': 'apps.lifeskills.tasks.program_pause.cleanup_expired_pause_flags',

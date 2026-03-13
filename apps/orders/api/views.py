@@ -45,7 +45,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     """ViewSet for Order model."""
     queryset = Order.objects.all().select_related(
         'account__participant__program', 'user'
-    ).prefetch_related('items__product__category', 'validation_logs')
+    ).prefetch_related('items__product__category', 'ordervalidationlog_set')
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     pagination_class = StandardResultsSetPagination
     filter_backends = [
