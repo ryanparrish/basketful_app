@@ -141,7 +141,7 @@ export const AccountPage: React.FC = () => {
                         Total Budget
                       </Typography>
                       <Typography variant="h5" fontWeight={600}>
-                        ${balances.total_budget.toFixed(2)}
+                        ${Number(balances.total_budget).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -151,7 +151,7 @@ export const AccountPage: React.FC = () => {
                         Used
                       </Typography>
                       <Typography variant="h5" fontWeight={600}>
-                        ${balances.used_budget.toFixed(2)}
+                        ${Number(balances.used_budget).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -174,7 +174,7 @@ export const AccountPage: React.FC = () => {
                         fontWeight={600}
                         color={balances.remaining_budget > 0 ? 'success.main' : 'error.main'}
                       >
-                        ${balances.remaining_budget.toFixed(2)}
+                        ${Number(balances.remaining_budget).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -184,7 +184,7 @@ export const AccountPage: React.FC = () => {
                         Available
                       </Typography>
                       <Typography variant="h5" fontWeight={600} color="primary">
-                        ${balances.available_balance.toFixed(2)}
+                        ${Number(balances.available_balance).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -204,7 +204,7 @@ export const AccountPage: React.FC = () => {
                         Hygiene Balance
                       </Typography>
                       <Typography variant="h6" fontWeight={600} color="info.main">
-                        ${balances.hygiene_balance.toFixed(2)}
+                        ${Number(balances.hygiene_balance).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -222,7 +222,7 @@ export const AccountPage: React.FC = () => {
                         Go Fresh Balance
                       </Typography>
                       <Typography variant="h6" fontWeight={600} color="success.dark">
-                        ${balances.go_fresh_balance.toFixed(2)}
+                        ${Number(balances.go_fresh_balance).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -240,7 +240,7 @@ export const AccountPage: React.FC = () => {
                         Full Balance
                       </Typography>
                       <Typography variant="h6" fontWeight={600} color="secondary.main">
-                        ${(balances.available_balance + balances.hygiene_balance + balances.go_fresh_balance).toFixed(2)}
+                        ${(Number(balances.available_balance) + Number(balances.hygiene_balance) + Number(balances.go_fresh_balance)).toFixed(2)}
                       </Typography>
                     </Paper>
                   </Grid>

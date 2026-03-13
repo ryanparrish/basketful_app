@@ -222,11 +222,11 @@ export const CheckoutPage: React.FC = () => {
               <>
                 <Stack direction="row" justifyContent="space-between">
                   <Typography color="text.secondary">Current Budget:</Typography>
-                  <Typography>${balances.total_budget.toFixed(2)}</Typography>
+                  <Typography>${Number(balances.total_budget).toFixed(2)}</Typography>
                 </Stack>
                 <Stack direction="row" justifyContent="space-between">
                   <Typography color="text.secondary">Already Used:</Typography>
-                  <Typography>${balances.used_budget.toFixed(2)}</Typography>
+                  <Typography>${Number(balances.used_budget).toFixed(2)}</Typography>
                 </Stack>
               </>
             )}

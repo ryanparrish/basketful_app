@@ -135,7 +135,7 @@ export const CustomSider: React.FC = () => {
             }}
           >
             <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              Budget: ${remainingBudget?.toFixed(2) ?? '0.00'}
+              Budget: ${Number(remainingBudget ?? 0).toFixed(2)}
             </Typography>
           </Box>
 

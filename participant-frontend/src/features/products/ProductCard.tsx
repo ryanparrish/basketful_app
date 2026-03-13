@@ -59,7 +59,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
   };
 
   const isUnavailable = !product.is_available;
-  const displayPrice = product.price ? `$${product.price.toFixed(2)}` : 'Free';
+  const displayPrice = product.price ? `$${Number(product.price).toFixed(2)}` : 'Free';
   const unitLabel = product.unit || 'each';
 
   return (

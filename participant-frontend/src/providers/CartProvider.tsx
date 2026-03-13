@@ -64,7 +64,7 @@ const CartContextProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cartItem: CartItemData = {
       id: `product-${product.id}`,
       name: product.name,
-      price: product.price || 0,
+      price: Number(product.price) || 0,
       quantity,
       image: product.image || undefined,
       category: product.category_name,

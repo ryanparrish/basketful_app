@@ -95,7 +95,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
-              ${(item.price || 0).toFixed(2)} × {item.quantity || 1}
+              ${Number(item.price || 0).toFixed(2)} × {item.quantity || 1}
             </Typography>
             <Typography variant="body1" fontWeight={600} color="primary">
               ${itemTotal.toFixed(2)}

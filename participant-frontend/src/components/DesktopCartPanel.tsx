@@ -130,7 +130,7 @@ export const DesktopCartPanel: React.FC = () => {
                 Budget Remaining:
               </Typography>
               <Typography variant="body2" fontWeight={500}>
-                ${balances.remaining_budget.toFixed(2)}
+                ${Number(balances.remaining_budget).toFixed(2)}
               </Typography>
             </Stack>
           )}

@@ -102,7 +102,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
             {itemCount} {itemCount === 1 ? 'item' : 'items'} ({totalQuantity} total)
           </Typography>
           <Typography variant="h6" color="primary" fontWeight={600}>
-            ${(order.total || order.total_price).toFixed(2)}
+            ${Number(order.total || order.total_price).toFixed(2)}
           </Typography>
         </Stack>
 
@@ -132,7 +132,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
                   secondary={`Qty: ${item.quantity}`}
                 />
                 <Typography variant="body2">
-                  ${(item.price * item.quantity).toFixed(2)}
+                  ${(Number(item.price) * item.quantity).toFixed(2)}
                 </Typography>
               </ListItem>
             ))}
