@@ -20,8 +20,7 @@ import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import PrintIcon from '@mui/icons-material/Print';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL } from '../utils/apiUrl';
 
 const DownloadPackingListPdfButton = () => {
   const record = useRecordContext();

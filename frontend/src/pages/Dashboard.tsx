@@ -2,6 +2,7 @@
  * Dashboard Component
  */
 import { useState, useEffect } from 'react';
+import { API_URL } from '../utils/apiUrl';
 import { Card, CardContent, CardHeader, Chip } from '@mui/material';
 import {
   useGetList,
@@ -200,8 +201,7 @@ const FailedOrderAnalytics = () => {
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    fetch(`${apiUrl}/api/v1/orders/failure-analytics/?days=7`, {
+    fetch(`${API_URL}/api/v1/orders/failure-analytics/?days=7`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : null))

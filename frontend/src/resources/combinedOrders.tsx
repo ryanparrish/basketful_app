@@ -31,8 +31,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import MergeTypeIcon from '@mui/icons-material/MergeType';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL } from '../utils/apiUrl';
 
 // Custom empty state that always shows the create button
 const EmptyWithCreate = () => {

@@ -7,8 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, CircularProgress, Typography, Box } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL } from '../utils/apiUrl';
 
 interface OrderItem {
   product_name: string;

@@ -8,8 +8,7 @@ import type { DataProvider } from 'react-admin';
 import { fetchUtils } from 'react-admin';
 import simpleRestProvider from 'ra-data-simple-rest';
 import { getAccessToken } from './authProvider';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+import { API_BASE as API_URL } from '../utils/apiUrl';
 
 /**
  * Custom HTTP client that adds JWT token to all requests

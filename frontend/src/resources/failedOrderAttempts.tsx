@@ -21,8 +21,7 @@ import {
   type RaRecord,
 } from 'react-admin';
 import { Box, Chip, Typography } from '@mui/material';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL } from '../utils/apiUrl';
 
 // ─── Field Components ────────────────────────────────────────────────────────
 
