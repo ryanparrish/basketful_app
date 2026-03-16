@@ -480,7 +480,7 @@ class CombinedOrder(models.Model):
 
     def __str__(self):
         if self.name:
-            return f"{self.program.name} - {self.name}"
+            return f"Combined Order: {self.program.name} ({self.name})"
         return f"{self.program.name} Combined Order ({self.created_at and self.created_at.strftime('%Y-%m-%d')})"
 
 

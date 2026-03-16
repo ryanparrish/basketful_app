@@ -490,8 +490,8 @@ class TestCombinedOrderUniqueConstraint:
         # Create first
         combined_order1, created1 = CombinedOrder.objects.get_or_create(
             program=program,
-            created_at__year=current_year,
-            created_at__week=current_week,
+            week=current_week,
+            year=current_year,
             defaults={'program': program}
         )
         assert created1
@@ -499,8 +499,8 @@ class TestCombinedOrderUniqueConstraint:
         # Get or create again - should return existing
         combined_order2, created2 = CombinedOrder.objects.get_or_create(
             program=program,
-            created_at__year=current_year,
-            created_at__week=current_week,
+            week=current_week,
+            year=current_year,
             defaults={'program': program}
         )
         assert not created2
@@ -911,8 +911,8 @@ class TestCombinedOrderOrdersDisplay:
         # Create first combined order with order1
         combined_order1, created1 = CombinedOrder.objects.get_or_create(
             program=program,
-            created_at__year=current_year,
-            created_at__week=current_week,
+            week=current_week,
+            year=current_year,
             defaults={'program': program}
         )
         combined_order1.orders.add(order1)
@@ -927,8 +927,8 @@ class TestCombinedOrderOrdersDisplay:
         # Get same combined order
         combined_order2, created2 = CombinedOrder.objects.get_or_create(
             program=program,
-            created_at__year=current_year,
-            created_at__week=current_week,
+            week=current_week,
+            year=current_year,
             defaults={'program': program}
         )
         

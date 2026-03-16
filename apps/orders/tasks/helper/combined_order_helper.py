@@ -132,8 +132,8 @@ def create_child_combined_orders(program: Program, orders: List[Order], packer) 
         # Try to get existing combined order for this program/week
         combined_order, created = CombinedOrder.objects.get_or_create(
             program=program,
-            created_at__year=current_year,
-            created_at__week=current_week,
+            week=current_week,
+            year=current_year,
             is_parent=False,
             defaults={
                 'program': program,
@@ -398,6 +398,19 @@ def get_split_preview(
 
     if packer_count == 0:
         preview['error'] = "No packers assigned to this program"
+        return preview
+
+    if strategy == 'none':
+        # No split — all orders go to the first (primary) packer
+        packer_items = sum(
+            item.quantity for order in orders for item in order.items.all()
+        )
+        preview['split_preview'] = [{
+            'packer': packers[0],
+            'packer_name': str(packers[0]),
+            'order_count': len(orders),
+            'item_count': packer_items,
+        }]
         return preview
 
     if packer_count == 1:
