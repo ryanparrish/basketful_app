@@ -202,11 +202,48 @@ def create_parent_combined_order(program: Program, child_orders: List[CombinedOr
 # ─────────────────────────────
 
 def validate_split_strategy(program: Program, strategy: str) -> Tuple[bool, List[str]]:
-    """Validate that a program has at least one packer. Split is auto-determined by count."""
+    """Validate a program's packer/rule configuration for the given split strategy."""
     if not program.packers.exists():
         return False, [
             f"Program '{program.name}' has no packers assigned. "
             "Add at least one packer before creating a combined order."
+        ]
+
+    if strategy == 'fifty_fifty':
+        if program.packers.count() < 2:
+            return False, [
+                f"Program '{program.name}' needs at least 2 packers for a 50/50 split "
+                f"(currently has {program.packers.count()})."
+            ]
+
+    if strategy == 'by_category':
+        rules = PackingSplitRule.objects.filter(program=program).prefetch_related('categories')
+        if not rules.exists() or not any(r.categories.exists() for r in rules):
+            return False, [
+                f"Program '{program.name}' has no packing split rules with categories configured. "
+                "Add rules with categories before using by-category splitting."
+            ]
+
+    return True, []
+
+
+def validate_by_category_rules(program: Program) -> Tuple[bool, List[str]]:
+    """
+    Validate that a program has at least one PackingSplitRule with categories assigned.
+
+    Returns (True, []) if valid, (False, [error_message, ...]) otherwise.
+    """
+    rules = PackingSplitRule.objects.filter(program=program).prefetch_related('categories')
+    if not rules.exists():
+        return False, [
+            f"Program '{program.name}' has no packing split rules configured. "
+            "Add at least one rule with categories before using by-category splitting."
+        ]
+    rules_with_categories = [r for r in rules if r.categories.exists()]
+    if not rules_with_categories:
+        return False, [
+            f"Program '{program.name}' has packing split rules but none have categories assigned. "
+            "Assign at least one category to a rule before using by-category splitting."
         ]
     return True, []
 
