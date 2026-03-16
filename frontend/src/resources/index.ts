@@ -7,6 +7,8 @@ export * from './vouchers';
 export * from './categories';
 export * from './combinedOrders';
 export * from './packingLists';
+export * from './orderPackers';
+export * from './failedOrderAttempts';
 export * from './tags';
 export * from './productLimits';
 export * from './groups';

@@ -54,12 +54,12 @@ if len(found_products) >= 2:
             obj = p.subcategory or p.category
             print(f"   - {p.name} is in '{obj.name}' subcategory/category")
             if p.name in ['Ground Beef', 'Lunch Meat']:
-                print(f"     → Should probably be in 'Meat' or 'Protein' category")
+                print("     → Should probably be in 'Meat' or 'Protein' category")
             elif 'Wipe' in p.name:
-                print(f"     → Should probably be in 'Baby Care' or 'Wipes' subcategory")
+                print("     → Should probably be in 'Baby Care' or 'Wipes' subcategory")
     else:
         print(f"✅ Products are in {len(grouping_ids)} different categories/subcategories")
-        print(f"   This should NOT cause them to be grouped together.")
+        print("   This should NOT cause them to be grouped together.")
         print("   Need to investigate the order items being validated.")
 
 print("\n" + "=" * 80)

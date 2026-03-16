@@ -10,6 +10,7 @@ from apps.pantry.api.views import (
     TagViewSet,
     ProductViewSet,
     ProductLimitViewSet,
+    OrderPackerViewSet,
 )
 
 router = DefaultRouter()
@@ -18,6 +19,7 @@ router.register(r'subcategories', SubcategoryViewSet, basename='subcategory')
 router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'product-limits', ProductLimitViewSet, basename='product-limit')
+router.register(r'order-packers', OrderPackerViewSet, basename='order-packer')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -31,6 +31,8 @@ import {
   Confirm,
 } from 'react-admin';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import PrintIcon from '@mui/icons-material/Print';
 
 const STATUS_CHOICES = [
   { id: 'pending', name: 'Pending' },
@@ -203,13 +205,29 @@ const CancelOrderButton = () => {
   );
 };
 
-export const OrderShow = () => (
-  <Show title={<OrderTitle />} actions={
+const OrderShowActions = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
+  const record = useRecordContext();
+  return (
     <TopToolbar>
       <ConfirmOrderButton />
       <CancelOrderButton />
+      <Button
+        label="Print"
+        onClick={() => record && navigate(`/orders/${record.id}/print`)}
+        disabled={!record}
+      >
+        <PrintIcon />
+      </Button>
       <EditButton />
     </TopToolbar>
+  );
+};
+
+export const OrderShow = () => {
+  const navigate = useNavigate();
+  return (
+  <Show title={<OrderTitle />} actions={
+    <OrderShowActions navigate={navigate} />
   }>
     <TabbedShowLayout>
       <TabbedShowLayout.Tab label="Summary">
@@ -271,7 +289,8 @@ export const OrderShow = () => (
       </TabbedShowLayout.Tab>
     </TabbedShowLayout>
   </Show>
-);
+  );
+};
 
 export const OrderEdit = () => (
   <Edit title={<OrderTitle />}>

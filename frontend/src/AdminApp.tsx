@@ -1,8 +1,10 @@
 /**
  * Basketful Admin - Main Application
  */
-import { Admin, Resource, CustomRoutes } from 'react-admin';
+import type { ReactNode } from 'react';
+import { Admin, Resource, CustomRoutes, Menu, Layout } from 'react-admin';
 import { Route } from 'react-router-dom';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 // Providers
 import { authProvider, dataProvider } from './providers';
@@ -39,7 +41,6 @@ import {
   CombinedOrderList,
   CombinedOrderShow,
   CombinedOrderEdit,
-  CombinedOrderCreate,
   PackingListList,
   PackingListShow,
   TagList,
@@ -60,12 +61,21 @@ import {
   UserShow,
   UserEdit,
   UserCreate,
+  OrderPackerList,
+  OrderPackerShow,
+  OrderPackerCreate,
+  OrderPackerEdit,
+  FailedOrderAttemptList,
+  FailedOrderAttemptShow,
 } from './resources';
 
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
 import BulkVoucherCreate from './pages/BulkVoucherCreate';
 import Settings from './pages/Settings';
+import CreateCombinedOrder from './pages/CreateCombinedOrder';
+import PrintPackingList from './pages/PrintPackingList';
+import PrintOrder from './pages/PrintOrder';
 
 // Icons
 import PeopleIcon from '@mui/icons-material/People';
@@ -81,6 +91,33 @@ import RuleIcon from '@mui/icons-material/Rule';
 import GroupIcon from '@mui/icons-material/Group';
 import SecurityIcon from '@mui/icons-material/Security';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import BackpackIcon from '@mui/icons-material/Backpack';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+
+const CustomMenu = () => (
+  <Menu>
+    <Menu.ResourceItem name="participants" />
+    <Menu.ResourceItem name="programs" />
+    <Menu.ResourceItem name="orders" />
+    <Menu.ResourceItem name="products" />
+    <Menu.ResourceItem name="vouchers" />
+    <Menu.ResourceItem name="categories" />
+    <Menu.ResourceItem name="combined-orders" />
+    <Menu.ResourceItem name="packing-lists" />
+    <Menu.ResourceItem name="tags" />
+    <Menu.ResourceItem name="product-limits" />
+    <Menu.ResourceItem name="order-packers" />
+    <Menu.ResourceItem name="failed-order-attempts" />
+    <Menu.ResourceItem name="users" />
+    <Menu.ResourceItem name="groups" />
+    <Menu.ResourceItem name="permissions" />
+    <Menu.Item to="/settings" primaryText="Settings" leftIcon={<SettingsIcon />} />
+  </Menu>
+);
+
+const CustomLayout = ({ children }: { children: ReactNode }) => (
+  <Layout menu={CustomMenu}>{children}</Layout>
+);
 
 const App = () => (
   <Admin
@@ -88,6 +125,7 @@ const App = () => (
     dataProvider={dataProvider}
     dashboard={Dashboard}
     title="Basketful Admin"
+    layout={CustomLayout}
   >
     {/* Core Resources */}
     <Resource
@@ -149,7 +187,6 @@ const App = () => (
       list={CombinedOrderList}
       show={CombinedOrderShow}
       edit={CombinedOrderEdit}
-      create={CombinedOrderCreate}
       icon={MergeIcon}
       options={{ label: 'Combined Orders' }}
     />
@@ -177,6 +214,24 @@ const App = () => (
       create={ProductLimitCreate}
       icon={RuleIcon}
       options={{ label: 'Product Limits' }}
+    />
+
+    {/* Packing Resources */}
+    <Resource
+      name="order-packers"
+      list={OrderPackerList}
+      show={OrderPackerShow}
+      create={OrderPackerCreate}
+      edit={OrderPackerEdit}
+      icon={BackpackIcon}
+      options={{ label: 'Packers' }}
+    />
+    <Resource
+      name="failed-order-attempts"
+      list={FailedOrderAttemptList}
+      show={FailedOrderAttemptShow}
+      icon={ErrorOutlineIcon}
+      options={{ label: 'Failed Order Attempts' }}
     />
 
     {/* User Management Resources */}
@@ -216,6 +271,9 @@ const App = () => (
     <CustomRoutes>
       <Route path="/vouchers/bulk-create" element={<BulkVoucherCreate />} />
       <Route path="/settings" element={<Settings />} />
+      <Route path="/combined-orders/create-wizard" element={<CreateCombinedOrder />} />
+      <Route path="/packing-lists/:id/print" element={<PrintPackingList />} />
+      <Route path="/orders/:id/print" element={<PrintOrder />} />
     </CustomRoutes>
   </Admin>
 );

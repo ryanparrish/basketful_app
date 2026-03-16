@@ -12,10 +12,14 @@ import {
   Button,
   useNotify,
   ListButton,
+  ReferenceInput,
+  SelectInput,
   type RaRecord,
 } from 'react-admin';
 import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
+import PrintIcon from '@mui/icons-material/Print';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -61,30 +65,74 @@ const DownloadPackingListPdfButton = () => {
   );
 };
 
-const PackingListShowActions = () => (
-  <TopToolbar>
-    <ListButton />
-    <DownloadPackingListPdfButton />
-  </TopToolbar>
-);
+const PackingListShowActions = () => {
+  const record = useRecordContext();
+  const navigate = useNavigate();
+  return (
+    <TopToolbar>
+      <ListButton />
+      <Button
+        label="Print"
+        onClick={() => navigate(`/packing-lists/${record?.id}/print`)}
+        disabled={!record}
+      >
+        <PrintIcon />
+      </Button>
+      <DownloadPackingListPdfButton />
+    </TopToolbar>
+  );
+};
+
+const packingListFilters = [
+  <ReferenceInput source="packer" reference="order-packers" key="packer">
+    <SelectInput optionText="name" label="Packer" />
+  </ReferenceInput>,
+  <ReferenceInput source="combined_order" reference="combined-orders" key="combined_order">
+    <SelectInput optionText="name" label="Combined Order" />
+  </ReferenceInput>,
+];
 
 const OrdersField = () => {
   const record = useRecordContext();
-  if (!record || !record.orders) return null;
+  const navigate = useNavigate();
+  if (!record) return null;
 
+  // Prefer rich summary data from orders_summary; fall back to raw IDs
+  const summary: Array<{ id: number; order_number: string; customer_number: string }> =
+    record.orders_summary || [];
+  const total = record.orders?.length || 0;
+  const displaying = summary.slice(0, 10);
+
+  if (summary.length > 0) {
+    return (
+      <Box>
+        {displaying.map((o) => (
+          <Box key={o.id} sx={{ mb: 0.5 }}>
+            <Button
+              label={`#${o.order_number} – Customer #${o.customer_number}`}
+              onClick={() => navigate(`/orders/${o.id}/show`)}
+              size="small"
+            />
+          </Box>
+        ))}
+        {total > 10 && (
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            … and {total - 10} more
+          </Typography>
+        )}
+      </Box>
+    );
+  }
+
+  // Fallback: raw IDs
   return (
     <Box>
-      {record.orders.slice(0, 10).map((orderId: number) => (
-        <Chip
-          key={orderId}
-          label={`Order #${orderId}`}
-          size="small"
-          sx={{ m: 0.5 }}
-        />
+      {(record.orders || []).slice(0, 10).map((orderId: number) => (
+        <Chip key={orderId} label={`Order #${orderId}`} size="small" sx={{ m: 0.5 }} />
       ))}
-      {record.orders.length > 10 && (
+      {total > 10 && (
         <Typography variant="body2" sx={{ mt: 1 }}>
-          ... and {record.orders.length - 10} more
+          … and {total - 10} more
         </Typography>
       )}
     </Box>
@@ -148,7 +196,7 @@ const SummarizedDataField = () => {
 export const PackingListList = () => (
   <List
     sort={{ field: 'created_at', order: 'DESC' }}
-    filters={[]}
+    filters={packingListFilters}
   >
     <Datagrid rowClick="show" bulkActionButtons={false}>
       <ReferenceField source="combined_order" reference="combined-orders" link="show">

@@ -11,13 +11,13 @@ from core.models import OrderWindowSettings
 from core.utils import can_place_order, get_next_class_datetime
 from django.utils import timezone
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("ORDER WINDOW DEMO")
-print("="*80)
+print("=" * 80)
 
 # Get or create settings
 settings = OrderWindowSettings.get_settings()
-print(f"\n📋 Current Settings:")
+print("\n📋 Current Settings:")
 print(f"   - Hours before class: {settings.hours_before_class}")
 print(f"   - Enabled: {settings.enabled}")
 
@@ -48,7 +48,7 @@ try:
             
             if context.get('hours_until_open'):
                 hours = context['hours_until_open']
-                print(f"   - Opens in: {hours:.1f} hours ({hours/24:.1f} days)")
+                print(f"   - Opens in: {hours:.1f} hours ({hours / 24:.1f} days)")
             
             print(f"\n⏰ Current time: {timezone.now().strftime('%A, %B %d, %Y at %I:%M %p')}")
         else:
@@ -60,6 +60,6 @@ try:
 except Exception as e:
     print(f"\n❌ Error: {e}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("To modify settings, go to Admin > Core > Order Window Settings")
-print("="*80 + "\n")
+print("=" * 80 + "\n")

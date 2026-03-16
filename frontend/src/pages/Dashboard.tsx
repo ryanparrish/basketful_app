@@ -1,7 +1,8 @@
 /**
  * Dashboard Component
  */
-import { Card, CardContent, CardHeader } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, Chip } from '@mui/material';
 import {
   useGetList,
   Loading,
@@ -188,6 +189,68 @@ const RecentOrders = () => {
   );
 };
 
+// Failed Order Analytics Widget
+const FailedOrderAnalytics = () => {
+  const [analytics, setAnalytics] = useState<{
+    total_failures: number;
+    failure_rate: number;
+    common_errors: Array<{ error: string; count: number }>;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    fetch(`${apiUrl}/api/v1/orders/failure-analytics/?days=7`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setAnalytics(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Loading />;
+  if (!analytics) return null;
+
+  return (
+    <Card sx={{ m: 1 }}>
+      <CardHeader title="Failed Order Attempts (Last 7 Days)" />
+      <CardContent>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#666' }}>Total Failures</div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#d32f2f' }}>
+              {analytics.total_failures}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#666' }}>Failure Rate</div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#f57c00' }}>
+              {(analytics.failure_rate * 100).toFixed(1)}%
+            </div>
+          </div>
+        </div>
+        {analytics.common_errors?.length > 0 && (
+          <div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8 }}>
+              Top Errors
+            </div>
+            {analytics.common_errors.slice(0, 3).map((e, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Chip label={e.count} size="small" color="error" />
+                <span style={{ fontSize: '0.8rem', color: '#444' }}>{e.error}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const Dashboard = () => {
   const { total: participantCount, isPending: participantsLoading } = useGetList(
     'participants',
@@ -251,6 +314,11 @@ export const Dashboard = () => {
       {/* Recent Orders */}
       <div style={{ marginTop: '20px' }}>
         <RecentOrders />
+      </div>
+
+      {/* Failure Analytics */}
+      <div style={{ marginTop: '20px' }}>
+        <FailedOrderAnalytics />
       </div>
     </div>
   );

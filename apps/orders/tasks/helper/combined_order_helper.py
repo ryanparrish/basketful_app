@@ -202,88 +202,13 @@ def create_parent_combined_order(program: Program, child_orders: List[CombinedOr
 # ─────────────────────────────
 
 def validate_split_strategy(program: Program, strategy: str) -> Tuple[bool, List[str]]:
-    """
-    Validate that a split strategy can be used for a program.
-    
-    Args:
-        program: The program to validate
-        strategy: The split strategy to validate
-        
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    errors = []
-    packers = list(program.packers.all())
-    packer_count = len(packers)
-    
-    # Validate packer requirements
-    if packer_count == 0:
-        errors.append(f"Program '{program.name}' has no packers assigned.")
-        return False, errors
-    
-    if strategy == 'none':
-        # Single packer strategy - valid for any packer count
-        return True, []
-    
-    if strategy in ('fifty_fifty', 'round_robin'):
-        # These require 2+ packers
-        if packer_count < 2:
-            errors.append(
-                f"Strategy '{strategy}' requires at least 2 packers. "
-                f"Program '{program.name}' has {packer_count} packer(s)."
-            )
-            return False, errors
-        return True, []
-    
-    if strategy == 'by_category':
-        # Validate that split rules exist and cover all categories
-        return validate_by_category_rules(program)
-    
-    errors.append(f"Unknown split strategy: {strategy}")
-    return False, errors
-
-
-def validate_by_category_rules(program: Program) -> Tuple[bool, List[str]]:
-    """
-    Validate that BY_CATEGORY split rules are properly configured.
-    
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    from apps.pantry.models import Category
-    
-    errors = []
-    warnings = []
-    
-    # Get all split rules for this program
-    rules = PackingSplitRule.objects.filter(program=program).prefetch_related('categories', 'subcategories')
-    
-    if not rules.exists():
-        errors.append(
-            f"BY_CATEGORY strategy requires PackingSplitRules for program '{program.name}'. "
-            "No rules have been defined."
-        )
-        return False, errors
-    
-    # Get all categories that have products
-    all_categories = set(Category.objects.filter(products__isnull=False).distinct().values_list('id', flat=True))
-    
-    # Get categories assigned to packers
-    assigned_categories = set()
-    for rule in rules:
-        assigned_categories.update(rule.categories.values_list('id', flat=True))
-    
-    # Check for unassigned categories
-    unassigned = all_categories - assigned_categories
-    if unassigned:
-        unassigned_names = list(Category.objects.filter(id__in=unassigned).values_list('name', flat=True))
-        errors.append(
-            f"Categories not assigned to any packer: {', '.join(unassigned_names)}. "
-            "All categories with products must be assigned for BY_CATEGORY strategy."
-        )
-        return False, errors
-    
-    return True, warnings
+    """Validate that a program has at least one packer. Split is auto-determined by count."""
+    if not program.packers.exists():
+        return False, [
+            f"Program '{program.name}' has no packers assigned. "
+            "Add at least one packer before creating a combined order."
+        ]
+    return True, []
 
 
 def get_program_packers_count(program: Program) -> int:
@@ -404,28 +329,15 @@ def get_split_preview(
     program: Program,
     strategy: str
 ) -> Dict[str, Any]:
-    """
-    Generate a preview of how orders would be split.
-    
-    Args:
-        orders: Orders to be combined
-        program: The program
-        strategy: Split strategy to use
-        
-    Returns:
-        Dict with preview data including totals and split assignments
-    """
-    from apps.pantry.models import Category
-    
+    """Generate a preview of how orders will be split across packers (auto by count)."""
     packers = list(program.packers.all())
     packer_count = len(packers)
-    
-    # Calculate total items by category
+
     category_totals = defaultdict(int)
     product_totals = defaultdict(lambda: defaultdict(int))
     total_items = 0
     total_value = Decimal('0')
-    
+
     for order in orders:
         for item in order.items.select_related('product__category'):
             product = item.product
@@ -434,7 +346,7 @@ def get_split_preview(
             product_totals[category_name][product.name] += item.quantity
             total_items += item.quantity
             total_value += item.quantity * product.price
-    
+
     preview = {
         'order_count': len(orders),
         'total_items': total_items,
@@ -443,52 +355,37 @@ def get_split_preview(
         'product_totals': dict(product_totals),
         'packer_count': packer_count,
         'packers': packers,
-        'strategy': strategy,
+        'strategy': 'auto',
         'split_preview': [],
     }
-    
+
     if packer_count == 0:
         preview['error'] = "No packers assigned to this program"
         return preview
-    
-    if packer_count == 1 or strategy == 'none':
-        # Single packer gets everything
+
+    if packer_count == 1:
+        packer_items = sum(
+            item.quantity for order in orders for item in order.items.all()
+        )
         preview['split_preview'] = [{
-            'packer': packers[0] if packers else None,
+            'packer': packers[0],
+            'packer_name': str(packers[0]),
             'order_count': len(orders),
-            'item_count': total_items,
-            'categories': list(category_totals.keys()),
+            'item_count': packer_items,
         }]
-    elif strategy in ('fifty_fifty', 'round_robin'):
-        # Split by order count
-        assignment = split_orders_by_count(orders, packers, strategy)
+    else:
+        assignment = split_orders_by_count(orders, packers, 'round_robin')
         for packer, packer_orders in assignment.items():
             packer_items = sum(
-                item.quantity
-                for order in packer_orders
-                for item in order.items.all()
+                item.quantity for order in packer_orders for item in order.items.all()
             )
             preview['split_preview'].append({
                 'packer': packer,
+                'packer_name': str(packer),
                 'order_count': len(packer_orders),
                 'item_count': packer_items,
-                'categories': 'All categories',
             })
-    elif strategy == 'by_category':
-        # Split by category
-        assignment = split_orders_by_category(orders, packers, program)
-        for packer, data in assignment.items():
-            packer_items = sum(
-                sum(products.values())
-                for products in data['items'].values()
-            )
-            preview['split_preview'].append({
-                'packer': packer,
-                'order_count': len(orders),  # All orders
-                'item_count': packer_items,
-                'categories': [c.name for c in data['categories']],
-            })
-    
+
     return preview
 
 
@@ -563,93 +460,66 @@ def get_eligible_orders(
 def create_combined_order_with_packing(
     program: Program,
     orders: List[Order],
-    strategy: str,
+    strategy: str = 'auto',
     name: Optional[str] = None
 ) -> Tuple[CombinedOrder, List[PackingList]]:
     """
-    Create a combined order with packing lists based on strategy.
-    
-    Args:
-        program: The program
-        orders: Orders to combine
-        strategy: Split strategy to use
-        name: Optional name for the combined order
-        
-    Returns:
-        Tuple of (combined_order, packing_lists)
-        
-    Raises:
-        ValidationError: If validation fails
+    Create a combined order, splitting orders evenly across all program packers.
+    1 packer → entire order. N packers → orders divided into N equal chunks.
     """
+    from django.db import IntegrityError
     from django.utils import timezone
-    
-    # Validate strategy
-    is_valid, errors = validate_split_strategy(program, strategy)
-    if not is_valid:
-        raise ValidationError(errors)
-    
-    # Generate name if not provided
-    if not name:
-        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
-        name = f"Combined Order - {timestamp}"
-    
-    # Create the combined order
+
+    packers = list(program.packers.all())
+    if not packers:
+        raise ValidationError(
+            f"Program '{program.name}' has no packers assigned. "
+            "Add at least one packer first."
+        )
+
     now = timezone.now()
-    week = now.isocalendar()[1]
-    year = now.year
-    
-    combined_order = CombinedOrder.objects.create(
-        name=name,
-        program=program,
-        split_strategy=strategy,
-        week=week,
-        year=year,
-    )
-    
-    # Add orders to combined order (M2M relationship tracks combined status)
+    effective_strategy = 'none' if len(packers) == 1 else 'round_robin'
+
+    try:
+        combined_order = CombinedOrder.objects.create(
+            name=name or '',
+            program=program,
+            split_strategy=effective_strategy,
+            week=now.isocalendar()[1],
+            year=now.year,
+        )
+    except IntegrityError:
+        raise ValidationError(
+            f"A combined order for '{program.name}' already exists for this week."
+        )
+
     combined_order.orders.add(*orders)
-    
-    # Calculate summarized data
     combined_order.summarized_data = combined_order.summarized_items_by_category()
     combined_order.save(update_fields=['summarized_data'])
-    
-    # Create packing lists if multiple packers
-    packers = list(program.packers.all())
+
     packing_lists = []
-    
-    if len(packers) > 1 and strategy != 'none':
-        if strategy in ('fifty_fifty', 'round_robin'):
-            # Split by order count
-            assignment = split_orders_by_count(orders, packers, strategy)
-            for packer, packer_orders in assignment.items():
-                packing_list = PackingList.objects.create(
-                    combined_order=combined_order,
-                    packer=packer,
-                )
-                packing_list.orders.add(*packer_orders)
-                packing_list.summarized_data = packing_list.calculate_summarized_data()
-                packing_list.save(update_fields=['summarized_data'])
-                packing_lists.append(packing_list)
-        
-        elif strategy == 'by_category':
-            # Split by category
-            assignment = split_orders_by_category(orders, packers, program)
-            for packer, data in assignment.items():
-                packing_list = PackingList.objects.create(
-                    combined_order=combined_order,
-                    packer=packer,
-                )
-                packing_list.orders.add(*orders)  # All orders
-                packing_list.categories.add(*data['categories'])
-                packing_list.summarized_data = dict(data['items'])
-                packing_list.save(update_fields=['summarized_data'])
-                packing_lists.append(packing_list)
-    
+
+    if len(packers) == 1:
+        pl = PackingList.objects.create(combined_order=combined_order, packer=packers[0])
+        pl.orders.add(*orders)
+        pl.summarized_data = pl.calculate_summarized_data()
+        pl.save(update_fields=['summarized_data'])
+        packing_lists.append(pl)
+    else:
+        assignment = split_orders_by_count(orders, packers, 'round_robin')
+        for packer, packer_orders in assignment.items():
+            if not packer_orders:
+                continue
+            pl = PackingList.objects.create(combined_order=combined_order, packer=packer)
+            pl.orders.add(*packer_orders)
+            pl.summarized_data = pl.calculate_summarized_data()
+            pl.save(update_fields=['summarized_data'])
+            packing_lists.append(pl)
+
     logger.info(
-        "Created combined order %s for %s with %d orders and %d packing lists",
+        "Created combined order %s for %s with %d orders split across %d packers",
         combined_order.id, program.name, len(orders), len(packing_lists)
     )
-    
     return combined_order, packing_lists
 
 

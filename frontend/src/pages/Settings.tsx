@@ -22,6 +22,8 @@ import {
   Tab,
   Box,
   Alert,
+  AlertTitle,
+  Chip,
 } from '@mui/material';
 
 interface TabPanelProps {
@@ -41,6 +43,9 @@ interface OrderWindowSettings {
   hours_before_class: number;
   hours_before_close: number;
   enabled: boolean;
+  is_open: boolean;
+  next_opens_at: string | null;
+  next_closes_at: string | null;
 }
 
 interface EmailSettings {
@@ -195,7 +200,41 @@ export const Settings = () => {
           {/* Order Window Tab */}
           <TabPanel value={tab} index={0}>
             {orderWindow && (
-              <Box sx={{ maxWidth: 500 }}>
+              <Box sx={{ maxWidth: 560 }}>
+
+                {/* Live status banner */}
+                <Alert
+                  severity={orderWindow.enabled ? (orderWindow.is_open ? 'success' : 'warning') : 'info'}
+                  sx={{ mb: 3 }}
+                  action={
+                    orderWindow.enabled ? (
+                      <Chip
+                        label={orderWindow.is_open ? 'OPEN' : 'CLOSED'}
+                        color={orderWindow.is_open ? 'success' : 'warning'}
+                        size="small"
+                        sx={{ fontWeight: 'bold', mt: 0.5 }}
+                      />
+                    ) : undefined
+                  }
+                >
+                  <AlertTitle>
+                    {!orderWindow.enabled
+                      ? 'Order window restrictions are disabled — participants can order anytime'
+                      : orderWindow.is_open
+                      ? 'Order window is currently open'
+                      : 'Order window is currently closed'}
+                  </AlertTitle>
+                  {orderWindow.enabled && orderWindow.is_open && orderWindow.next_closes_at && (
+                    <>Closes at <strong>{new Date(orderWindow.next_closes_at).toLocaleString()}</strong></>
+                  )}
+                  {orderWindow.enabled && !orderWindow.is_open && orderWindow.next_opens_at && (
+                    <>Opens at <strong>{new Date(orderWindow.next_opens_at).toLocaleString()}</strong></>
+                  )}
+                  {orderWindow.enabled && !orderWindow.is_open && !orderWindow.next_opens_at && (
+                    <>No upcoming class scheduled — check that programs have a meeting day and time set.</>
+                  )}
+                </Alert>
+
                 <FormControlLabel
                   control={
                     <Switch
@@ -206,12 +245,8 @@ export const Settings = () => {
                     />
                   }
                   label="Enable Order Window Restrictions"
+                  sx={{ mb: 2 }}
                 />
-
-                <Alert severity="info" sx={{ my: 2 }}>
-                  Control when participants can place orders relative to their
-                  class time.
-                </Alert>
 
                 <TextField
                   fullWidth
@@ -224,7 +259,7 @@ export const Settings = () => {
                       hours_before_class: parseInt(e.target.value) || 0,
                     })
                   }
-                  helperText="Orders can be placed this many hours before class starts"
+                  helperText="Orders can be placed this many hours before class starts (1–168)"
                   sx={{ mb: 2 }}
                 />
 
@@ -239,7 +274,7 @@ export const Settings = () => {
                       hours_before_close: parseInt(e.target.value) || 0,
                     })
                   }
-                  helperText="Orders must be placed at least this many hours before class (0 = at class time)"
+                  helperText="Orders must be placed at least this many hours before class (0 = right up until class time)"
                   sx={{ mb: 3 }}
                 />
 

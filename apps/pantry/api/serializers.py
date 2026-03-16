@@ -9,7 +9,9 @@ from apps.pantry.models import (
     Tag,
     Product,
     ProductLimit,
+    OrderPacker,
 )
+from apps.lifeskills.models import Program
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -38,7 +40,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'subcategories', 'product_count']
+        fields = ['id', 'name', 'sort_order', 'subcategories', 'product_count']
         read_only_fields = ['id']
 
     def get_product_count(self, obj):
@@ -50,7 +52,7 @@ class CategoryListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'sort_order']
         read_only_fields = ['id']
 
 
@@ -77,7 +79,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_name', 'subcategory', 'subcategory_name',
             'quantity_in_stock', 'is_meat', 'weight_lbs',
             'image', 'active', 'tags', 'tag_ids', 'limit',
-            'created_at', 'updated_at'
+            'sort_order', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -93,9 +95,25 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'price', 'category', 'category_name',
-            'image', 'active', 'quantity_in_stock'
+            'image', 'active', 'quantity_in_stock', 'sort_order'
         ]
         read_only_fields = ['id']
+
+
+class OrderPackerSerializer(serializers.ModelSerializer):
+    """Serializer for OrderPacker model."""
+    program_names = serializers.SerializerMethodField()
+    programs = serializers.PrimaryKeyRelatedField(
+        queryset=Program.objects.all(), many=True, required=False
+    )
+
+    class Meta:
+        model = OrderPacker
+        fields = ['id', 'name', 'programs', 'program_names', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_program_names(self, obj) -> list:
+        return list(obj.programs.values_list('name', flat=True))
 
 
 class ProductLimitSerializer(serializers.ModelSerializer):

@@ -23,17 +23,32 @@ class OrderItemSerializer(serializers.ModelSerializer):
         source='product.category.name', read_only=True
     )
     total = serializers.SerializerMethodField()
+    category_sort_order = serializers.SerializerMethodField()
+    product_sort_order = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             'id', 'order', 'product', 'product_name', 'product_category',
-            'quantity', 'price', 'price_at_order', 'total', 'created_at'
+            'quantity', 'price', 'price_at_order', 'total', 'created_at',
+            'category_sort_order', 'product_sort_order',
         ]
         read_only_fields = ['id', 'price', 'price_at_order', 'created_at']
 
     def get_total(self, obj) -> Decimal:
         return obj.total_price()
+
+    def get_category_sort_order(self, obj) -> int:
+        try:
+            return obj.product.category.sort_order if obj.product.category else 0
+        except Exception:
+            return 0
+
+    def get_product_sort_order(self, obj) -> int:
+        try:
+            return obj.product.sort_order
+        except Exception:
+            return 0
 
 
 class OrderItemCreateSerializer(serializers.ModelSerializer):
@@ -63,10 +78,10 @@ class FailedOrderAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = FailedOrderAttempt
         fields = [
-            'id', 'participant', 'participant_name', 'user', 
-            'idempotency_key', 'cart_hash', 'total_attempted',
-            'food_total', 'hygiene_total', 'full_balance', 
-            'available_balance', 'hygiene_balance', 
+            'id', 'participant', 'participant_name', 'user',
+            'idempotency_key', 'cart_snapshot', 'cart_hash', 'total_attempted',
+            'food_total', 'hygiene_total', 'full_balance',
+            'available_balance', 'hygiene_balance',
             'program_pause_active', 'program_pause_name',
             'voucher_multiplier', 'active_voucher_count',
             'validation_errors', 'validation_errors_display',
@@ -261,12 +276,13 @@ class PackingListSerializer(serializers.ModelSerializer):
     packer_name = serializers.CharField(source='packer.name', read_only=True)
     order_count = serializers.SerializerMethodField()
     category_names = serializers.SerializerMethodField()
+    orders_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = PackingList
         fields = [
             'id', 'combined_order', 'packer', 'packer_name',
-            'orders', 'order_count', 'categories', 'category_names',
+            'orders', 'orders_summary', 'order_count', 'categories', 'category_names',
             'summarized_data', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -278,3 +294,15 @@ class PackingListSerializer(serializers.ModelSerializer):
 
     def get_category_names(self, obj) -> list:
         return list(obj.categories.values_list('name', flat=True))
+
+    def get_orders_summary(self, obj) -> list:
+        """Return lightweight order details (order_number, customer_number) for display."""
+        result = []
+        for order in obj.orders.select_related('account__participant').all():
+            participant = order.account.participant
+            result.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'customer_number': getattr(participant, 'customer_number', 'N/A'),
+            })
+        return result

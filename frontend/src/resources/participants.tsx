@@ -30,6 +30,7 @@ import {
   TabbedShowLayout,
   ReferenceManyField,
   FunctionField,
+  Labeled,
   type RaRecord,
 } from 'react-admin';
 import { Typography, Box } from '@mui/material';
@@ -110,9 +111,15 @@ export const ParticipantShow = () => (
               Household Size
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <NumberField source="adults" label="Adults" />
-              <NumberField source="children" label="Children" />
-              <NumberField source="infants" label="Infants" />
+              <Labeled label="Adults">
+                <NumberField source="adults" />
+              </Labeled>
+              <Labeled label="Children">
+                <NumberField source="children" />
+              </Labeled>
+              <Labeled label="Infants">
+                <NumberField source="infants" />
+              </Labeled>
             </Box>
           </Box>
           
@@ -128,26 +135,37 @@ export const ParticipantShow = () => (
       </TabbedShowLayout.Tab>
       
       <TabbedShowLayout.Tab label="Vouchers" path="vouchers">
-        <ReferenceManyField 
-          reference="vouchers" 
+        <ReferenceManyField
+          reference="vouchers"
           target="participant"
           label="Recent Vouchers"
           sort={{ field: 'created_at', order: 'DESC' }}
           perPage={10}
         >
           <Datagrid rowClick="show">
-            <TextField source="voucher_number" label="Voucher #" />
-            <DateField source="valid_from" label="Valid From" />
-            <DateField source="valid_until" label="Valid Until" />
-            <BooleanField source="redeemed" />
-            <DateField source="redeemed_at" showTime />
-            <FunctionField 
-              label="Status" 
+            <TextField source="id" label="Voucher #" />
+            <DateField source="created_at" label="Created" />
+            <FunctionField
+              label="Type"
+              render={(record: RaRecord) =>
+                record.voucher_type === 'grocery' ? 'Grocery' : 'Life Skills'
+              }
+            />
+            <NumberField
+              source="voucher_amnt"
+              label="Amount"
+              options={{ style: 'currency', currency: 'USD' }}
+            />
+            <FunctionField
+              label="Status"
               render={(record: RaRecord) => {
-                if (record.redeemed) return 'Redeemed';
-                const now = new Date();
-                const validUntil = new Date(record.valid_until);
-                return validUntil < now ? 'Expired' : 'Active';
+                const stateLabels: Record<string, string> = {
+                  pending: 'Pending',
+                  applied: 'Applied',
+                  consumed: 'Consumed',
+                  expired: 'Expired',
+                };
+                return stateLabels[record.state] ?? record.state;
               }}
             />
             <ShowButton />

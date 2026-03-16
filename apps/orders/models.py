@@ -438,14 +438,20 @@ class CombinedOrder(models.Model):
     year = models.IntegerField(editable=False, null=True, blank=True)
     
     def save(self, *args, **kwargs):
-        """Auto-populate week and year from created_at on creation only."""
-        # Only set week/year on initial creation to avoid unique constraint violations on update
+        """Auto-populate week, year, and name from created_at on creation only."""
         if self.pk is None:
-            # Use timezone.now() since created_at isn't set yet (auto_now_add happens in DB)
             from django.utils import timezone
             now = self.created_at or timezone.now()
             self.week = now.isocalendar()[1]
             self.year = now.year
+            if not self.name:
+                strategy_label = dict(self.SPLIT_STRATEGY_CHOICES).get(
+                    self.split_strategy, self.split_strategy
+                )
+                self.name = (
+                    f"{self.program.name} — "
+                    f"{now.strftime('%b %d, %Y')} ({strategy_label})"
+                )
         super().save(*args, **kwargs)
 
     def summarized_items_by_category(self):
@@ -572,10 +578,16 @@ class PackingList(models.Model):
         """
         Calculate aggregated product quantities for this packer's orders/categories.
         
-        Returns dict of {category_name: {product_name: quantity}}
+        Returns dict of {category_name: {product_name: quantity}}, sorted by
+        category sort_order then product sort_order so packing lists reflect
+        the warehouse pick sequence.
         """
         summary = defaultdict(lambda: defaultdict(int))
         
+        # Track sort metadata so we can order the final dict
+        category_sort = {}
+        product_sort = {}
+
         # Get the split strategy from the combined order
         strategy = self.combined_order.split_strategy
         
@@ -589,6 +601,9 @@ class PackingList(models.Model):
                     if product.category_id in assigned_category_ids:
                         category_name = product.category.name if product.category else "Uncategorized"
                         summary[category_name][product.name] += item.quantity
+                        if product.category:
+                            category_sort[category_name] = product.category.sort_order
+                        product_sort.setdefault(category_name, {})[product.name] = product.sort_order
         else:
             # For other strategies (fifty_fifty, round_robin), use assigned orders
             for order in self.orders.all():
@@ -596,5 +611,17 @@ class PackingList(models.Model):
                     product = item.product
                     category_name = product.category.name if product.category else "Uncategorized"
                     summary[category_name][product.name] += item.quantity
+                    if product.category:
+                        category_sort[category_name] = product.category.sort_order
+                    product_sort.setdefault(category_name, {})[product.name] = product.sort_order
         
-        return dict(summary)
+        # Build sorted output: categories by sort_order, products within by sort_order
+        sorted_result = {}
+        for cat_name in sorted(summary.keys(), key=lambda c: (category_sort.get(c, 0), c)):
+            products = summary[cat_name]
+            cat_product_sort = product_sort.get(cat_name, {})
+            sorted_result[cat_name] = dict(
+                sorted(products.items(), key=lambda p: (cat_product_sort.get(p[0], 0), p[0]))
+            )
+        
+        return sorted_result

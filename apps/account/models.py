@@ -119,8 +119,8 @@ class AccountBalance(BaseModel):
     participant = models.OneToOneField(Participant, on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True)
     base_balance = models.DecimalField(
-        max_digits=4,
-        decimal_places=1,
+        max_digits=8,
+        decimal_places=2,
         default=0,
         validators=[MinValueValidator(0)]
     )

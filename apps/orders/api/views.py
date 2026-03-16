@@ -4,14 +4,18 @@ ViewSets for the Orders app.
 from decimal import Decimal
 from datetime import timedelta
 from django.utils import timezone
-from rest_framework import viewsets, filters, status
+from rest_framework import viewsets, filters, status, mixins
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.http import HttpResponse
+import io
+import zipfile
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Count, Sum, Q
 from django.core.exceptions import ValidationError
 from django.core.cache import cache
+from django.db import IntegrityError
 
 from apps.api.pagination import StandardResultsSetPagination
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsOwnerOrAdmin
@@ -663,6 +667,185 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
         combined_order.orders.remove(*orders)
         return Response(CombinedOrderSerializer(combined_order).data)
 
+    @action(detail=True, methods=['get'], url_path='download-primary-pdf')
+    def download_primary_pdf(self, request, pk=None):
+        """Download the primary order PDF for this combined order."""
+        from apps.orders.utils.order_services import generate_combined_order_pdf
+        combined_order = self.get_object()
+        pdf_buffer = generate_combined_order_pdf(combined_order)
+        pdf_buffer.seek(0)
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="primary_order_{combined_order.id}.pdf"'
+        return response
+
+    @action(detail=True, methods=['get'], url_path='download-packing-list-pdf')
+    def download_packing_list_pdf(self, request, pk=None):
+        """Download the first packing list PDF (or primary PDF if no packing lists)."""
+        from apps.orders.utils.order_services import generate_combined_order_pdf, generate_packing_list_pdf
+        combined_order = self.get_object()
+        packing_lists = combined_order.packing_lists.all()
+        if packing_lists.exists():
+            packing_list = packing_lists.first()
+            pdf_buffer = generate_packing_list_pdf(packing_list)
+            pdf_buffer.seek(0)
+            filename = f"packing_list_{combined_order.id}_{packing_list.packer.name.replace(' ', '_')}.pdf"
+        else:
+            pdf_buffer = generate_combined_order_pdf(combined_order)
+            pdf_buffer.seek(0)
+            filename = f"packing_list_{combined_order.id}.pdf"
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['get'], url_path='download-all-packing-lists')
+    def download_all_packing_lists(self, request, pk=None):
+        """Download all packing lists and primary order as a ZIP."""
+        from apps.orders.utils.order_services import generate_combined_order_pdf, generate_packing_list_pdf
+        combined_order = self.get_object()
+        packing_lists = combined_order.packing_lists.all()
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            primary_pdf = generate_combined_order_pdf(combined_order)
+            primary_pdf.seek(0)
+            zip_file.writestr(f"primary_order_{combined_order.id}.pdf", primary_pdf.read())
+            for pl in packing_lists:
+                pdf_buffer = generate_packing_list_pdf(pl)
+                pdf_buffer.seek(0)
+                filename = f"packing_list_{pl.packer.name.replace(' ', '_')}_{combined_order.id}.pdf"
+                zip_file.writestr(filename, pdf_buffer.read())
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="combined_order_{combined_order.id}_all_lists.zip"'
+        return response
+
+    @action(detail=True, methods=['post'])
+    def uncombine(self, request, pk=None):
+        """Uncombine orders and delete this combined order."""
+        from apps.orders.tasks.helper.combined_order_helper import uncombine_order
+        combined_order = self.get_object()
+        count = uncombine_order(combined_order)
+        combined_order.delete()
+        return Response({
+            'uncombined_count': count,
+            'message': f'Released {count} orders from combined order.',
+        })
+
+    @action(detail=False, methods=['post'])
+    def preview(self, request):
+        """Preview eligible orders before creating a combined order."""
+        from datetime import date
+        from apps.lifeskills.models import Program
+        from apps.orders.tasks.helper.combined_order_helper import (
+            get_eligible_orders, get_split_preview, validate_split_strategy
+        )
+        program_id = request.data.get('program_id')
+        start_date_str = request.data.get('start_date')
+        end_date_str = request.data.get('end_date')
+        split_strategy_override = request.data.get('split_strategy_override', '')
+        if not all([program_id, start_date_str, end_date_str]):
+            return Response(
+                {'error': 'program_id, start_date, and end_date are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            program = Program.objects.get(id=program_id)
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        except (Program.DoesNotExist, ValueError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        effective_strategy = split_strategy_override or program.default_split_strategy
+        eligible_orders, excluded_orders, warnings = get_eligible_orders(program, start_date, end_date)
+        errors = []
+        if not eligible_orders:
+            errors.append(
+                f"No eligible orders found for {program.name} between {start_date} and {end_date}."
+            )
+        strategy_valid, strategy_errors = validate_split_strategy(program, effective_strategy)
+        if not strategy_valid:
+            errors.extend(strategy_errors)
+        preview_data = {}
+        if eligible_orders and strategy_valid:
+            raw_preview = get_split_preview(eligible_orders, program, effective_strategy)
+            split_preview = []
+            for item in raw_preview.get('split_preview', []):
+                packer = item.get('packer')
+                split_preview.append({
+                    'packer_id': packer.id if packer else None,
+                    'packer_name': packer.name if packer else 'Unknown',
+                    'order_count': item.get('order_count', 0),
+                    'item_count': item.get('item_count', 0),
+                    'categories': item.get('categories', []),
+                })
+            preview_data = {
+                'order_count': raw_preview.get('order_count', 0),
+                'total_items': raw_preview.get('total_items', 0),
+                'total_value': str(raw_preview.get('total_value', '0')),
+                'category_totals': raw_preview.get('category_totals', {}),
+                'packer_count': raw_preview.get('packer_count', 0),
+                'strategy': raw_preview.get('strategy', ''),
+                'split_preview': split_preview,
+            }
+        strategy_choices = dict(CombinedOrder.SPLIT_STRATEGY_CHOICES)
+        return Response({
+            'program': {'id': program.id, 'name': program.name},
+            'effective_strategy': effective_strategy,
+            'strategy_display': strategy_choices.get(effective_strategy, effective_strategy),
+            'eligible_orders': [{'id': o.id, 'order_number': o.order_number} for o in eligible_orders],
+            'excluded_orders': [{'id': o.id, 'order_number': o.order_number} for o in excluded_orders],
+            'eligible_count': len(eligible_orders),
+            'excluded_count': len(excluded_orders),
+            'warnings': warnings,
+            'errors': errors,
+            'preview_data': preview_data,
+            'can_proceed': len(errors) == 0 and len(eligible_orders) > 0,
+            'order_ids': [o.id for o in eligible_orders],
+        })
+
+    @action(detail=False, methods=['post'], url_path='create-with-packing')
+    def create_with_packing(self, request):
+        """Create a combined order with packing lists (used by the wizard UI)."""
+        from apps.lifeskills.models import Program
+        from apps.orders.tasks.helper.combined_order_helper import create_combined_order_with_packing
+        program_id = request.data.get('program_id')
+        order_ids = request.data.get('order_ids', [])
+        strategy = request.data.get('strategy', 'none')
+        name = request.data.get('name')
+        if not program_id or not order_ids:
+            return Response(
+                {'error': 'program_id and order_ids are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            program = Program.objects.get(id=program_id)
+            orders = list(Order.objects.filter(id__in=order_ids))
+            if not orders:
+                return Response(
+                    {'error': 'No orders found with the provided IDs'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            combined_order, _packing_lists = create_combined_order_with_packing(
+                program=program,
+                orders=orders,
+                strategy=strategy,
+                name=name,
+            )
+            return Response(
+                CombinedOrderSerializer(combined_order).data,
+                status=status.HTTP_201_CREATED
+            )
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError:
+            return Response(
+                {'error': (
+                    f'A combined order already exists for {program.name} this week. '
+                    'Delete or uncombine the existing one first.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PackingSplitRuleViewSet(viewsets.ModelViewSet):
     """ViewSet for PackingSplitRule model."""
@@ -696,3 +879,43 @@ class PackingListViewSet(viewsets.ModelViewSet):
         """Return summarized items for this packing list."""
         packing_list = self.get_object()
         return Response(packing_list.calculate_summarized_data())
+
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Download this packing list as a PDF."""
+        from apps.orders.utils.order_services import generate_packing_list_pdf
+        packing_list = self.get_object()
+        pdf_buffer = generate_packing_list_pdf(packing_list)
+        pdf_buffer.seek(0)
+        filename = f"packing_list_{packing_list.packer.name.replace(' ', '_')}_{packing_list.combined_order.id}.pdf"
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+class FailedOrderAttemptViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
+    """Read-only ViewSet for FailedOrderAttempt model (staff only, superuser delete)."""
+    queryset = FailedOrderAttempt.objects.select_related(
+        'participant', 'user'
+    ).order_by('-created_at')
+    serializer_class = FailedOrderAttemptSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [
+        DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
+    ]
+    filterset_fields = ['participant', 'program_pause_active']
+    search_fields = [
+        'participant__name', 'user__username', 'error_summary', 'ip_address'
+    ]
+    ordering_fields = ['created_at', 'total_attempted']
+    ordering = ['-created_at']
+
+    def destroy(self, request, *args, **kwargs):
+        """Only superusers may delete failed order attempts."""
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Only superusers can delete failed order attempts.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)

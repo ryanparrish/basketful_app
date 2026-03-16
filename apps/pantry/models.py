@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 class Category(models.Model):
     """Model representing a product category."""
     name = models.CharField(max_length=100)
+    sort_order = models.IntegerField(
+        default=0,
+        help_text="Pick sequence for packing lists. 0 = top (newly created). Reorder via drag-and-drop in admin."
+    )
 
     def __str__(self) -> str:
         return str(self.name)
@@ -23,6 +27,7 @@ class Category(models.Model):
         """Meta options for Category."""
         verbose_name_plural = "Categories"
         db_table = 'food_orders_category'
+        ordering = ['sort_order', 'name']
 
 
 class Subcategory(models.Model):
@@ -118,11 +123,17 @@ class Product(models.Model):
 
         return min(limits) if limits else None
 
+    sort_order = models.IntegerField(
+        default=0,
+        help_text="Pick sequence within category for packing lists. 0 = top (newly created). Reorder via drag-and-drop in admin."
+    )
+
     def __str__(self) -> str:
         return str(self.name)
 
     class Meta:
         db_table = 'food_orders_product'
+        ordering = ['sort_order', 'name']
 
 
 class ProductLimit(models.Model):

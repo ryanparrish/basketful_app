@@ -6,8 +6,9 @@ import pytest
 os.environ['DJANGO_SETTINGS_MODULE'] = 'core.settings'
 django.setup()
 
-from apps.pantry.tests.factories import ParticipantFactory
-from apps.voucher.models import VoucherSetting
+from apps.pantry.tests.factories import ParticipantFactory  # noqa: E402
+from apps.voucher.models import VoucherSetting  # noqa: E402
+
 
 @pytest.mark.django_db
 def test_high_balance_flag():

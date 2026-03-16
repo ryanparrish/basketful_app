@@ -10,7 +10,6 @@ import {
   Show,
   SimpleShowLayout,
   FilterButton,
-  CreateButton,
   ExportButton,
   TopToolbar,
   useRecordContext,
@@ -20,23 +19,46 @@ import {
   useRefresh,
   DeleteButton,
   ListButton,
-  Create,
   Edit,
   SimpleForm,
   TextInput,
   SelectInput,
   ReferenceInput,
-  ReferenceArrayInput,
-  SelectArrayInput,
-  required,
   type RaRecord,
 } from 'react-admin';
 import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import MergeTypeIcon from '@mui/icons-material/MergeType';
 import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// Custom empty state that always shows the create button
+const EmptyWithCreate = () => {
+  const navigate = useNavigate();
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 10,
+        gap: 2,
+        color: 'text.secondary',
+      }}
+    >
+      <MergeTypeIcon sx={{ fontSize: 72, opacity: 0.4 }} />
+      <Typography variant="h6" sx={{ opacity: 0.7 }}>No Combined Orders yet.</Typography>
+      <Button
+        variant="contained"
+        label="Create Combined Order"
+        onClick={() => navigate('/combined-orders/create-wizard')}
+      />
+    </Box>
+  );
+};
 
 const SPLIT_STRATEGY_LABELS: Record<string, string> = {
   none: 'No Split (Single Packer)',
@@ -131,6 +153,42 @@ const DownloadAllPackingListsButton = () => {
   );
 };
 
+const DownloadFirstPackingListPdfButton = () => {
+  const record = useRecordContext();
+  const notify = useNotify();
+
+  if (!record) return null;
+
+  const handleDownload = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${API_URL}/api/v1/combined-orders/${record.id}/download-packing-list-pdf/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `packing_list_${record.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      notify('Packing list PDF downloaded', { type: 'success' });
+    } catch {
+      notify('Error downloading packing list PDF', { type: 'error' });
+    }
+  };
+
+  return (
+    <Button label="First Packing List PDF" onClick={handleDownload}>
+      <DownloadIcon />
+    </Button>
+  );
+};
+
 const UncombineButton = () => {
   const record = useRecordContext();
   const notify = useNotify();
@@ -177,6 +235,7 @@ const CombinedOrderShowActions = () => (
   <TopToolbar>
     <ListButton />
     <DownloadPrimaryPdfButton />
+    <DownloadFirstPackingListPdfButton />
     <DownloadAllPackingListsButton />
     <UncombineButton />
     <DeleteButton mutationMode="pessimistic" />
@@ -197,20 +256,22 @@ const SplitStrategyField = () => {
   );
 };
 
-// Orders display
+// Orders display — shows order_number + customer_number with links
 const OrdersField = () => {
   const record = useRecordContext();
+  const navigate = useNavigate();
   if (!record || !record.orders) return null;
 
   return (
     <Box>
-      {record.orders.map((orderId: number) => (
-        <Chip
-          key={orderId}
-          label={`Order #${orderId}`}
-          size="small"
-          sx={{ m: 0.5 }}
-        />
+      {record.orders.map((order: RaRecord) => (
+        <Box key={order.id} sx={{ mb: 0.5 }}>
+          <Button
+            label={`Order #${order.order_number} – Customer #${order.participant_customer_number || 'N/A'}`}
+            onClick={() => navigate(`/orders/${order.id}/show`)}
+            size="small"
+          />
+        </Box>
       ))}
     </Box>
   );
@@ -241,19 +302,44 @@ const PackingListsField = () => {
   );
 };
 
-const ListActions = () => (
-  <TopToolbar>
-    <FilterButton />
-    <CreateButton />
-    <ExportButton />
-  </TopToolbar>
-);
+const SPLIT_STRATEGY_CHOICES = [
+  { id: 'none', name: 'No Split (Single Packer)' },
+  { id: 'category', name: 'By Category' },
+  { id: 'subcategory', name: 'By Subcategory' },
+  { id: 'category_subcategory', name: 'By Category & Subcategory' },
+];
+
+const combinedOrderFilters = [
+  <ReferenceInput source="program" reference="programs" key="program">
+    <SelectInput optionText="name" label="Program" />
+  </ReferenceInput>,
+  <SelectInput
+    source="split_strategy"
+    label="Split Strategy"
+    choices={SPLIT_STRATEGY_CHOICES.filter((c) => c.id !== '')}
+    key="strategy"
+  />,
+];
+
+const ListActions = () => {
+  const navigate = useNavigate();
+  return (
+    <TopToolbar>
+      <FilterButton />
+      <Button label="Create Combined Order" onClick={() => navigate('/combined-orders/create-wizard')}>
+        <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>+</span>
+      </Button>
+      <ExportButton />
+    </TopToolbar>
+  );
+};
 
 export const CombinedOrderList = () => (
   <List
     sort={{ field: 'created_at', order: 'DESC' }}
-    filters={[]}
+    filters={combinedOrderFilters}
     actions={<ListActions />}
+    empty={<EmptyWithCreate />}
   >
     <Datagrid rowClick="show" bulkActionButtons={false}>
       <TextField source="name" />
@@ -305,48 +391,15 @@ export const CombinedOrderShow = () => (
   </Show>
 );
 
-const SPLIT_STRATEGY_CHOICES = [
-  { id: 'none', name: 'No Split (Single Packer)' },
-  { id: 'category', name: 'By Category' },
-  { id: 'subcategory', name: 'By Subcategory' },
-  { id: 'category_subcategory', name: 'By Category & Subcategory' },
-];
-
 const CombinedOrderTitle = () => {
   const record = useRecordContext();
   return <span>Combined Order: {record?.name || ''}</span>;
 };
 
-export const CombinedOrderCreate = () => (
-  <Create>
-    <SimpleForm>
-      <TextInput source="name" validate={required()} fullWidth helperText="A descriptive name for this combined order" />
-      <ReferenceInput source="program" reference="programs">
-        <SelectInput optionText="name" fullWidth validate={required()} />
-      </ReferenceInput>
-      <SelectInput 
-        source="split_strategy" 
-        choices={SPLIT_STRATEGY_CHOICES} 
-        defaultValue="none"
-        helperText="How to split orders among packers"
-        fullWidth
-      />
-      <ReferenceArrayInput source="orders" reference="orders">
-        <SelectArrayInput 
-          optionText={(record: { order_number: string; participant_name: string }) => 
-            `${record.order_number} - ${record.participant_name}`
-          }
-          fullWidth 
-        />
-      </ReferenceArrayInput>
-    </SimpleForm>
-  </Create>
-);
-
 export const CombinedOrderEdit = () => (
   <Edit title={<CombinedOrderTitle />}>
     <SimpleForm>
-      <TextInput source="name" validate={required()} fullWidth />
+      <TextInput source="name" fullWidth helperText="Leave blank to keep the auto-generated name" />
       <ReferenceInput source="program" reference="programs">
         <SelectInput optionText="name" fullWidth disabled />
       </ReferenceInput>

@@ -11,6 +11,7 @@ from apps.orders.api.views import (
     CombinedOrderViewSet,
     PackingSplitRuleViewSet,
     PackingListViewSet,
+    FailedOrderAttemptViewSet,
 )
 
 router = DefaultRouter()
@@ -24,6 +25,7 @@ router.register(
     r'packing-split-rules', PackingSplitRuleViewSet, basename='packing-split-rule'
 )
 router.register(r'packing-lists', PackingListViewSet, basename='packing-list')
+router.register(r'failed-order-attempts', FailedOrderAttemptViewSet, basename='failed-order-attempt')
 
 urlpatterns = [
     path('', include(router.urls)),

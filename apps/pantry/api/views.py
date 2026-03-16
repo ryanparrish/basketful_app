@@ -15,6 +15,7 @@ from apps.pantry.models import (
     Tag,
     Product,
     ProductLimit,
+    OrderPacker,
 )
 from apps.pantry.api.serializers import (
     CategorySerializer,
@@ -24,6 +25,7 @@ from apps.pantry.api.serializers import (
     ProductSerializer,
     ProductListSerializer,
     ProductLimitSerializer,
+    OrderPackerSerializer,
 )
 
 
@@ -32,10 +34,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().prefetch_related('subcategories')
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     pagination_class = StandardResultsSetPagination
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
-    ordering_fields = ['name', 'id']
-    ordering = ['name']
+    ordering_fields = ['name', 'id', 'sort_order']
+    ordering = ['sort_order', 'name']
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -82,8 +84,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     ]
     filterset_fields = ['category', 'subcategory', 'active', 'is_meat']
     search_fields = ['name', 'description']
-    ordering_fields = ['name', 'price', 'created_at', 'category__name']
-    ordering = ['name']
+    ordering_fields = ['name', 'price', 'created_at', 'category__name', 'sort_order']
+    ordering = ['sort_order', 'name']
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -129,4 +131,16 @@ class ProductLimitViewSet(viewsets.ModelViewSet):
     filterset_fields = ['category', 'subcategory']
     search_fields = ['name', 'notes']
     ordering_fields = ['name', 'limit']
+
+
+class OrderPackerViewSet(viewsets.ModelViewSet):
+    """Full CRUD ViewSet for OrderPacker model."""
+    queryset = OrderPacker.objects.all().prefetch_related('programs')
+    serializer_class = OrderPackerSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['programs']
+    search_fields = ['name']
+    ordering_fields = ['name']
     ordering = ['name']
