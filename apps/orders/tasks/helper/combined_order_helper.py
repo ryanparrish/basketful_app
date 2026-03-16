@@ -528,13 +528,18 @@ def create_combined_order_with_packing(
         )
 
     now = timezone.now()
-    effective_strategy = 'none' if len(packers) == 1 else 'round_robin'
+    # Use the caller-supplied strategy for the record; default based on packer count
+    # if 'auto' was passed.
+    if strategy == 'auto':
+        record_strategy = 'none' if len(packers) == 1 else 'round_robin'
+    else:
+        record_strategy = strategy
 
     try:
         combined_order = CombinedOrder.objects.create(
             name=name or '',
             program=program,
-            split_strategy=effective_strategy,
+            split_strategy=record_strategy,
             week=now.isocalendar()[1],
             year=now.year,
         )
