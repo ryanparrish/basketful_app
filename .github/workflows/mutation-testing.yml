@@ -101,7 +101,8 @@ jobs:
         env: *mutation_env
         run: |
           echo "Generating coverage data for ${{ matrix.target }}..."
-          pytest "${{ matrix.test_scope }}" --cov="${{ matrix.target }}" --cov-report= -q
+          COV_MODULE=$(echo "${{ matrix.target }}" | sed 's/\.py$//' | tr '/' '.')
+          pytest "${{ matrix.test_scope }}" --cov="$COV_MODULE" --cov-report= -q
           echo "Coverage data generated (.coverage file created)"
 
       - name: Run mutation tests
@@ -120,6 +121,7 @@ jobs:
           echo "Running mutmut..."
           mutmut run \
             --paths-to-mutate="$TARGET" \
+            --tests-dir="$TEST_SCOPE" \
             --runner="pytest -x --tb=short $TEST_SCOPE" \
             --use-coverage || true
 
@@ -244,6 +246,7 @@ jobs:
         run: |
           pytest apps/ --cov=apps --cov-report= -q
 
+
       - name: Run mutation tests
         env:
           DJANGO_SETTINGS_MODULE: core.settings
@@ -261,7 +264,7 @@ jobs:
         run: |
           PATHS="${{ github.event.inputs.paths }}"
           echo "🧬 Running mutation tests on: $PATHS"
-          mutmut run --paths-to-mutate="$PATHS" --runner="pytest -x --tb=short" --use-coverage || true
+          mutmut run --paths-to-mutate="$PATHS" --tests-dir="apps" --runner="pytest -x --tb=short apps/" --use-coverage || true
           mutmut results > mutation-results.txt || echo "No mutations found - check paths and test discovery" > mutation-results.txt
           mutmut html || true
           [ -e htmlmut ] || mkdir -p htmlmut
