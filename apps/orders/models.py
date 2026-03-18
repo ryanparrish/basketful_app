@@ -273,13 +273,17 @@ class Order(models.Model):
         
         if not active_vouchers:
             return
-        
+
+        def _effective_amount(v):
+            """Voucher base amount multiplied by pause multiplier."""
+            return (v.voucher_amnt or Decimal('0')) * (getattr(v, 'multiplier', Decimal('1')) or Decimal('1'))
+
         # Calculate single voucher amount (they should all be the same)
-        single_voucher_amount = active_vouchers[0].voucher_amnt if active_vouchers else Decimal('0')
-        
-        # Calculate total available voucher balance
-        total_voucher_balance = sum(v.voucher_amnt for v in active_vouchers)
-        
+        single_voucher_amount = _effective_amount(active_vouchers[0])
+
+        # Calculate total available voucher balance (respects pause multiplier)
+        total_voucher_balance = sum(_effective_amount(v) for v in active_vouchers)
+
         # Validate order doesn't exceed voucher balance
         if order_total > total_voucher_balance:
             participant = getattr(self.account, 'participant', None)
@@ -291,7 +295,7 @@ class Order(models.Model):
                 f"Order total ${order_total:.2f} exceeds available voucher balance "
                 f"${total_voucher_balance:.2f} for {participant}"
             )
-        
+
         # Determine how many vouchers to consume
         if order_total <= single_voucher_amount:
             # Order total is less than or equal to one voucher: consume 1
@@ -299,14 +303,14 @@ class Order(models.Model):
         else:
             # Order total is greater than one voucher: consume all available (max 2)
             vouchers_to_consume = active_vouchers
-        
+
         # Mark vouchers as consumed and create OrderVoucher records
         from apps.voucher.models import OrderVoucher
-        
+
         remaining = order_total
         for voucher in vouchers_to_consume:
             # Mark voucher as consumed - use update() to bypass editable=False
-            applied_amount = min(voucher.voucher_amnt, remaining)
+            applied_amount = min(_effective_amount(voucher), remaining)
             remaining -= applied_amount
             
             notes_update = (voucher.notes or "") + f"Used on order {self.id} for ${applied_amount:.2f}; "

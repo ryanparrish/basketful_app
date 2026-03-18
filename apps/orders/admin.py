@@ -779,16 +779,18 @@ class FailedOrderAttemptAdmin(admin.ModelAdmin):
     def balance_status(self, obj):
         """Show balance comparison."""
         if obj.food_total and obj.available_balance:
-            if obj.food_total > obj.available_balance:
+            food = float(obj.food_total)
+            balance = float(obj.available_balance)
+            if food > balance:
                 return format_html(
-                    '<span style="color: red;">${:.2f} > ${:.2f}</span>',
-                    obj.food_total,
-                    obj.available_balance
+                    '<span style="color: red;">${} > ${}</span>',
+                    f"{food:.2f}",
+                    f"{balance:.2f}",
                 )
             return format_html(
-                '<span style="color: green;">${:.2f} ≤ ${:.2f}</span>',
-                obj.food_total,
-                obj.available_balance
+                '<span style="color: green;">${} ≤ ${}</span>',
+                f"{food:.2f}",
+                f"{balance:.2f}",
             )
         return '-'
     balance_status.short_description = 'Balance Check'
