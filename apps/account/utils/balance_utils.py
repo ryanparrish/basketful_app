@@ -121,6 +121,14 @@ def calculate_hygiene_balance(account_balance) -> Decimal:
     return account_balance.available_balance * settings.hygiene_ratio
 
 
+def _get_current_pause_multiplier() -> int:
+    """Return the active pause multiplier if we're in the ordering window, else 1."""
+    from apps.lifeskills.models import ProgramPause
+    pauses = ProgramPause.objects.all()  # default manager excludes archived
+    multipliers = [pp.multiplier for pp in pauses]
+    return max(multipliers, default=1)
+
+
 def calculate_go_fresh_balance(account_balance) -> Decimal:
     """
     Calculate Go Fresh budget per order based on household size.
@@ -161,8 +169,11 @@ def calculate_go_fresh_balance(account_balance) -> Decimal:
     
     # Apply threshold logic
     if household_size <= settings.small_threshold:
-        return settings.small_household_budget
+        base = settings.small_household_budget
     elif household_size >= settings.large_threshold:
-        return settings.large_household_budget
+        base = settings.large_household_budget
     else:
-        return settings.medium_household_budget
+        base = settings.medium_household_budget
+
+    multiplier = _get_current_pause_multiplier()
+    return base * Decimal(multiplier)
