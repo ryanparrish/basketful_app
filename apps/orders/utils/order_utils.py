@@ -3,6 +3,7 @@
 import logging
 import json
 from typing import List, Optional, Dict, Any
+from apps.orders.types import CartItem, OrderError
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -79,6 +80,17 @@ class OrderOrchestration:
         ]
         idempotency_key = generate_idempotency_key(account.participant.id, cart_dict)
         cart_hash = generate_cart_hash(cart_dict)
+
+        # Build enriched snapshot separately (product names + prices for debugging)
+        cart_snapshot: List[CartItem] = [
+            {
+                'product_id': item.product.id,
+                'product_name': item.product.name,
+                'quantity': item.quantity,
+                'price': str(item.product.price),
+            }
+            for item in order_items_data
+        ]
         
         # Check for duplicate submission
         if check_duplicate_submission(idempotency_key):
@@ -166,7 +178,22 @@ class OrderOrchestration:
                 
             except ValidationError as e:
                 # STEP 5: Log failed attempt with full context
-                error_messages = e.message_dict if hasattr(e, 'message_dict') else [str(e)]
+                # Normalise to a consistent list-of-dicts format so the
+                # frontend analytics widget can always rely on the same shape.
+                error_messages: List[OrderError]
+                if hasattr(e, 'message_dict'):
+                    error_messages = [
+                        {'type': field, 'message': msg}
+                        for field, msgs in e.message_dict.items()
+                        for msg in (msgs if isinstance(msgs, list) else [msgs])
+                    ]
+                elif hasattr(e, 'messages'):
+                    error_messages = [
+                        {'type': 'validation', 'message': str(m)}
+                        for m in e.messages
+                    ]
+                else:
+                    error_messages = [{'type': 'validation', 'message': str(e)}]
                 error_summary = str(e)
                 participant = getattr(account, "participant", None)
                 
@@ -177,17 +204,21 @@ class OrderOrchestration:
                 
                 try:
                     from apps.voucher.models import Voucher
-                    active_pause_vouchers = Voucher.objects.filter(
+                    pause_voucher = Voucher.objects.filter(
                         account=account,
-                        active=True
-                    )
-                    pause_voucher = active_pause_vouchers.filter(
-                        program_pause_flag=True
+                        active=True,
+                        program_pause_flag=True,
                     ).order_by("-multiplier").first()
                     
                     if pause_voucher:
                         program_pause_active = True
                         voucher_multiplier = pause_voucher.multiplier
+                        try:
+                            program_pause_name = (
+                                pause_voucher.account.participant.program.name
+                            )
+                        except Exception:
+                            program_pause_name = "Active Program Pause"
                 except Exception as pause_err:
                     logger.error(f"Error getting program pause info: {pause_err}")
                 
@@ -203,13 +234,23 @@ class OrderOrchestration:
                 except Exception as voucher_err:
                     logger.error(f"Error counting vouchers: {voucher_err}")
                 
-                # Create failed attempt record
+                # Create failed attempt record.
+                # The idempotency_key field is unique — if the same failing cart
+                # is retried within the same minute it would cause an IntegrityError
+                # and silently drop the second log entry.  Append a short random
+                # suffix so every failed attempt is always recorded.
+                # Truncate base key to ensure unique_fail_key fits in 64 chars.
+                import secrets as _secrets
+                random_suffix = _secrets.token_hex(4)  # 8 chars
+                # Reserve 9 chars for ":{suffix}", leave 55 for base key
+                base_key = idempotency_key[:55] if len(idempotency_key) > 55 else idempotency_key
+                unique_fail_key = f"{base_key}:{random_suffix}"
                 try:
                     FailedOrderAttempt.objects.create(
                         participant=participant,
                         user=user,
-                        idempotency_key=idempotency_key,
-                        cart_snapshot=cart_dict,
+                        idempotency_key=unique_fail_key,
+                        cart_snapshot=cart_snapshot,
                         cart_hash=cart_hash,
                         total_attempted=total_attempted,
                         food_total=food_total,
@@ -227,7 +268,7 @@ class OrderOrchestration:
                         user_agent=user_agent,
                     )
                     logger.info(
-                        f"Logged failed order attempt for participant {participant.id}: "
+                        f"Logged failed order attempt for participant {participant.id if participant else 'unknown'}: "
                         f"{error_summary}"
                     )
                 except Exception as log_err:
