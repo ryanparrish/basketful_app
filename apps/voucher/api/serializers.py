@@ -61,9 +61,9 @@ class VoucherListSerializer(serializers.ModelSerializer):
         model = Voucher
         fields = [
             'id', 'participant_name', 'active', 'voucher_type',
-            'state', 'voucher_amnt', 'created_at'
+            'state', 'program_pause_flag', 'multiplier', 'voucher_amnt', 'created_at'
         ]
-        read_only_fields = ['id', 'state', 'voucher_amnt', 'created_at']
+        read_only_fields = ['id', 'state', 'program_pause_flag', 'multiplier', 'voucher_amnt', 'created_at']
 
 
 class VoucherCreateSerializer(serializers.ModelSerializer):

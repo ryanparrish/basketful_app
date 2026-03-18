@@ -78,7 +78,7 @@ class LifeskillsCoachViewSet(viewsets.ModelViewSet):
 
 class ProgramPauseViewSet(viewsets.ModelViewSet):
     """ViewSet for ProgramPause model."""
-    queryset = ProgramPause.objects.all()
+    queryset = ProgramPause.objects.all_pauses()
     serializer_class = ProgramPauseSerializer
     permission_classes = [IsAuthenticated, IsStaffUser]
     pagination_class = StandardResultsSetPagination
@@ -86,10 +86,20 @@ class ProgramPauseViewSet(viewsets.ModelViewSet):
     ordering_fields = ['pause_start', 'pause_end', 'created_at']
     ordering = ['-pause_start']
 
+    def destroy(self, request, *args, **kwargs):
+        """Deletion is disabled — use archive instead."""
+        return Response(
+            {'detail': 'Deletion is not allowed. Use archive instead.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
     @action(detail=False, methods=['get'])
     def active(self, request):
         """Return only active pauses."""
-        pauses = ProgramPause.objects.active()
+        from apps.lifeskills.queryset import program_pause_annotations
+        pauses = program_pause_annotations(
+            ProgramPause.objects.filter(archived=False)
+        ).filter(pause_is_active=True)
         serializer = ProgramPauseSerializer(pauses, many=True)
         return Response(serializer.data)
 
@@ -103,4 +113,79 @@ class ProgramPauseViewSet(viewsets.ModelViewSet):
             serializer = ProgramPauseSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
         serializer = ProgramPauseSerializer(pauses, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def check_overlap(self, request):
+        """Check if proposed pause dates overlap with existing non-archived pauses."""
+        pause_start = request.query_params.get('pause_start')
+        pause_end = request.query_params.get('pause_end')
+        exclude_id = request.query_params.get('exclude_id')
+
+        if not pause_start or not pause_end:
+            return Response(
+                {'detail': 'pause_start and pause_end are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from django.utils.dateparse import parse_datetime
+            start_dt = parse_datetime(pause_start)
+            end_dt = parse_datetime(pause_end)
+            if not start_dt or not end_dt:
+                return Response(
+                    {'detail': 'Invalid datetime format.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Invalid datetime format.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        qs = ProgramPause.objects.all_pauses().filter(
+            archived=False,
+            pause_start__lt=end_dt,
+            pause_end__gt=start_dt,
+        )
+        if exclude_id:
+            qs = qs.exclude(pk=exclude_id)
+
+        conflicting = qs.first()
+        if conflicting:
+            return Response({
+                'overlaps': True,
+                'conflicting': {
+                    'id': conflicting.id,
+                    'reason': conflicting.reason,
+                    'pause_start': conflicting.pause_start,
+                    'pause_end': conflicting.pause_end,
+                },
+            })
+        return Response({'overlaps': False, 'conflicting': None})
+
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive this pause and clean up associated vouchers."""
+        pause = self.get_object()
+        if pause.archived:
+            return Response(
+                {'detail': 'Pause is already archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        pause.archive()
+        serializer = self.get_serializer(pause)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def unarchive(self, request, pk=None):
+        """Unarchive this pause."""
+        pause = self.get_object()
+        if not pause.archived:
+            return Response(
+                {'detail': 'Pause is not archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        pause.unarchive()
+        serializer = self.get_serializer(pause)
         return Response(serializer.data)

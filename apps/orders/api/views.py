@@ -452,6 +452,299 @@ class OrderViewSet(viewsets.ModelViewSet):
             temp_order.delete()
 
     @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='product-consumption'
+    )
+    def product_consumption(self, request):
+        """
+        Get product consumption stats for the current calendar week (Mon–Sun).
+
+        Query params:
+        - statuses: Comma-separated order statuses (default: pending,confirmed,packing,completed)
+        - category: Category ID to filter (optional)
+        - limit: Max products to return (default: 20, max: 100)
+        """
+        today = timezone.now().date()
+        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_end = week_start + timedelta(days=6)             # Sunday
+
+        default_statuses = ['pending', 'confirmed', 'packing', 'completed']
+        statuses_param = request.query_params.get('statuses', '')
+        statuses = (
+            [s.strip() for s in statuses_param.split(',') if s.strip()]
+            if statuses_param
+            else default_statuses
+        )
+
+        category_id = request.query_params.get('category')
+        limit = min(int(request.query_params.get('limit', 20)), 100)
+
+        qs = OrderItem.objects.filter(
+            order__order_date__date__gte=week_start,
+            order__order_date__date__lte=week_end,
+            order__status__in=statuses,
+        ).select_related('product__category')
+
+        if category_id:
+            qs = qs.filter(product__category_id=category_id)
+
+        rows = (
+            qs.values('product__id', 'product__name', 'product__category__name')
+            .annotate(
+                total_quantity=Sum('quantity'),
+                order_count=Count('order', distinct=True),
+            )
+            .filter(total_quantity__gt=0)
+            .order_by('-total_quantity')[:limit]
+        )
+
+        results = [
+            {
+                'product_id': r['product__id'],
+                'product_name': r['product__name'],
+                'category_name': r['product__category__name'],
+                'total_quantity': r['total_quantity'],
+                'order_count': r['order_count'],
+                'avg_per_order': round(r['total_quantity'] / r['order_count']) if r['order_count'] else 0,
+            }
+            for r in rows
+        ]
+
+        return Response({
+            'week_start': week_start.isoformat(),
+            'week_end': week_end.isoformat(),
+            'statuses': statuses,
+            'results': results,
+        })
+
+    @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='product-consumption-trends'
+    )
+    def product_consumption_trends(self, request):
+        """
+        Get month-over-month consumption trends for the top N products.
+
+        Query params:
+        - months: Months to look back (default: 6, max: 12)
+        - top: Number of top products (default: 5, max: 10)
+        - category: Category ID to filter (optional)
+        - statuses: Comma-separated statuses (default: pending,confirmed,packing,completed)
+        """
+        from calendar import month_abbr
+        from django.db.models.functions import TruncMonth
+
+        months_back = min(int(request.query_params.get('months', 6)), 12)
+        top_n = min(int(request.query_params.get('top', 5)), 10)
+        category_id = request.query_params.get('category')
+
+        default_statuses = ['pending', 'confirmed', 'packing', 'completed']
+        statuses_param = request.query_params.get('statuses', '')
+        statuses = (
+            [s.strip() for s in statuses_param.split(',') if s.strip()]
+            if statuses_param
+            else default_statuses
+        )
+
+        today = timezone.now()
+        start_approx = today - timedelta(days=months_back * 30)
+        start = today.replace(
+            year=start_approx.year,
+            month=start_approx.month,
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        qs = OrderItem.objects.filter(
+            order__order_date__gte=start,
+            order__status__in=statuses,
+        )
+        if category_id:
+            qs = qs.filter(product__category_id=category_id)
+
+        # Top N products by total quantity in the period
+        top_products = list(
+            qs.values('product__id', 'product__name')
+            .annotate(total=Sum('quantity'))
+            .filter(total__gt=0)
+            .order_by('-total')[:top_n]
+        )
+
+        if not top_products:
+            return Response({
+                'months': [], 'products': [], 'statuses': statuses,
+                'period_start': start.date().isoformat(),
+                'period_end': today.date().isoformat(),
+            })
+
+        top_ids = [r['product__id'] for r in top_products]
+        top_names = {r['product__id']: r['product__name'] for r in top_products}
+
+        # Monthly totals for top products
+        monthly_rows = (
+            qs.filter(product__id__in=top_ids)
+            .annotate(month=TruncMonth('order__order_date'))
+            .values('month', 'product__id')
+            .annotate(total_quantity=Sum('quantity'))
+            .order_by('month')
+        )
+
+        # Build YYYY-MM month keys from start to today
+        months_list = []
+        y, m = start.year, start.month
+        while (y, m) <= (today.year, today.month):
+            months_list.append(f'{y:04d}-{m:02d}')
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+
+        def month_label(ym: str) -> str:
+            yr, mo = ym.split('-')
+            return f'{month_abbr[int(mo)]} {yr}'
+
+        from collections import defaultdict
+        lookup: dict = defaultdict(lambda: defaultdict(int))
+        for row in monthly_rows:
+            mk = row['month'].strftime('%Y-%m')
+            lookup[row['product__id']][mk] = row['total_quantity']
+
+        products_data = [
+            {
+                'product_id': pid,
+                'product_name': top_names[pid],
+                'monthly_data': [
+                    {
+                        'month': mk,
+                        'month_label': month_label(mk),
+                        'total_quantity': lookup[pid].get(mk, 0),
+                    }
+                    for mk in months_list
+                ],
+            }
+            for pid in top_ids
+        ]
+
+        return Response({
+            'months': [month_label(mk) for mk in months_list],
+            'products': products_data,
+            'statuses': statuses,
+            'period_start': start.date().isoformat(),
+            'period_end': today.date().isoformat(),
+        })
+
+    @action(
+        detail=False,
+        methods=['get'],
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='product-consumption-mom'
+    )
+    def product_consumption_mom(self, request):
+        """
+        Month-over-month product consumption comparison.
+        Returns top 20 products ordered by |change|, with current and previous
+        month totals, absolute change, and % change.
+
+        Query params:
+        - category: Category ID to filter (optional)
+        - statuses: Comma-separated statuses (default: pending,confirmed,packing,completed)
+        - limit: Max products (default: 20, max: 50)
+        """
+        from calendar import month_abbr
+
+        default_statuses = ['pending', 'confirmed', 'packing', 'completed']
+        statuses_param = request.query_params.get('statuses', '')
+        statuses = (
+            [s.strip() for s in statuses_param.split(',') if s.strip()]
+            if statuses_param
+            else default_statuses
+        )
+        category_id = request.query_params.get('category')
+        limit = min(int(request.query_params.get('limit', 20)), 50)
+
+        today = timezone.now()
+
+        # Current month: 1st of this month → today
+        cur_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        cur_end = today
+
+        # Previous month: 1st → last day of previous month
+        prev_end = cur_start - timedelta(seconds=1)
+        prev_start = prev_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        def month_label_dt(dt) -> str:
+            return f'{month_abbr[dt.month]} {dt.year}'
+
+        def totals_for_period(start, end):
+            qs = OrderItem.objects.filter(
+                order__order_date__gte=start,
+                order__order_date__lte=end,
+                order__status__in=statuses,
+            )
+            if category_id:
+                qs = qs.filter(product__category_id=category_id)
+            return {
+                r['product__id']: r['total']
+                for r in qs.values('product__id', 'product__name')
+                .annotate(total=Sum('quantity'))
+                .filter(total__gt=0)
+            }
+
+        def names_for_period(start, end):
+            qs = OrderItem.objects.filter(
+                order__order_date__gte=start,
+                order__order_date__lte=end,
+                order__status__in=statuses,
+            )
+            if category_id:
+                qs = qs.filter(product__category_id=category_id)
+            return {
+                r['product__id']: (r['product__name'], r['product__category__name'])
+                for r in qs.values('product__id', 'product__name', 'product__category__name')
+                .distinct()
+            }
+
+        cur_totals = totals_for_period(cur_start, cur_end)
+        prev_totals = totals_for_period(prev_start, prev_end)
+        all_ids = set(cur_totals.keys()) | set(prev_totals.keys())
+
+        # Get product names from whichever period has them
+        cur_names = names_for_period(cur_start, cur_end)
+        prev_names = names_for_period(prev_start, prev_end)
+        all_names = {**prev_names, **cur_names}
+
+        results = []
+        for pid in all_ids:
+            cur = cur_totals.get(pid, 0)
+            prev = prev_totals.get(pid, 0)
+            change = cur - prev
+            pct_change = round((change / prev) * 100) if prev > 0 else None
+            name, cat_name = all_names.get(pid, ('Unknown', 'Unknown'))
+            results.append({
+                'product_id': pid,
+                'product_name': name,
+                'category_name': cat_name,
+                'current_qty': cur,
+                'prev_qty': prev,
+                'change': change,
+                'pct_change': pct_change,
+            })
+
+        # Sort by absolute change descending, then current qty
+        results.sort(key=lambda x: (-abs(x['change']), -x['current_qty']))
+        results = results[:limit]
+
+        return Response({
+            'current_month': month_label_dt(today),
+            'prev_month': month_label_dt(prev_start),
+            'statuses': statuses,
+            'results': results,
+        })
+
+    @action(
         detail=False, 
         methods=['get'], 
         permission_classes=[IsAuthenticated, IsStaffUser],

@@ -157,21 +157,22 @@ export const dataProvider: DataProvider = {
     return { data: json };
   },
 
-  // Override update
+  // Override update — use PATCH so partial payloads (e.g. drag-to-reorder
+  // sending only sort_order) are accepted by DRF without requiring every field.
   update: async (resource, params) => {
     const url = `${API_URL}/${resource}/${params.id}/`;
     const { json } = await httpClient(url, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(params.data),
     });
     return { data: json };
   },
 
-  // Override updateMany
+  // Override updateMany — also PATCH for consistency
   updateMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
       httpClient(`${API_URL}/${resource}/${id}/`, {
-        method: 'PUT',
+        method: 'PATCH',
         body: JSON.stringify(params.data),
       }).then(({ json }) => json.id)
     );

@@ -96,6 +96,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
 const CustomMenu = () => (
   <Menu>
+    <Menu.DashboardItem />
     <Menu.ResourceItem name="participants" />
     <Menu.ResourceItem name="programs" />
     <Menu.ResourceItem name="orders" />

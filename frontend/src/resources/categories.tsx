@@ -92,7 +92,9 @@ function useDebouncedSortSave(resource: string, delayMs = 1000) {
             patches.push(
               update(
                 resource,
-                { id: item.id, data: { sort_order: newOrder }, previousData: item },
+                // Spread the full record so PUT/PATCH body always includes required
+                // fields (e.g. `name`) even if the data provider falls back to PUT.
+                { id: item.id, data: { ...item, sort_order: newOrder }, previousData: item },
                 { returnPromise: true }
               )
             );

@@ -105,6 +105,27 @@ const StateField = () => {
   );
 };
 
+const MultiplierChip = () => {
+  const record = useRecordContext();
+  if (!record || !record.program_pause_flag || record.multiplier <= 1) return null;
+  const isExtended = record.multiplier >= 3;
+  return (
+    <span
+      style={{
+        backgroundColor: isExtended ? '#EF6C00' : '#F9A825',
+        color: 'white',
+        padding: '3px 8px',
+        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        letterSpacing: '0.5px',
+      }}
+    >
+      {record.multiplier}× {isExtended ? 'EXTENDED PAUSE' : 'PAUSE'}
+    </span>
+  );
+};
+
 // Apply Voucher Button
 const ApplyVoucherButton = () => {
   const record = useRecordContext();
@@ -167,6 +188,25 @@ export const VoucherList = () => (
       <TextField source="voucher_type" label="Type" />
       <StateField />
       <FunctionField
+        label="Multiplier"
+        render={(record: { program_pause_flag: boolean; multiplier: number }) =>
+          record?.program_pause_flag && record.multiplier > 1 ? (
+            <span
+              style={{
+                backgroundColor: record.multiplier >= 3 ? '#EF6C00' : '#F9A825',
+                color: 'white',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+              }}
+            >
+              {record.multiplier}×
+            </span>
+          ) : null
+        }
+      />
+      <FunctionField
         source="voucher_amnt"
         label="Amount"
         render={(record: { voucher_amnt: number }) =>
@@ -207,15 +247,26 @@ export const VoucherShow = () => (
       <TextField source="program_name" label="Program" />
       <TextField source="voucher_type" label="Type" />
       <StateField />
+      <MultiplierChip />
       <FunctionField
-        source="voucher_amnt"
-        label="Amount"
+        label="Base Amount"
         render={(record: { voucher_amnt: number }) =>
           record ? `$${Number(record.voucher_amnt).toFixed(2)}` : ''
         }
       />
+      <FunctionField
+        label="With Pause"
+        render={(record: { voucher_amnt: number; program_pause_flag: boolean; multiplier: number }) => {
+          if (!record?.program_pause_flag || record.multiplier <= 1) return '—';
+          const effective = Number(record.voucher_amnt) * record.multiplier;
+          return (
+            <span style={{ color: '#F9A825', fontWeight: 600 }}>
+              ${effective.toFixed(2)}
+            </span>
+          );
+        }}
+      />
       <BooleanField source="active" />
-      <BooleanField source="program_pause_flag" label="Program Pause" />
       <TextField source="notes" />
       <DateField source="created_at" showTime />
       <DateField source="updated_at" showTime />
@@ -231,7 +282,6 @@ export const VoucherEdit = () => (
       </ReferenceInput>
       <SelectInput source="voucher_type" choices={VOUCHER_TYPE_CHOICES} disabled />
       <BooleanInput source="active" />
-      <BooleanInput source="program_pause_flag" label="Program Pause Flag" />
       <TextInput source="notes" multiline rows={3} />
     </SimpleForm>
   </Edit>
@@ -248,7 +298,6 @@ export const VoucherCreate = () => (
         choices={VOUCHER_TYPE_CHOICES}
         defaultValue="grocery"
       />
-      <BooleanInput source="program_pause_flag" label="Program Pause Flag" defaultValue={false} />
       <TextInput source="notes" multiline rows={3} />
     </SimpleForm>
   </Create>

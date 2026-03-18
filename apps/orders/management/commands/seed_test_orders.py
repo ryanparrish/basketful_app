@@ -97,14 +97,14 @@ class Command(BaseCommand):
             (dairy, "Whole Milk (gallon)", "4.29"),
             (dairy, "Eggs (dozen)", "3.49"),
             (protein, "Chicken Thighs (lb)", "5.99"),
-            (protein, "Canned Tuna", "1.79"),
+            (protein, "Canned Tuna (seed)", "1.79"),
         ]
         products = []
         for cat, name, price in products_data:
             p, _ = Product.objects.get_or_create(
                 name=name,
+                category=cat,
                 defaults=dict(
-                    category=cat,
                     price=Decimal(price),
                     active=True,
                     quantity_in_stock=50,
