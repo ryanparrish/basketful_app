@@ -30,7 +30,7 @@ class FailedOrderAttempt(models.Model):
     # Identity
     participant = models.ForeignKey("account.Participant", on_delete=models.CASCADE, related_name="failed_attempts")
     user = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL)
-    idempotency_key = models.CharField(max_length=64, unique=True, db_index=True)
+    idempotency_key = models.CharField(max_length=80, unique=True, db_index=True)
     
     # Cart snapshot
     cart_snapshot = models.JSONField(help_text="[{product_id, product_name, quantity, price}]")

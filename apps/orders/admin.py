@@ -810,7 +810,11 @@ class FailedOrderAttemptAdmin(admin.ModelAdmin):
         if obj.validation_errors:
             errors = obj.validation_errors
             if isinstance(errors, list):
-                formatted = '\n'.join(f"• {err}" for err in errors)
+                lines = [
+                    f"• {err['message']}" if isinstance(err, dict) else f"• {err}"
+                    for err in errors
+                ]
+                formatted = '\n'.join(lines)
             else:
                 formatted = str(errors)
             return format_html(

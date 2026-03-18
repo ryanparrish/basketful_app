@@ -95,7 +95,11 @@ class FailedOrderAttemptSerializer(serializers.ModelSerializer):
             return None
         errors = obj.validation_errors
         if isinstance(errors, list):
-            return '\n'.join(f"• {err}" for err in errors)
+            lines = [
+                f"• {err['message']}" if isinstance(err, dict) else f"• {err}"
+                for err in errors
+            ]
+            return '\n'.join(lines)
         return str(errors)
 
 
