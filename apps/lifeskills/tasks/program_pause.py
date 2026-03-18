@@ -94,7 +94,7 @@ def update_voucher_flag_task(
         if pp:
             # Check if we're in the ordering window (11-14 days before pause starts)
             # or if the pause has already started
-            days_until_start = (pp.pause_start - now).days if pp.pause_start else 0
+            days_until_start = (pp.pause_start.date() - now.date()).days if pp.pause_start else 0
             in_ordering_window = 11 <= days_until_start <= 14
             pause_started = pp.pause_start and pp.pause_start <= now
             

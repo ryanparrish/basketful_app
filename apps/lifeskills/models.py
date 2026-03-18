@@ -98,7 +98,7 @@ class ProgramPause(models.Model):
             return 1, f"{self.reason or 'Unnamed'} not affecting this order"
 
         today = timezone.now()
-        days_until_start = (self.pause_start - today).days
+        days_until_start = (self.pause_start.date() - today.date()).days
         duration = (self.pause_end - self.pause_start).days + 1
 
         if 11 <= days_until_start <= 14:

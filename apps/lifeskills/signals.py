@@ -48,7 +48,7 @@ def handle_program_pause(sender, instance, created, **kwargs):
         return
 
     now = timezone.now()
-    days_until_start = (instance.pause_start - now).days
+    days_until_start = (instance.pause_start.date() - now.date()).days
 
     # Check if we're in the 11-14 day ordering window
     if 11 <= days_until_start <= 14:
