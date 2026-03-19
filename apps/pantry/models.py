@@ -251,7 +251,12 @@ class CategoryLimitValidator:
     def _get_active_pause_multiplier():
         """
         Get the active program pause multiplier with caching.
-        
+
+        Returns a non-1 multiplier in two cases:
+        1. A pause is currently in progress (pause_start <= now <= pause_end)
+        2. An upcoming pause is within the ordering window (10–14 days out),
+           meaning participants are ordering NOW for the pause period.
+
         Returns:
             tuple: (multiplier, pause_name) where multiplier is 1, 2, or 3
                    and pause_name is the name of the active pause or None
@@ -261,26 +266,42 @@ class CategoryLimitValidator:
         cached_result = cache.get(cache_key)
         if cached_result is not None:
             return cached_result
-        
+
         # Import here to avoid circular imports
         from apps.lifeskills.models import ProgramPause
         from django.utils import timezone
-        
+        from datetime import timedelta
+
         current_time = timezone.now()
-        
-        # Query for active pause (business rule: no overlapping pauses)
+
+        # 1. Currently in-progress pause
         active_pause = ProgramPause.objects.filter(
             pause_start__lte=current_time,
-            pause_end__gte=current_time
+            pause_end__gte=current_time,
+            archived=False,
         ).first()
-        
-        if active_pause and hasattr(active_pause, 'multiplier'):
+
+        if active_pause:
             multiplier = active_pause.multiplier
-            pause_name = getattr(active_pause, 'reason', None) or 'Active Pause'
-            result = (multiplier, pause_name)
-        else:
-            result = (1, None)
-        
+            result = (multiplier, getattr(active_pause, 'reason', None) or 'Active Pause')
+            cache.set(cache_key, result, 300)
+            return result
+
+        # 2. Upcoming pause in ordering window (10–14 days out).
+        # Use a 15-day lookahead as a cheap DB pre-filter, then let the
+        # model's timezone-aware multiplier property confirm the window.
+        upcoming = ProgramPause.objects.filter(
+            pause_start__gt=current_time,
+            pause_start__lte=current_time + timedelta(days=15),
+            archived=False,
+        ).first()
+
+        if upcoming and upcoming.multiplier > 1:
+            result = (upcoming.multiplier, getattr(upcoming, 'reason', None) or 'Upcoming Pause')
+            cache.set(cache_key, result, 300)
+            return result
+
+        result = (1, None)
         # Cache for 5 minutes to reduce database queries
         cache.set(cache_key, result, 300)
         return result
