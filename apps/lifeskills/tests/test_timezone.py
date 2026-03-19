@@ -124,8 +124,8 @@ class TestProgramPauseWithTimezone:
         pause_start_est = get_est_date(pause_start)
         days_until = (pause_start_est - today_est).days
         
-        # Should be within 11-14 day window
-        assert 11 <= days_until <= 14, f"Expected 11-14 days, got {days_until}"
+        # Should be within 10-14 day window
+        assert 10 <= days_until <= 14, f"Expected 10-14 days, got {days_until}"
         
         multiplier, _ = pp._calculate_pause_status()
         assert multiplier > 1, f"Should be in ordering window, multiplier={multiplier}"
@@ -134,18 +134,18 @@ class TestProgramPauseWithTimezone:
     @freeze_time("2026-02-10 03:00:00")
     def test_outside_window_too_close(self):
         """
-        Test pause that's too close (10 days away).
+        Test pause that's too close (9 days away).
         Should NOT be in ordering window.
         """
-        pause_start = timezone.now() + timedelta(days=10)
+        pause_start = timezone.now() + timedelta(days=9)
         pause_end = pause_start + timedelta(days=7)
-        
+
         pp = ProgramPause.objects.create(
             pause_start=pause_start,
             pause_end=pause_end,
             reason="Too close"
         )
-        
+
         multiplier, _ = pp._calculate_pause_status()
         assert multiplier == 1, "Should NOT be in ordering window (too close)"
         assert pp.is_active_gate is False

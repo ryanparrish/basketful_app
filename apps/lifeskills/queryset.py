@@ -37,8 +37,8 @@ def program_pause_annotations(queryset):
         days_until_start=days_until_start,
     ).annotate(
         pause_multiplier=Case(
-            When(days_until_start__gte=11, days_until_start__lte=14, duration__gte=14, then=Value(3)),
-            When(days_until_start__gte=11, days_until_start__lte=14, duration__gte=1, then=Value(2)),
+            When(days_until_start__gte=10, days_until_start__lte=14, duration__gte=14, then=Value(3)),
+            When(days_until_start__gte=10, days_until_start__lte=14, duration__gte=1, then=Value(2)),
             default=Value(1),
             output_field=IntegerField(),
         ),

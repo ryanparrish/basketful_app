@@ -18,9 +18,14 @@ class ProgramPauseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pause_start', 'pause_end', 'reason',
             'multiplier', 'is_active', 'archived', 'archived_at',
+            'last_resync_at', 'last_resync_by_username',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'archived', 'archived_at', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'archived', 'archived_at',
+            'last_resync_at', 'last_resync_by_username',
+            'created_at', 'updated_at'
+        ]
 
 
 class LifeskillsCoachSerializer(serializers.ModelSerializer):

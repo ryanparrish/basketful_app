@@ -189,3 +189,41 @@ class ProgramPauseViewSet(viewsets.ModelViewSet):
         pause.unarchive()
         serializer = self.get_serializer(pause)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def resync(self, request, pk=None):
+        """Emergency manual trigger: force-apply active pause state to vouchers."""
+        from apps.voucher.models import Voucher
+        from apps.lifeskills.utils import set_voucher_pause_state
+
+        pause = self.get_object()
+
+        if pause.archived:
+            return Response(
+                {'detail': 'Cannot resync an archived pause.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not pause.is_active_gate:
+            return Response(
+                {'detail': 'Pause is not currently in the active ordering window.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        voucher_ids = list(
+            Voucher.objects.filter(active=True, account__active=True)
+            .values_list('id', flat=True)
+        )
+        updated, skipped = set_voucher_pause_state(
+            voucher_ids, activate=True, multiplier=pause.multiplier
+        )
+
+        pause.last_resync_at = timezone.now()
+        pause.last_resync_by_username = request.user.username
+        pause.save(update_fields=['last_resync_at', 'last_resync_by_username'])
+
+        serializer = self.get_serializer(pause)
+        return Response({
+            **serializer.data,
+            'updated_count': updated,
+            'skipped_count': skipped,
+        })

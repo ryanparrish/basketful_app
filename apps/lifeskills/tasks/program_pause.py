@@ -102,7 +102,7 @@ def update_voucher_flag_task(
             today_est = get_est_date(now)
             pause_start_est = get_est_date(pp.pause_start) if pp.pause_start else None
             days_until_start = (pause_start_est - today_est).days if pause_start_est else 0
-            in_ordering_window = 11 <= days_until_start <= 14
+            in_ordering_window = 10 <= days_until_start <= 14
             pause_started = pp.pause_start and pp.pause_start <= now
             
             if activate and pp.pause_start and not (in_ordering_window or pause_started):
