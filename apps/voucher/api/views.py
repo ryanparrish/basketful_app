@@ -117,8 +117,8 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 participants = Participant.objects.filter(
                     program_id=data['program_id'],
                     active=True
-                ).select_related('account_balance')
-                accounts = [p.account_balance for p in participants if hasattr(p, 'account_balance')]
+                ).select_related('accountbalance')
+                accounts = [p.accountbalance for p in participants if hasattr(p, 'accountbalance')]
             else:
                 from apps.account.models import AccountBalance
                 accounts = AccountBalance.objects.filter(
