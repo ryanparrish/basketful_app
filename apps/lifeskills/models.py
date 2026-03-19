@@ -107,7 +107,7 @@ class ProgramPause(models.Model):
         duration.
 
         Rules:
-            - Only orders placed 14–11 days before pause start are affected
+            - Only orders placed 14–10 days before pause start are affected
             - Short pause (<14 days) → multiplier 2
             - Extended pause (>=14 days) → multiplier 3
             - Orders outside this window → multiplier 1
@@ -128,7 +128,7 @@ class ProgramPause(models.Model):
         days_until_start = (pause_start_est - today_est).days
         duration = (self.pause_end - self.pause_start).days + 1
 
-        if 11 <= days_until_start <= 14:
+        if 10 <= days_until_start <= 14:
             multiplier = self.calculate_multiplier_for_duration(
                 self.pause_start, self.pause_end
             )
@@ -212,10 +212,10 @@ class ProgramPause(models.Model):
                 )
 
             # Minimum 11 days out (using datetime)
-            min_start_dt = now_dt + timedelta(days=11)
+            min_start_dt = now_dt + timedelta(days=10)
             if self.pause_start < min_start_dt:
                 raise ValidationError(
-                    "Pause start must be at least 11 days from now."
+                    "Pause start must be at least 10 days from now."
                 )
 
             # Maximum 14-day pause

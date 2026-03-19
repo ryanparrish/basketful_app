@@ -61,9 +61,9 @@ def handle_program_pause(sender, instance, created, **kwargs):
     days_until_start = (pause_start_est - today_est).days
 
     # Check if we're in the 11-14 day ordering window
-    if 11 <= days_until_start <= 14:
+    if 10 <= days_until_start <= 14:
         logger.info(
-            "ProgramPause ID=%s is within 11-14 day ordering window "
+            "ProgramPause ID=%s is within 10-14 day ordering window "
             "(starts in %d days). Flagging vouchers immediately.",
             instance.id,
             days_until_start

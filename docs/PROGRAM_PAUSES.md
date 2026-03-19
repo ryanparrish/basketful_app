@@ -8,13 +8,28 @@ This document describes the program pause functionality.
 
 Program pauses allow administrators to temporarily suspend normal voucher operations, typically during holidays or program breaks.
 
+## Business Rule: Ordering Window
+
+Programs meet weekly on a fixed night (e.g., Thursday evenings). When a program pause is approaching, participants must receive a larger food budget the **week before** the pause begins so they have enough food during the break.
+
+**How it works:**
+
+- The voucher multiplier activates **10–14 days before** the pause start date
+- This window is wide enough to guarantee the program's weekly meeting night is always included, regardless of which day of the week the pause starts
+- **Example:** Pause starts Sunday 3/29. Program meets Thursday 3/19 (10 days before). The 10-day lower bound ensures participants ordering that Thursday night receive the multiplier.
+- The 14-day upper bound prevents the multiplier from firing two program nights early
+
+**Why 10 days (not 11):**
+
+The original window started at 11 days. A Thursday-night program with a Sunday pause start falls exactly 10 days before — outside the old window. Extending to 10 days covers this case without widening the window so much that two consecutive program nights would both be affected.
+
 ## Timezone Handling
 
 ### Current Implementation (EST-Specific)
 
 All program pause date calculations use **EST (America/New_York) timezone** for consistency:
 
-- **Ordering Window Detection:** 11-14 days before pause start
+- **Ordering Window Detection:** 10-14 days before pause start
 - **Date Comparisons:** Convert both `pause_start` and `now()` to EST before calculating days
 - **Helper Function:** `apps.lifeskills.utils.get_est_date()`
 
