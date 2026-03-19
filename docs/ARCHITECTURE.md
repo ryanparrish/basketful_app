@@ -40,6 +40,19 @@ The application supports multiple balance types for participants:
 
 See [GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md) for detailed Go Fresh implementation.
 
+### Timezone Handling
+
+**System Timezone:** `America/New_York` (EST/EDT with automatic DST)
+
+**Critical Areas Using EST Conversion:**
+- Program Pause ordering window detection (11-14 day window)
+- Order window open/close calculations
+- Scheduled task timing
+
+**Implementation:** See `apps/lifeskills/utils.get_est_date()` for centralized timezone conversion.
+
+⚠️ **Current Limitation:** System assumes all participants are in EST. Multi-timezone support requires model changes (see `docs/PROGRAM_PAUSES.md`).
+
 Important notes:
 - Mobile UI: `apps/pantry/templates/food_orders/create_order.html` contains the ordering interface and JS enhancements.
 - Voucher consumption logic and validation are in `apps/orders/models.py`.

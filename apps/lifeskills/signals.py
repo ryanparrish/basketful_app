@@ -28,6 +28,11 @@ def handle_program_pause(sender, instance, created, **kwargs):
     If pause is created within the 11-14 day ordering window, immediately
     flag vouchers with appropriate multiplier and schedule smart deactivation.
     Otherwise, schedule activation for pause_start time.
+    
+    Timezone Behavior:
+        Uses EST (America/New_York) for all date calculations to ensure
+        ordering window (11-14 days) is calculated consistently.
+        ⚠️ Assumes all participants are in EST timezone.
     """
     logger.debug("=== Signal Triggered for ProgramPause ID=%s ===", instance.id)
     logger.debug(
@@ -47,8 +52,13 @@ def handle_program_pause(sender, instance, created, **kwargs):
         logger.debug("No active vouchers found; exiting signal.")
         return
 
-    now = timezone.now()
-    days_until_start = (instance.pause_start.date() - now.date()).days
+    # Convert to EST for consistent day calculation across all timezones
+    # ⚠️ EST-specific implementation - see ProgramPause model docstring for expansion notes
+    from apps.lifeskills.utils import get_est_date
+    now = timezone.now()  # Keep for task scheduling comparisons
+    today_est = get_est_date(now)
+    pause_start_est = get_est_date(instance.pause_start)
+    days_until_start = (pause_start_est - today_est).days
 
     # Check if we're in the 11-14 day ordering window
     if 11 <= days_until_start <= 14:

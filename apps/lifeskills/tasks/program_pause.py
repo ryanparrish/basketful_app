@@ -67,6 +67,10 @@ def update_voucher_flag_task(
         multiplier (int): Multiplier to apply.
         activate (bool): True -> set program_pause_flag, False -> clear it.
         program_pause_id (int): Optional ProgramPause ID for validation.
+        
+    Timezone Behavior:
+        All date calculations use EST timezone for consistency.
+        ⚠️ EST-specific implementation.
     """
     if not voucher_ids:
         logger.info("[Task] No vouchers to update.")
@@ -92,9 +96,12 @@ def update_voucher_flag_task(
             pp = None
 
         if pp:
-            # Check if we're in the ordering window (11-14 days before pause starts)
-            # or if the pause has already started
-            days_until_start = (pp.pause_start.date() - now.date()).days if pp.pause_start else 0
+            # Convert to EST for consistent ordering window calculation
+            # ⚠️ EST-specific: See apps.lifeskills.utils.get_est_date for timezone expansion notes
+            from apps.lifeskills.utils import get_est_date
+            today_est = get_est_date(now)
+            pause_start_est = get_est_date(pp.pause_start) if pp.pause_start else None
+            days_until_start = (pause_start_est - today_est).days if pause_start_est else 0
             in_ordering_window = 11 <= days_until_start <= 14
             pause_started = pp.pause_start and pp.pause_start <= now
             

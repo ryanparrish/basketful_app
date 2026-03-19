@@ -76,6 +76,10 @@ import Settings from './pages/Settings';
 import CreateCombinedOrder from './pages/CreateCombinedOrder';
 import PrintPackingList from './pages/PrintPackingList';
 import PrintOrder from './pages/PrintOrder';
+import PrintCustomerList from './pages/PrintCustomerList';
+
+// Branding
+import { BrandingSettingsEdit, BrandingSettingsIcon } from './resources/brandingSettings';
 
 // Icons
 import PeopleIcon from '@mui/icons-material/People';
@@ -112,6 +116,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="users" />
     <Menu.ResourceItem name="groups" />
     <Menu.ResourceItem name="permissions" />
+    <Menu.Item to="/branding-settings/current/edit" primaryText="Branding" leftIcon={<BrandingSettingsIcon />} />
     <Menu.Item to="/settings" primaryText="Settings" leftIcon={<SettingsIcon />} />
   </Menu>
 );
@@ -268,6 +273,14 @@ const App = () => (
     <Resource name="order-items" />
     <Resource name="coaches" />
 
+    {/* Branding Settings (singleton — edit only) */}
+    <Resource
+      name="branding-settings"
+      edit={BrandingSettingsEdit}
+      icon={BrandingSettingsIcon}
+      options={{ label: 'Branding' }}
+    />
+
     {/* Custom Routes */}
     <CustomRoutes>
       <Route path="/vouchers/bulk-create" element={<BulkVoucherCreate />} />
@@ -275,6 +288,7 @@ const App = () => (
       <Route path="/combined-orders/create-wizard" element={<CreateCombinedOrder />} />
       <Route path="/packing-lists/:id/print" element={<PrintPackingList />} />
       <Route path="/orders/:id/print" element={<PrintOrder />} />
+      <Route path="/participants/print-customer-list" element={<PrintCustomerList />} />
     </CustomRoutes>
   </Admin>
 );

@@ -14,3 +14,4 @@ export * from './productLimits';
 export * from './groups';
 export * from './permissions';
 export * from './users';
+export * from './brandingSettings';

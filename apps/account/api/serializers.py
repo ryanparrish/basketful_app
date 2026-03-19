@@ -150,6 +150,7 @@ class AccountBalanceSerializer(serializers.ModelSerializer):
 class ParticipantSerializer(serializers.ModelSerializer):
     """Serializer for Participant model."""
     balances = serializers.SerializerMethodField()
+    base_balance = serializers.SerializerMethodField()
     household_size = serializers.SerializerMethodField()
     program_name = serializers.CharField(source='program.name', read_only=True)
     coach_name = serializers.CharField(
@@ -166,13 +167,19 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'adults', 'children', 'diaper_count', 'household_size',
             'program', 'program_name', 'assigned_coach', 'coach_name',
             'user', 'user_username', 'create_user',
-            'allergy', 'active', 'balances',
+            'allergy', 'active', 'balances', 'base_balance',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'customer_number', 'created_at', 'updated_at']
 
     def get_balances(self, obj):
         return obj.balances()
+
+    def get_base_balance(self, obj):
+        try:
+            return str(obj.accountbalance.base_balance)
+        except AccountBalance.DoesNotExist:
+            return '0'
 
     def get_household_size(self, obj):
         return obj.household_size()

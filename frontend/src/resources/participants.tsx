@@ -1,6 +1,7 @@
 /**
  * Participant Resource Components
  */
+import { useState } from 'react';
 import {
   List,
   Datagrid,
@@ -27,13 +28,29 @@ import {
   TopToolbar,
   SearchInput,
   useRecordContext,
+  useNotify,
+  useRefresh,
+  useUnselectAll,
   TabbedShowLayout,
   ReferenceManyField,
   FunctionField,
   Labeled,
+  useListContext,
   type RaRecord,
 } from 'react-admin';
-import { Typography, Box } from '@mui/material';
+import {
+  Typography,
+  Box,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+} from '@mui/material';
+import PrintIcon from '@mui/icons-material/Print';
+import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../utils/apiUrl';
 
 const participantFilters = [
   <SearchInput source="q" alwaysOn key="search" />,
@@ -51,9 +68,215 @@ const ListActions = () => (
   </TopToolbar>
 );
 
+// ── Balance expand panel ──────────────────────────────────────────────────────
+
+const BalanceExpandPanel = () => {
+  const record = useRecordContext();
+  if (!record) return null;
+  const b = record.balances ?? {};
+  const fmt = (v: unknown) =>
+    v !== undefined && v !== null ? `$${Number(v).toFixed(2)}` : '—';
+
+  const items = [
+    { label: 'Full Balance', value: fmt(b.full_balance) },
+    { label: 'Available', value: fmt(b.available_balance) },
+    { label: 'Hygiene', value: fmt(b.hygiene_balance) },
+    { label: 'Go Fresh', value: fmt(b.go_fresh_balance) },
+    { label: 'Base Balance', value: fmt(record.base_balance) },
+  ];
+
+  return (
+    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', p: 2, bgcolor: 'grey.50' }}>
+      {items.map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            px: 2,
+            py: 1.5,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            minWidth: 130,
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" display="block">
+            {label}
+          </Typography>
+          <Typography variant="subtitle1" fontWeight="bold">
+            {value}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
+// ── Bulk action helpers ───────────────────────────────────────────────────────
+
+async function callBulkAction(endpoint: string, ids: (string | number)[]): Promise<string> {
+  const token = localStorage.getItem('accessToken');
+  const res = await fetch(`${API_URL}/api/v1/participants/${endpoint}/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ ids }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.detail || data?.message || 'Action failed');
+  return data.message ?? 'Done.';
+}
+
+interface ConfirmBulkButtonProps {
+  label: string;
+  endpoint: string;
+  confirmTitle: string;
+  confirmBody: string;
+  color?: 'error' | 'warning' | 'primary';
+}
+
+const ConfirmBulkButton = ({
+  label,
+  endpoint,
+  confirmTitle,
+  confirmBody,
+  color = 'primary',
+}: ConfirmBulkButtonProps) => {
+  const { selectedIds } = useListContext();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const unselectAll = useUnselectAll('participants');
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      const msg = await callBulkAction(endpoint, selectedIds);
+      notify(msg, { type: 'success' });
+      refresh();
+      unselectAll();
+    } catch (e) {
+      notify((e as Error).message, { type: 'error' });
+    } finally {
+      setLoading(false);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <>
+      <Button size="small" color={color} onClick={() => setOpen(true)}>
+        {label}
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)}>
+        <DialogTitle>{confirmTitle}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmBody.replace('{count}', String(selectedIds.length))}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} color={color} variant="contained" disabled={loading}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+interface SimpleBulkButtonProps {
+  label: string;
+  endpoint: string;
+}
+
+const SimpleBulkButton = ({ label, endpoint }: SimpleBulkButtonProps) => {
+  const { selectedIds } = useListContext();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const unselectAll = useUnselectAll('participants');
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = async () => {
+    setLoading(true);
+    try {
+      const msg = await callBulkAction(endpoint, selectedIds);
+      notify(msg, { type: 'success' });
+      refresh();
+      unselectAll();
+    } catch (e) {
+      notify((e as Error).message, { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button size="small" onClick={handleClick} disabled={loading}>
+      {label}
+    </Button>
+  );
+};
+
+const PrintBulkButton = () => {
+  const { selectedIds } = useListContext();
+  const navigate = useNavigate();
+  return (
+    <Button
+      size="small"
+      startIcon={<PrintIcon />}
+      onClick={() => navigate(`/participants/print-customer-list?ids=${selectedIds.join(',')}`)}
+    >
+      Print Customer List
+    </Button>
+  );
+};
+
+const ParticipantBulkActions = () => (
+  <>
+    <SimpleBulkButton label="Calculate Base Balance" endpoint="bulk-calculate-base-balance" />
+    <SimpleBulkButton label="Resend Onboarding Email" endpoint="bulk-resend-onboarding" />
+    <SimpleBulkButton label="Resend Password Reset Email" endpoint="bulk-resend-password-reset" />
+    <ConfirmBulkButton
+      label="Reset Password"
+      endpoint="bulk-reset-password"
+      confirmTitle="Reset passwords?"
+      confirmBody="This will reset passwords and queue reset emails for {count} participant(s). Continue?"
+      color="warning"
+    />
+    <ConfirmBulkButton
+      label="Create User Accounts"
+      endpoint="bulk-create-user-accounts"
+      confirmTitle="Create user accounts?"
+      confirmBody="This will create user accounts and send onboarding emails for {count} participant(s). Continue?"
+    />
+    <ConfirmBulkButton
+      label="Create User Accounts (Silent)"
+      endpoint="bulk-create-user-accounts-silent"
+      confirmTitle="Create user accounts (silent)?"
+      confirmBody="This will create user accounts (no email) for {count} participant(s). Continue?"
+    />
+    <PrintBulkButton />
+  </>
+);
+
+// ── List ─────────────────────────────────────────────────────────────────────
+
 export const ParticipantList = () => (
   <List filters={participantFilters} actions={<ListActions />} sort={{ field: 'name', order: 'ASC' }}>
-    <Datagrid rowClick="show">
+    <Datagrid
+      rowClick="show"
+      expand={<BalanceExpandPanel />}
+      expandSingle
+      bulkActionButtons={<ParticipantBulkActions />}
+    >
       <TextField source="customer_number" label="Customer #" />
       <TextField source="name" />
       <EmailField source="email" />
@@ -195,6 +418,50 @@ export const ParticipantShow = () => (
             <ShowButton />
           </Datagrid>
         </ReferenceManyField>
+      </TabbedShowLayout.Tab>
+
+      <TabbedShowLayout.Tab label="Balances" path="balances">
+        <FunctionField
+          render={(record: RaRecord) => {
+            const b = record?.balances ?? {};
+            const fmt = (v: unknown) =>
+              v !== undefined && v !== null ? `$${Number(v).toFixed(2)}` : '—';
+            const items = [
+              { label: 'Full Balance', value: fmt(b.full_balance), description: 'Total balance including all vouchers' },
+              { label: 'Available Balance', value: fmt(b.available_balance), description: 'Balance available for grocery orders' },
+              { label: 'Hygiene Balance', value: fmt(b.hygiene_balance), description: 'Balance available for hygiene products' },
+              { label: 'Go Fresh Balance', value: fmt(b.go_fresh_balance), description: 'Per-order Go Fresh budget' },
+              { label: 'Base Balance', value: fmt(record?.base_balance), description: 'Calculated base balance from AccountBalance' },
+            ];
+            return (
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1 }}>
+                {items.map(({ label, value, description }) => (
+                  <Box
+                    key={label}
+                    sx={{
+                      px: 3, py: 2,
+                      bgcolor: 'background.paper',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      minWidth: 180,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {label}
+                    </Typography>
+                    <Typography variant="h5" fontWeight="bold" sx={{ my: 0.5 }}>
+                      {value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {description}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            );
+          }}
+        />
       </TabbedShowLayout.Tab>
     </TabbedShowLayout>
   </Show>

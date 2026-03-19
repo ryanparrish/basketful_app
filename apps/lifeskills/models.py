@@ -19,28 +19,46 @@ class ProgramPauseQuerySet(models.QuerySet):
     def active(self):
         """Filter queryset to only active pauses."""
         return self.with_annotations().filter(is_active_gate=True)
+    
+    def all_pauses(self):
+        """Return all pauses including archived ones."""
+        return self.all()
 
 
 class ProgramPauseManager(models.Manager):
-    """Manager that excludes archived pauses by default."""
+    """Custom manager that excludes archived pauses by default."""
     def get_queryset(self):
         """Return queryset excluding archived pauses."""
-        return ProgramPauseQuerySet(self.model, using=self._db).filter(archived=False)
+        return super().get_queryset().filter(archived=False)
     
     def all_pauses(self):
-        """Return queryset including archived pauses."""
-        return ProgramPauseQuerySet(self.model, using=self._db)
+        """Return all pauses including archived ones."""
+        return super().get_queryset()
 
 
 class ProgramPause(models.Model):
-    """Model representing a pause in the program."""
+    """
+    Model representing a pause in the program.
+    
+    Timezone Behavior:
+        All date calculations use EST (America/New_York) timezone to ensure
+        consistent ordering window detection regardless of server time.
+        
+        ⚠️ TIMEZONE WARNING: This implementation assumes all participants are in EST.
+        If expanding to serve multiple timezones (e.g., PST tenants), you must:
+        1. Add a 'timezone' field to Program or ProgramPause model
+        2. Update get_est_date() to accept timezone parameter
+        3. Pass participant/program timezone to all calculation methods
+        
+    See Also:
+        - apps.lifeskills.utils.get_est_date(): Centralized timezone conversion
+        - docs/PROGRAM_PAUSES.md: Full system documentation
+    """
     pause_start = models.DateTimeField()
     pause_end = models.DateTimeField()
     reason = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
-    # Archive fields
     archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(null=True, blank=True)
 
@@ -48,8 +66,8 @@ class ProgramPause(models.Model):
         db_table = 'food_orders_programpause'
         app_label = 'lifeskills'
 
-    # Manager that excludes archived by default
-    objects = ProgramPauseManager()
+    # Attach the custom manager that excludes archived by default
+    objects = ProgramPauseManager.from_queryset(ProgramPauseQuerySet)()
 
     # -------------------------------
     # Core pause calculation (dynamic)
@@ -93,12 +111,21 @@ class ProgramPause(models.Model):
             - Short pause (<14 days) → multiplier 2
             - Extended pause (>=14 days) → multiplier 3
             - Orders outside this window → multiplier 1
+            
+        Timezone Behavior:
+            Uses EST (America/New_York) for date calculations to ensure consistent
+            ordering window detection regardless of server UTC time.
+            ⚠️ EST-specific: See class docstring for multi-timezone expansion notes.
         """
         if not self.pause_start or not self.pause_end:
             return 1, f"{self.reason or 'Unnamed'} not affecting this order"
 
-        today = timezone.now()
-        days_until_start = (self.pause_start.date() - today.date()).days
+        # Convert both dates to EST for consistent day calculation
+        # ⚠️ EST-specific: See get_est_date() docstring for multi-timezone expansion notes
+        from .utils import get_est_date
+        today_est = get_est_date()
+        pause_start_est = get_est_date(self.pause_start)
+        days_until_start = (pause_start_est - today_est).days
         duration = (self.pause_end - self.pause_start).days + 1
 
         if 11 <= days_until_start <= 14:
@@ -137,6 +164,40 @@ class ProgramPause(models.Model):
     def is_active_gate(self) -> bool:
         """Pause is active if the multiplier is greater than 1."""
         return self.multiplier > 1
+    
+    def archive(self):
+        """
+        Archive this pause and clean up associated voucher flags.
+        
+        Sets archived=True, archived_at=now, and resets all vouchers to 
+        program_pause_flag=False and multiplier=1.
+        """
+        from apps.lifeskills.utils import set_voucher_pause_state
+        from apps.voucher.models import Voucher
+        
+        # Reset all vouchers that were flagged for this pause
+        active_voucher_ids = list(
+            Voucher.objects.filter(active=True, program_pause_flag=True)
+            .values_list('id', flat=True)
+        )
+        if active_voucher_ids:
+            set_voucher_pause_state(active_voucher_ids, activate=False, multiplier=1)
+        
+        # Mark as archived
+        self.archived = True
+        self.archived_at = timezone.now()
+        self.save()
+    
+    def unarchive(self):
+        """
+        Unarchive this pause.
+        
+        Clears archived=False and archived_at=None. If the pause is still 
+        within the ordering window, the save signal will re-flag vouchers.
+        """
+        self.archived = False
+        self.archived_at = None
+        self.save()
    
     def clean(self):
         """Prevent overlapping pauses and invalid dates."""
@@ -164,8 +225,7 @@ class ProgramPause(models.Model):
                 )
 
             # Prevent overlapping pauses
-            overlap_exists = ProgramPause.objects.all_pauses().exclude(pk=self.pk).filter(
-                archived=False,
+            overlap_exists = ProgramPause.objects.exclude(pk=self.pk).filter(
                 pause_start__lt=self.pause_end,
                 pause_end__gt=self.pause_start,
             ).exists()
@@ -173,64 +233,6 @@ class ProgramPause(models.Model):
                 raise ValidationError(
                     "Another program pause already exists in this period."
                 )
-    
-    def archive(self):
-        """Archive this pause and clean up vouchers."""
-        from apps.lifeskills.utils import set_voucher_pause_state
-        from apps.voucher.models import Voucher
-        
-        # Get all vouchers still flagged for this pause
-        flagged_vouchers = Voucher.objects.filter(
-            program_pause_flag=True,
-            active=True
-        )
-        
-        if flagged_vouchers.exists():
-            voucher_ids = list(flagged_vouchers.values_list('id', flat=True))
-            set_voucher_pause_state(voucher_ids, activate=False)
-        
-        # Mark as archived
-        self.archived = True
-        self.archived_at = timezone.now()
-        self.save(update_fields=['archived', 'archived_at'])
-    
-    def unarchive(self):
-        """Unarchive this pause."""
-        self.archived = False
-        self.archived_at = None
-        self.save(update_fields=['archived', 'archived_at'])
-    
-    def save(self, *args, **kwargs):
-        """Handle reactivation when unarchiving an active pause."""
-        # Check if we're unarchiving (archived changed from True to False)
-        if self.pk:
-            try:
-                old = ProgramPause.objects.all_pauses().get(pk=self.pk)
-                just_unarchived = old.archived and not self.archived
-                
-                # Save first
-                super().save(*args, **kwargs)
-                
-                # If unarchived and pause is currently active, reactivate vouchers
-                if just_unarchived:
-                    now = timezone.now()
-                    if self.pause_start <= now <= self.pause_end:
-                        from apps.lifeskills.utils import set_voucher_pause_state
-                        from apps.voucher.models import Voucher
-                        
-                        multiplier = self.calculate_multiplier_for_duration(
-                            self.pause_start, self.pause_end
-                        )
-                        
-                        vouchers = Voucher.objects.filter(active=True, account__active=True)
-                        if vouchers.exists():
-                            voucher_ids = list(vouchers.values_list('id', flat=True))
-                            set_voucher_pause_state(voucher_ids, activate=True, multiplier=multiplier)
-                return
-            except ProgramPause.DoesNotExist:
-                pass
-        
-        super().save(*args, **kwargs)
 
 
 class LifeskillsCoach(models.Model):

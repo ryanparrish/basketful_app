@@ -3,6 +3,24 @@ from django.db.models.functions import Coalesce, Concat, Now, Extract
 
 
 def program_pause_annotations(queryset):
+    """
+    Annotate queryset with pause-related calculated fields.
+    
+    ⚠️ TIMEZONE LIMITATION: These annotations use database-level date arithmetic
+    which operates on UTC dates. For EST-specific calculations (e.g., in signals
+    and tasks), use apps.lifeskills.utils.get_est_date() instead.
+    
+    This may cause slight discrepancies near midnight UTC vs EST, but is kept
+    for performance reasons (avoiding N queries for N pauses).
+    
+    For critical ordering window detection, always use Python-level calculations
+    with EST conversion (see ProgramPause._calculate_pause_status()).
+    
+    ⚠️ EST-SPECIFIC: Current implementation assumes America/New_York timezone.
+    For multi-timezone support, this would need significant refactoring to either:
+    1. Move calculations to Python properties (performance cost)
+    2. Store timezone in database and use database timezone functions (complex)
+    """
     today = Now()
     base_reason = Coalesce(F("reason"), Value("Unnamed pause"))
 
