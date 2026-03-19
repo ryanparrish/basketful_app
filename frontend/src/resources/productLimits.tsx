@@ -22,6 +22,7 @@ import {
   FunctionField,
   type RaRecord,
 } from 'react-admin';
+import { Chip, Box } from '@mui/material';
 
 // Limit scope choices matching Django model
 const limitScopeChoices = [
@@ -38,16 +39,34 @@ const getLimitExplanation = (record: RaRecord) => {
   
   const scope = record.limit_scope || 'per_household';
   const limit = record.limit || 0;
+  const multiplier = record.active_pause_multiplier || 1;
+  const effectiveLimit = record.effective_limit || limit;
+  const pauseName = record.pause_name;
   
-  const explanations: { [key: string]: string } = {
-    'per_adult': `${limit} per adult (e.g., 2 adults = ${limit * 2} allowed)`,
-    'per_child': `${limit} per child (e.g., 3 children = ${limit * 3} allowed)`,
-    'per_infant': `${limit} per infant (e.g., 1 infant = ${limit * 1} allowed)`,
-    'per_household': `${limit} per household member (e.g., household of 4 = ${limit * 4} allowed)`,
-    'per_order': `${limit} total per order (fixed limit)`,
+  // Base explanation text
+  const explanations: { [key: string]: (l: number, el: number) => string } = {
+    'per_adult': (l, el) => `${l}${multiplier > 1 ? ` → ${el}` : ''} per adult (e.g., 2 adults = ${el * 2} allowed)`,
+    'per_child': (l, el) => `${l}${multiplier > 1 ? ` → ${el}` : ''} per child (e.g., 3 children = ${el * 3} allowed)`,
+    'per_infant': (l, el) => `${l}${multiplier > 1 ? ` → ${el}` : ''} per infant (e.g., 1 infant = ${el * 1} allowed)`,
+    'per_household': (l, el) => `${l}${multiplier > 1 ? ` → ${el}` : ''} per household member (e.g., household of 4 = ${el * 4} allowed)`,
+    'per_order': (l, el) => `${l}${multiplier > 1 ? ` → ${el}` : ''} total per order (fixed limit)`,
   };
   
-  return explanations[scope] || `${limit} items`;
+  const explanationText = (explanations[scope] || (() => `${limit} items`))(limit, effectiveLimit);
+  
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {multiplier > 1 && (
+        <Chip 
+          label={`${multiplier}x Pause`} 
+          color="warning" 
+          size="small"
+          title={pauseName || 'Active Program Pause'}
+        />
+      )}
+      <span>{explanationText}</span>
+    </Box>
+  );
 };
 
 export const ProductLimitList = () => (

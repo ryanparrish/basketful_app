@@ -106,6 +106,20 @@ class Order(models.Model):
         default=0,
         help_text="Total amount spent on Go Fresh items in this order"
     )
+    
+    # Program pause tracking at order creation
+    program_pause_at_creation = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Name of program pause active when this order was created"
+    )
+    pause_multiplier_at_creation = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Pause multiplier (2x or 3x) active when this order was created"
+    )
+    
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

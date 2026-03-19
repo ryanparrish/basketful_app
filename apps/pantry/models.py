@@ -7,6 +7,7 @@ from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
 from django.db import models
+from django.core.cache import cache
 # Local app imports
 
 logger = logging.getLogger(__name__)
@@ -247,28 +248,71 @@ class CategoryLimitValidator:
         )
     
     @staticmethod
-    def compute_allowed_quantity(product_limit, participant):
+    def _get_active_pause_multiplier():
         """
-        Compute the allowed quantity based on limit scope.
+        Get the active program pause multiplier with caching.
+        
+        Returns:
+            tuple: (multiplier, pause_name) where multiplier is 1, 2, or 3
+                   and pause_name is the name of the active pause or None
+        """
+        # Check cache first
+        cache_key = 'active_pause_multiplier'
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
+        # Import here to avoid circular imports
+        from apps.lifeskills.models import ProgramPause
+        from django.utils import timezone
+        
+        current_time = timezone.now()
+        
+        # Query for active pause (business rule: no overlapping pauses)
+        active_pause = ProgramPause.objects.filter(
+            pause_start__lte=current_time,
+            pause_end__gte=current_time
+        ).first()
+        
+        if active_pause and hasattr(active_pause, 'multiplier'):
+            multiplier = active_pause.multiplier
+            pause_name = getattr(active_pause, 'reason', None) or 'Active Pause'
+            result = (multiplier, pause_name)
+        else:
+            result = (1, None)
+        
+        # Cache for 5 minutes to reduce database queries
+        cache.set(cache_key, result, 300)
+        return result
+    
+    @staticmethod
+    def compute_allowed_quantity(product_limit, participant, pause_multiplier=1):
+        """
+        Compute the allowed quantity based on limit scope and pause multiplier.
         
         Args:
             product_limit: ProductLimit instance
             participant: Participant instance
+            pause_multiplier: Program pause multiplier (1, 2, or 3)
             
         Returns:
-            int: Calculated allowed quantity
+            int: Calculated allowed quantity (limit × pause_multiplier × scope_factor)
         """
-        allowed = product_limit.limit
+        # Apply pause multiplier to base limit first
+        base_limit = product_limit.limit * pause_multiplier
+        allowed = base_limit
         scope = product_limit.limit_scope
         
+        # Then apply scope factor
         if scope == "per_adult":
-            allowed *= participant.adults
+            allowed = base_limit * participant.adults
         elif scope == "per_child":
-            allowed *= participant.children
+            allowed = base_limit * participant.children
         elif scope == "per_infant":
-            allowed *= participant.diaper_count or 0
+            allowed = base_limit * (participant.diaper_count or 0)
         elif scope == "per_household":
-            allowed *= participant.household_size()
+            allowed = base_limit * participant.household_size()
+        # per_order scope doesn't multiply, just uses base_limit
         
         return allowed
     
@@ -276,6 +320,7 @@ class CategoryLimitValidator:
     def validate_category_limits(order_items, participant):
         """
         Validate that order items don't exceed category limits.
+        Applies program pause multiplier when active.
         
         Args:
             order_items: QuerySet or list of order items
@@ -284,6 +329,9 @@ class CategoryLimitValidator:
         Raises:
             ValidationError: If any category limit is exceeded
         """
+        # Get active pause multiplier once for all validations
+        pause_multiplier, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
+        
         category_totals, _, category_products, category_objects = \
             CategoryLimitValidator.aggregate_category_data(order_items)
         
@@ -308,7 +356,7 @@ class CategoryLimitValidator:
                 continue
             
             allowed = CategoryLimitValidator.compute_allowed_quantity(
-                product_limit, participant
+                product_limit, participant, pause_multiplier
             )
             
             if total > allowed:
@@ -346,10 +394,19 @@ class CategoryLimitValidator:
                     "per_order": "per order"
                 }.get(scope, scope)
                 
+                # Build limit description with pause context
+                if pause_multiplier > 1:
+                    limit_description = (
+                        f"{product_limit.limit} "
+                        f"({product_limit.limit * pause_multiplier} with {pause_multiplier}x pause)"
+                    )
+                else:
+                    limit_description = str(product_limit.limit)
+                
                 error_msg = (
                     f"Limit exceeded for {category_type} "
                     f"'{category.name}' (scope: {scope}, "
-                    f"limit: {product_limit.limit} {scope_description}): "
+                    f"limit: {limit_description} {scope_description}): "
                     f"Ordered {total}, allowed {allowed}. "
                     f"Products: {product_list}"
                 )

@@ -144,9 +144,18 @@ class OrderOrchestration:
                     order_items_data, participant, account
                 )
                 
+                # Get active pause details for tracking
+                from apps.pantry.models import CategoryLimitValidator
+                pause_multiplier, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
+                
                 # STEP 2: All validation passed - create Order and items atomically.
                 with transaction.atomic():
-                    order = Order.objects.create(account=account, status="pending")
+                    order = Order.objects.create(
+                        account=account, 
+                        status="pending",
+                        program_pause_at_creation=pause_name if pause_multiplier > 1 else None,
+                        pause_multiplier_at_creation=pause_multiplier if pause_multiplier > 1 else None
+                    )
                     order.save()
 
                     items_bulk = [

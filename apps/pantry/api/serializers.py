@@ -117,16 +117,38 @@ class OrderPackerSerializer(serializers.ModelSerializer):
 
 
 class ProductLimitSerializer(serializers.ModelSerializer):
-    """Serializer for ProductLimit model."""
+    """Serializer for ProductLimit model with program pause awareness."""
     category_name = serializers.CharField(source='category.name', read_only=True)
     subcategory_name = serializers.CharField(
         source='subcategory.name', read_only=True
     )
+    active_pause_multiplier = serializers.SerializerMethodField()
+    effective_limit = serializers.SerializerMethodField()
+    pause_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductLimit
         fields = [
             'id', 'name', 'category', 'category_name',
-            'subcategory', 'subcategory_name', 'limit', 'limit_scope', 'notes'
+            'subcategory', 'subcategory_name', 'limit', 'limit_scope', 'notes',
+            'active_pause_multiplier', 'effective_limit', 'pause_name'
         ]
         read_only_fields = ['id']
+    
+    def get_active_pause_multiplier(self, obj):
+        """Get the current active pause multiplier."""
+        from apps.pantry.models import CategoryLimitValidator
+        multiplier, _ = CategoryLimitValidator._get_active_pause_multiplier()
+        return multiplier
+    
+    def get_effective_limit(self, obj):
+        """Get the effective limit with pause multiplier applied."""
+        from apps.pantry.models import CategoryLimitValidator
+        multiplier, _ = CategoryLimitValidator._get_active_pause_multiplier()
+        return obj.limit * multiplier
+    
+    def get_pause_name(self, obj):
+        """Get the name of the active pause if any."""
+        from apps.pantry.models import CategoryLimitValidator
+        _, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
+        return pause_name
