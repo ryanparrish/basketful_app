@@ -4,8 +4,7 @@ These TypedDicts document the exact shape stored in the cart_snapshot and
 validation_errors JSONFields without adding any runtime overhead or requiring
 serialisation boilerplate (they *are* plain dicts at runtime).
 """
-from typing import Optional
-from typing_extensions import TypedDict
+from typing import Optional, TypedDict
 
 
 class CartItem(TypedDict):
