@@ -103,6 +103,40 @@ class VoucherViewSet(viewsets.ModelViewSet):
             })
         return Response(result)
 
+    @action(detail=False, methods=['get'], url_path='bulk_create/preview')
+    def bulk_create_preview(self, request):
+        """Preview participants for bulk voucher creation."""
+        program_id = request.query_params.get('program_id')
+        
+        if not program_id:
+            return Response(
+                {'error': 'program_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        from apps.account.models import Participant
+        participants = Participant.objects.filter(
+            program_id=program_id,
+            active=True
+        ).select_related('accountbalance')
+        
+        # Build participant list with account status
+        participant_data = []
+        for p in participants:
+            participant_data.append({
+                'id': p.id,
+                'name': p.name,
+                'email': p.email,
+                'customer_number': p.customer_number,
+                'account_balance_id': p.accountbalance.id if hasattr(p, 'accountbalance') else None,
+                'has_account': hasattr(p, 'accountbalance'),
+            })
+        
+        return Response({
+            'participants': participant_data,
+            'total_count': len(participant_data),
+        })
+
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
         """Create vouchers in bulk for multiple accounts or a program."""
@@ -118,6 +152,11 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     program_id=data['program_id'],
                     active=True
                 ).select_related('accountbalance')
+                
+                # Filter by specific participant IDs if provided
+                if data.get('participant_ids'):
+                    participants = participants.filter(id__in=data['participant_ids'])
+                
                 accounts = [p.accountbalance for p in participants if hasattr(p, 'accountbalance')]
             else:
                 from apps.account.models import AccountBalance

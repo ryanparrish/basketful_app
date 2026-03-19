@@ -85,6 +85,11 @@ class BulkVoucherCreateSerializer(serializers.Serializer):
         required=False,
         help_text="Create vouchers for all active participants in this program"
     )
+    participant_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="Optional list of specific participant IDs within the program"
+    )
     voucher_type = serializers.ChoiceField(
         choices=Voucher.VOUCHER_TYPE_CHOICES,
         default='grocery'

@@ -1,8 +1,8 @@
 /**
- * Bulk Voucher Creation Page
+ * Bulk Voucher Creation Page - Two-Step Flow
  * 
- * Allows creating vouchers for multiple participants at once,
- * either by selecting a program or individual accounts.
+ * Step 1: Configuration (mode, program, voucher type, notes)
+ * Step 2: Review & Select Participants
  */
 import { useState } from 'react';
 import {
@@ -33,6 +33,9 @@ import {
   TableCell,
   TableBody,
   CircularProgress,
+  Typography,
+  Paper,
+  Divider,
 } from '@mui/material';
 
 interface Program {
@@ -44,9 +47,16 @@ interface Program {
 interface Participant {
   id: number;
   name: string;
+  email: string;
   customer_number: string;
-  account_balance_id: number;
+  account_balance_id: number | null;
+  has_account: boolean;
   active: boolean;
+}
+
+interface PreviewResponse {
+  participants: Participant[];
+  total_count: number;
 }
 
 export const BulkVoucherCreate = () => {
@@ -54,12 +64,24 @@ export const BulkVoucherCreate = () => {
   const notify = useNotify();
   const redirect = useRedirect();
 
+  // Step management
+  const [step, setStep] = useState<1 | 2>(1);
+
   // Form state
   const [mode, setMode] = useState<'program' | 'select'>('program');
   const [selectedProgram, setSelectedProgram] = useState<number | ''>('');
-  const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
   const [voucherType, setVoucherType] = useState<'grocery' | 'life'>('grocery');
   const [notes, setNotes] = useState('');
+  
+  // Step 2 state
+  const [programParticipants, setProgramParticipants] = useState<Participant[]>([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<number[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  
+  // For select mode
+  const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
+  
+  // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ created_count: number } | null>(null);
 
@@ -69,7 +91,7 @@ export const BulkVoucherCreate = () => {
     sort: { field: 'name', order: 'ASC' },
   });
 
-  // Fetch participants for selection mode
+  // Fetch all participants for selection mode
   const { data: participants, isPending: participantsLoading } = useGetList<Participant>(
     'participants',
     {
@@ -79,6 +101,37 @@ export const BulkVoucherCreate = () => {
     }
   );
 
+  // Load participants when program selected (for preview)
+  const loadProgramParticipants = async (programId: number) => {
+    setLoadingParticipants(true);
+    try {
+      const response = await fetch(
+        `/api/v1/vouchers/bulk_create/preview/?program_id=${programId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to load participants');
+      }
+      
+      const data: PreviewResponse = await response.json();
+      setProgramParticipants(data.participants);
+      
+      // Pre-select all participants with accounts by default
+      const participantIds = data.participants
+        .filter(p => p.has_account)
+        .map(p => p.id);
+      setSelectedParticipantIds(participantIds);
+    } catch (error) {
+      notify(`Error loading participants: ${error}`, { type: 'error' });
+    }
+    setLoadingParticipants(false);
+  };
+
   const handleAccountToggle = (accountId: number) => {
     setSelectedAccounts((prev) =>
       prev.includes(accountId)
@@ -87,15 +140,49 @@ export const BulkVoucherCreate = () => {
     );
   };
 
+  const handleParticipantToggle = (participantId: number) => {
+    setSelectedParticipantIds((prev) =>
+      prev.includes(participantId)
+        ? prev.filter((id) => id !== participantId)
+        : [...prev, participantId]
+    );
+  };
+
   const handleSelectAll = () => {
-    if (participants) {
+    if (mode === 'program') {
+      const allIds = programParticipants
+        .filter(p => p.has_account)
+        .map(p => p.id);
+      setSelectedParticipantIds(allIds);
+    } else if (participants) {
       const allIds = participants.map((p) => p.account_balance_id).filter(Boolean);
       setSelectedAccounts(allIds as number[]);
     }
   };
 
   const handleDeselectAll = () => {
-    setSelectedAccounts([]);
+    if (mode === 'program') {
+      setSelectedParticipantIds([]);
+    } else {
+      setSelectedAccounts([]);
+    }
+  };
+
+  const handleNextStep = async () => {
+    if (mode === 'program' && selectedProgram) {
+      await loadProgramParticipants(selectedProgram as number);
+      setStep(2);
+    } else if (mode === 'select' && selectedAccounts.length > 0) {
+      setStep(2);
+    } else {
+      notify('Please select a program or at least one participant', {
+        type: 'warning',
+      });
+    }
+  };
+
+  const handleBackStep = () => {
+    setStep(1);
   };
 
   const handleSubmit = async () => {
