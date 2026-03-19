@@ -61,6 +61,8 @@ class ProgramPause(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(null=True, blank=True)
+    last_resync_at = models.DateTimeField(null=True, blank=True)
+    last_resync_by_username = models.CharField(max_length=150, null=True, blank=True)
 
     class Meta:
         db_table = 'food_orders_programpause'
