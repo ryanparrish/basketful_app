@@ -186,6 +186,7 @@ class ProductLimit(models.Model):
     
     class Meta:
         db_table = 'food_orders_product_limit'
+        ordering = ['name']
 
 
 class OrderPacker(models.Model):

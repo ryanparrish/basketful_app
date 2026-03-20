@@ -103,7 +103,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
             })
         return Response(result)
 
-    @action(detail=False, methods=['get'], url_path='bulk_create/preview')
+    @action(detail=False, methods=['get'], url_path='bulk_create/preview', permission_classes=[IsAuthenticated, IsStaffUser])
     def bulk_create_preview(self, request):
         """Preview participants for bulk voucher creation."""
         program_id = request.query_params.get('program_id')

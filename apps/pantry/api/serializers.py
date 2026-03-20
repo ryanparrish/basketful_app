@@ -82,6 +82,11 @@ class ProductSerializer(serializers.ModelSerializer):
             'sort_order', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'description': {'required': False},
+            'price': {'required': False},
+            'quantity_in_stock': {'required': False},
+        }
 
     def get_limit(self, obj):
         return Product.get_limit_for_product(obj)
