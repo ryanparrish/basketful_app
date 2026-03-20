@@ -320,26 +320,28 @@ export const BulkVoucherCreate = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {(participants || []).map((participant) => (
-                        <TableRow
-                          key={participant.id}
-                          hover
-                          onClick={() =>
-                            handleAccountToggle(participant.account_balance_id)
-                          }
-                          sx={{ cursor: 'pointer' }}
-                        >
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              checked={selectedAccounts.includes(
-                                participant.account_balance_id
-                              )}
-                            />
-                          </TableCell>
-                          <TableCell>{participant.name}</TableCell>
-                          <TableCell>{participant.customer_number}</TableCell>
-                        </TableRow>
-                      ))}
+                      {(participants || [])
+                        .filter((participant) => participant.account_balance_id !== null)
+                        .map((participant) => (
+                          <TableRow
+                            key={participant.id}
+                            hover
+                            onClick={() =>
+                              handleAccountToggle(participant.account_balance_id!)
+                            }
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={selectedAccounts.includes(
+                                  participant.account_balance_id!
+                                )}
+                              />
+                            </TableCell>
+                            <TableCell>{participant.name}</TableCell>
+                            <TableCell>{participant.customer_number}</TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 </Box>
