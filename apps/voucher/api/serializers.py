@@ -94,6 +94,12 @@ class BulkVoucherCreateSerializer(serializers.Serializer):
         choices=Voucher.VOUCHER_TYPE_CHOICES,
         default='grocery'
     )
+    quantity = serializers.IntegerField(
+        default=1,
+        min_value=1,
+        max_value=10,
+        help_text="Number of vouchers to create per participant (1-10)"
+    )
     notes = serializers.CharField(required=False, default='', allow_blank=True)
 
     def validate(self, data):

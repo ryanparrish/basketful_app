@@ -164,13 +164,15 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     id__in=data.get('account_ids', [])
                 )
 
+            quantity = data.get('quantity', 1)
             for account in accounts:
-                voucher = Voucher.objects.create(
-                    account=account,
-                    voucher_type=data.get('voucher_type', 'grocery'),
-                    notes=data.get('notes', '')
-                )
-                created_vouchers.append(voucher)
+                for _ in range(quantity):
+                    voucher = Voucher.objects.create(
+                        account=account,
+                        voucher_type=data.get('voucher_type', 'grocery'),
+                        notes=data.get('notes', '')
+                    )
+                    created_vouchers.append(voucher)
 
         return Response({
             'created_count': len(created_vouchers),
