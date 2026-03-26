@@ -103,6 +103,12 @@ interface PauseFormData {
   pause_end: string;
 }
 
+interface HygieneSettings {
+  id: number;
+  hygiene_ratio: number;
+  enabled: boolean;
+}
+
 export const Settings = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -115,6 +121,7 @@ export const Settings = () => {
   const [email, setEmail] = useState<EmailSettings | null>(null);
   const [branding, setBranding] = useState<BrandingSettings | null>(null);
   const [voucher, setVoucher] = useState<VoucherSettings | null>(null);
+  const [hygiene, setHygiene] = useState<HygieneSettings | null>(null);
 
   // Program Pauses state
   const [pauses, setPauses] = useState<ProgramPause[]>([]);
@@ -127,6 +134,10 @@ export const Settings = () => {
   const [pausesLoading, setPausesLoading] = useState(false);
   const [resyncingPause, setResyncingPause] = useState<number | null>(null);
 
+  // Hygiene Settings state
+  const [hygieneConfirmOpen, setHygieneConfirmOpen] = useState(false);
+  const [pendingHygiene, setPendingHygiene] = useState<HygieneSettings | null>(null);
+
   // Debounced pause form dates for real-time overlap check
   const debouncedPauseStart = useDebounce(pauseForm.pause_start, 500);
   const debouncedPauseEnd = useDebounce(pauseForm.pause_end, 500);
@@ -135,7 +146,7 @@ export const Settings = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const [owResponse, emailResponse, brandingResponse, voucherResponse] =
+        const [owResponse, emailResponse, brandingResponse, voucherResponse, hygieneResponse] =
           await Promise.all([
             dataProvider.getOne('settings/order-window-settings', { id: 'current' }),
             dataProvider.getOne('settings/email-settings', { id: 'current' }),
@@ -145,6 +156,7 @@ export const Settings = () => {
               filter: { active: true },
               sort: { field: 'id', order: 'DESC' },
             }),
+            dataProvider.getOne('hygiene-settings', { id: 'current' }),
           ]);
 
         setOrderWindow(owResponse.data as OrderWindowSettings);
@@ -153,6 +165,7 @@ export const Settings = () => {
         if (voucherResponse.data.length > 0) {
           setVoucher(voucherResponse.data[0] as VoucherSettings);
         }
+        setHygiene(hygieneResponse.data as HygieneSettings);
       } catch {
         notify('Error loading settings', { type: 'error' });
       }
@@ -228,6 +241,32 @@ export const Settings = () => {
       notify('Error saving settings', { type: 'error' });
     }
     setSaving(false);
+  };
+
+  // Save Hygiene Settings (with confirmation)
+  const requestHygieneSave = () => {
+    if (!hygiene) return;
+    setPendingHygiene(hygiene);
+    setHygieneConfirmOpen(true);
+  };
+
+  const confirmHygieneSave = async () => {
+    if (!pendingHygiene) return;
+    setSaving(true);
+    setHygieneConfirmOpen(false);
+    try {
+      await dataProvider.update('hygiene-settings', {
+        id: 'current',
+        data: pendingHygiene,
+        previousData: pendingHygiene,
+      });
+      notify('Hygiene settings saved', { type: 'success' });
+      setHygiene(pendingHygiene);
+    } catch {
+      notify('Error saving settings', { type: 'error' });
+    }
+    setSaving(false);
+    setPendingHygiene(null);
   };
 
   // Fetch all program pauses + active pause
@@ -429,6 +468,7 @@ export const Settings = () => {
             <Tab label="Branding" />
             <Tab label="Vouchers" />
             <Tab label="Program Pauses" />
+            <Tab label="Hygiene" />
           </Tabs>
 
           {/* Order Window Tab */}
@@ -801,6 +841,104 @@ export const Settings = () => {
 
             </Box>
           </TabPanel>
+
+          {/* Hygiene Tab */}
+          <TabPanel value={tab} index={5}>
+            {hygiene && (
+              <Box sx={{ maxWidth: 560 }}>
+
+                {/* Impact warning */}
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  <AlertTitle>⚠️ Impact Warning</AlertTitle>
+                  Changes to hygiene settings affect hygiene balance calculations immediately for all participants.
+                </Alert>
+
+                {/* Ratio guide */}
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  <AlertTitle>Common Ratios</AlertTitle>
+                  <Typography variant="body2">
+                    • <strong>0.2500</strong> = 1/4 of balance (25%)<br />
+                    • <strong>0.3333</strong> = 1/3 of balance (33.33%, default)<br />
+                    • <strong>0.5000</strong> = 1/2 of balance (50%)
+                  </Typography>
+                </Alert>
+
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Hygiene Ratio"
+                  value={hygiene.hygiene_ratio}
+                  onChange={(e) =>
+                    setHygiene({
+                      ...hygiene,
+                      hygiene_ratio: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                  inputProps={{ step: 0.0001, min: 0, max: 1 }}
+                  helperText={`Percentage of available balance for hygiene products (${(hygiene.hygiene_ratio * 100).toFixed(2)}%)`}
+                  sx={{ mb: 2 }}
+                />
+
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={hygiene.enabled}
+                      onChange={(e) =>
+                        setHygiene({ ...hygiene, enabled: e.target.checked })
+                      }
+                    />
+                  }
+                  label="Enable Hygiene Balance Calculation"
+                  sx={{ mb: 3 }}
+                />
+
+                <Button
+                  variant="contained"
+                  onClick={requestHygieneSave}
+                  disabled={saving}
+                >
+                  Save Hygiene Settings
+                </Button>
+              </Box>
+            )}
+          </TabPanel>
+
+          {/* Hygiene Confirmation Dialog */}
+          <Dialog
+            open={hygieneConfirmOpen}
+            onClose={() => setHygieneConfirmOpen(false)}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle>⚠️ Confirm Hygiene Settings Change</DialogTitle>
+            <DialogContent>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This will affect hygiene balance calculations <strong>immediately</strong> for all participants.
+              </Alert>
+              {pendingHygiene && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>New Ratio:</strong> {pendingHygiene.hygiene_ratio} ({(pendingHygiene.hygiene_ratio * 100).toFixed(2)}%)
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Enabled:</strong> {pendingHygiene.enabled ? 'Yes' : 'No'}
+                  </Typography>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setHygieneConfirmOpen(false)}>Cancel</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                onClick={confirmHygieneSave}
+                disabled={saving}
+              >
+                {saving ? <CircularProgress size={20} /> : 'Confirm Save'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
         </CardContent>
       </Card>
     </div>
