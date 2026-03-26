@@ -167,10 +167,10 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'adults', 'children', 'diaper_count', 'household_size',
             'program', 'program_name', 'assigned_coach', 'coach_name',
             'user', 'user_username', 'create_user',
-            'allergy', 'active', 'balances', 'base_balance',
+            'allergy', 'active', 'archived_at', 'balances', 'base_balance',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'customer_number', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'customer_number', 'archived_at', 'created_at', 'updated_at']
 
     def get_balances(self, obj):
         return obj.balances()

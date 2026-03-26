@@ -47,14 +47,31 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Chip,
+  FormControlLabel,
+  Switch,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  ButtonGroup,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import RestoreIcon from '@mui/icons-material/Restore';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import LockResetIcon from '@mui/icons-material/LockReset';
+import EmailIcon from '@mui/icons-material/Email';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import CalculateIcon from '@mui/icons-material/Calculate';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/apiUrl';
 
 const participantFilters = [
   <SearchInput source="q" alwaysOn key="search" />,
-  <BooleanInput source="active" label="Active Only" key="active" />,
   <ReferenceInput source="program" reference="programs" key="program">
     <SelectInput optionText="name" />
   </ReferenceInput>,
@@ -86,7 +103,15 @@ const BalanceExpandPanel = () => {
   ];
 
   return (
-    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', p: 2, bgcolor: 'grey.50' }}>
+    <Box sx={{ 
+      display: 'flex', 
+      gap: 2, 
+      flexWrap: 'wrap', 
+      p: 2, 
+      bgcolor: (theme) => theme.palette.mode === 'dark'
+        ? 'rgba(255, 255, 255, 0.03)'
+        : 'grey.50'
+    }}>
       {items.map(({ label, value }) => (
         <Box
           key={label}
@@ -130,29 +155,46 @@ async function callBulkAction(endpoint: string, ids: (string | number)[]): Promi
   return data.message ?? 'Done.';
 }
 
-interface ConfirmBulkButtonProps {
-  label: string;
-  endpoint: string;
-  confirmTitle: string;
-  confirmBody: string;
-  color?: 'error' | 'warning' | 'primary';
-}
 
-const ConfirmBulkButton = ({
-  label,
-  endpoint,
-  confirmTitle,
-  confirmBody,
-  color = 'primary',
-}: ConfirmBulkButtonProps) => {
-  const { selectedIds } = useListContext();
+const ParticipantBulkActions = () => {
+  const { selectedIds, data = [] } = useListContext();
   const notify = useNotify();
   const refresh = useRefresh();
   const unselectAll = useUnselectAll('participants');
-  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [dialogState, setDialogState] = useState<{
+    open: boolean;
+    action: string;
+    title: string;
+    body: string;
+    color: 'error' | 'warning' | 'success' | 'primary';
+    endpoint: string;
+  }>({ open: false, action: '', title: '', body: '', color: 'primary', endpoint: '' });
   const [loading, setLoading] = useState(false);
 
-  const handleConfirm = async () => {
+  // Determine if selection has archived or active participants
+  const selectedRecords = data.filter((record: RaRecord) => 
+    selectedIds.includes(record.id)
+  );
+  const hasActiveSelected = selectedRecords.some((r: RaRecord) => r.active);
+  const hasArchivedSelected = selectedRecords.some((r: RaRecord) => !r.active);
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleAction = async (endpoint: string, requiresConfirm = false, config?: typeof dialogState) => {
+    if (requiresConfirm && config) {
+      setDialogState({ ...config, open: true });
+      handleMenuClose();
+      return;
+    }
+
     setLoading(true);
     try {
       const msg = await callBulkAction(endpoint, selectedIds);
@@ -163,114 +205,302 @@ const ConfirmBulkButton = ({
       notify((e as Error).message, { type: 'error' });
     } finally {
       setLoading(false);
-      setOpen(false);
+      handleMenuClose();
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    setLoading(true);
+    try {
+      const msg = await callBulkAction(dialogState.endpoint, selectedIds);
+      notify(msg, { type: 'success' });
+      refresh();
+      unselectAll();
+    } catch (e) {
+      notify((e as Error).message, { type: 'error' });
+    } finally {
+      setLoading(false);
+      setDialogState({ ...dialogState, open: false });
     }
   };
 
   return (
-    <>
-      <Button size="small" color={color} onClick={() => setOpen(true)}>
-        {label}
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: 1, 
+      flexWrap: 'wrap',
+      p: 2,
+      bgcolor: (theme) => theme.palette.mode === 'dark'
+        ? 'rgba(144, 202, 249, 0.08)'  // Light blue tint for dark mode
+        : 'rgba(25, 118, 210, 0.08)',   // Light blue tint for light mode
+      borderBottom: 1,
+      borderColor: (theme) => theme.palette.mode === 'dark'
+        ? 'rgba(144, 202, 249, 0.16)'
+        : 'rgba(25, 118, 210, 0.16)',
+    }}>
+      {/* Selection count badge */}
+      <Chip 
+        label={`${selectedIds.length} selected`}
+        size="small"
+        sx={{
+          bgcolor: (theme) => theme.palette.mode === 'dark' 
+            ? 'primary.dark' 
+            : 'primary.light',
+          color: (theme) => theme.palette.mode === 'dark'
+            ? 'primary.contrastText'
+            : 'primary.dark',
+          fontWeight: 600
+        }}
+      />
+
+      {/* PRIMARY ACTIONS - Archive/Restore (60% of usage) */}
+      <ButtonGroup variant="contained" size="small">
+        {hasActiveSelected && (
+          <Button
+            startIcon={<ArchiveIcon />}
+            onClick={() => handleAction('bulk-archive', true, {
+              open: true,
+              action: 'archive',
+              title: 'Archive Participants?',
+              body: `This will archive ${selectedIds.length} participant(s) and hide them from the active list. They can be restored later.`,
+              color: 'warning',
+              endpoint: 'bulk-archive'
+            })}
+            color="warning"
+            disabled={loading}
+          >
+            Archive
+          </Button>
+        )}
+        {hasArchivedSelected && (
+          <Button
+            startIcon={<RestoreIcon />}
+            onClick={() => handleAction('bulk-unarchive', true, {
+              open: true,
+              action: 'restore',
+              title: 'Restore Participants?',
+              body: `This will restore ${selectedIds.length} participant(s) to active status.`,
+              color: 'success',
+              endpoint: 'bulk-unarchive'
+            })}
+            color="success"
+            disabled={loading}
+          >
+            Restore
+          </Button>
+        )}
+      </ButtonGroup>
+
+      {/* SECONDARY ACTION - Reset Password (20% of usage) */}
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={<LockResetIcon />}
+        onClick={() => handleAction('bulk-reset-password', true, {
+          open: true,
+          action: 'reset-password',
+          title: 'Reset passwords?',
+          body: `This will reset passwords and queue reset emails for ${selectedIds.length} participant(s). Continue?`,
+          color: 'warning',
+          endpoint: 'bulk-reset-password'
+        })}
+        disabled={loading}
+      >
+        Reset Password
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)}>
-        <DialogTitle>{confirmTitle}</DialogTitle>
+
+      {/* TERTIARY ACTIONS - More menu (20% of usage combined) */}
+      <IconButton 
+        size="small"
+        onClick={handleMenuOpen}
+        disabled={loading}
+        sx={{ 
+          border: 1,
+          borderColor: 'divider',
+          '&:hover': {
+            bgcolor: 'action.hover'
+          }
+        }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        PaperProps={{
+          sx: { minWidth: 240 }
+        }}
+      >
+        {/* Communication */}
+        <MenuItem disabled sx={{ opacity: 0.6, fontSize: '0.75rem', fontWeight: 600 }}>
+          Communication
+        </MenuItem>
+        <MenuItem onClick={() => handleAction('bulk-resend-onboarding')} sx={{ pl: 3 }}>
+          <ListItemIcon>
+            <EmailIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Resend Onboarding Email</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleAction('bulk-resend-password-reset')} sx={{ pl: 3 }}>
+          <ListItemIcon>
+            <EmailIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Resend Password Reset Email</ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        {/* Account Management */}
+        <MenuItem disabled sx={{ opacity: 0.6, fontSize: '0.75rem', fontWeight: 600 }}>
+          Account Management
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleAction('bulk-create-user-accounts', true, {
+            open: true,
+            action: 'create-accounts',
+            title: 'Create user accounts?',
+            body: `This will create user accounts and send onboarding emails for ${selectedIds.length} participant(s). Continue?`,
+            color: 'primary',
+            endpoint: 'bulk-create-user-accounts'
+          })} 
+          sx={{ pl: 3 }}
+        >
+          <ListItemIcon>
+            <PersonAddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Create User Accounts</ListItemText>
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleAction('bulk-create-user-accounts-silent', true, {
+            open: true,
+            action: 'create-accounts-silent',
+            title: 'Create user accounts (silent)?',
+            body: `This will create user accounts (no email) for ${selectedIds.length} participant(s). Continue?`,
+            color: 'primary',
+            endpoint: 'bulk-create-user-accounts-silent'
+          })} 
+          sx={{ pl: 3 }}
+        >
+          <ListItemIcon>
+            <PersonAddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Create Accounts (Silent)</ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        {/* Financial */}
+        <MenuItem disabled sx={{ opacity: 0.6, fontSize: '0.75rem', fontWeight: 600 }}>
+          Financial
+        </MenuItem>
+        <MenuItem onClick={() => handleAction('bulk-calculate-base-balance')} sx={{ pl: 3 }}>
+          <ListItemIcon>
+            <CalculateIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Calculate Base Balance</ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        {/* Export */}
+        <MenuItem 
+          onClick={() => {
+            navigate(`/participants/print-customer-list?ids=${selectedIds.join(',')}`);
+            handleMenuClose();
+          }} 
+          sx={{ pl: 3 }}
+        >
+          <ListItemIcon>
+            <PrintIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Print Customer List</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={dialogState.open} onClose={() => setDialogState({ ...dialogState, open: false })}>
+        <DialogTitle>{dialogState.title}</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            {confirmBody.replace('{count}', String(selectedIds.length))}
-          </DialogContentText>
+          <DialogContentText>{dialogState.body}</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)} disabled={loading}>
+          <Button onClick={() => setDialogState({ ...dialogState, open: false })} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} color={color} variant="contained" disabled={loading}>
+          <Button 
+            onClick={handleConfirmAction} 
+            color={dialogState.color} 
+            variant="contained" 
+            disabled={loading}
+          >
             Confirm
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </Box>
   );
 };
-
-interface SimpleBulkButtonProps {
-  label: string;
-  endpoint: string;
-}
-
-const SimpleBulkButton = ({ label, endpoint }: SimpleBulkButtonProps) => {
-  const { selectedIds } = useListContext();
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const unselectAll = useUnselectAll('participants');
-  const [loading, setLoading] = useState(false);
-
-  const handleClick = async () => {
-    setLoading(true);
-    try {
-      const msg = await callBulkAction(endpoint, selectedIds);
-      notify(msg, { type: 'success' });
-      refresh();
-      unselectAll();
-    } catch (e) {
-      notify((e as Error).message, { type: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button size="small" onClick={handleClick} disabled={loading}>
-      {label}
-    </Button>
-  );
-};
-
-const PrintBulkButton = () => {
-  const { selectedIds } = useListContext();
-  const navigate = useNavigate();
-  return (
-    <Button
-      size="small"
-      startIcon={<PrintIcon />}
-      onClick={() => navigate(`/participants/print-customer-list?ids=${selectedIds.join(',')}`)}
-    >
-      Print Customer List
-    </Button>
-  );
-};
-
-const ParticipantBulkActions = () => (
-  <>
-    <SimpleBulkButton label="Calculate Base Balance" endpoint="bulk-calculate-base-balance" />
-    <SimpleBulkButton label="Resend Onboarding Email" endpoint="bulk-resend-onboarding" />
-    <SimpleBulkButton label="Resend Password Reset Email" endpoint="bulk-resend-password-reset" />
-    <ConfirmBulkButton
-      label="Reset Password"
-      endpoint="bulk-reset-password"
-      confirmTitle="Reset passwords?"
-      confirmBody="This will reset passwords and queue reset emails for {count} participant(s). Continue?"
-      color="warning"
-    />
-    <ConfirmBulkButton
-      label="Create User Accounts"
-      endpoint="bulk-create-user-accounts"
-      confirmTitle="Create user accounts?"
-      confirmBody="This will create user accounts and send onboarding emails for {count} participant(s). Continue?"
-    />
-    <ConfirmBulkButton
-      label="Create User Accounts (Silent)"
-      endpoint="bulk-create-user-accounts-silent"
-      confirmTitle="Create user accounts (silent)?"
-      confirmBody="This will create user accounts (no email) for {count} participant(s). Continue?"
-    />
-    <PrintBulkButton />
-  </>
-);
 
 // ── List ─────────────────────────────────────────────────────────────────────
 
+const ShowArchivedToggle = () => {
+  const { filterValues, setFilters } = useListContext();
+  const showArchived = !filterValues.active;
+
+  return (
+    <Box sx={{ 
+      mb: 2, 
+      p: 2, 
+      bgcolor: (theme) => theme.palette.mode === 'dark'
+        ? 'rgba(255, 255, 255, 0.05)'
+        : 'grey.50',
+      borderRadius: 1,
+      border: 1,
+      borderColor: (theme) => theme.palette.mode === 'dark'
+        ? 'rgba(255, 255, 255, 0.12)'
+        : 'grey.200',
+    }}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={showArchived}
+            onChange={(e) => {
+              setFilters(
+                { ...filterValues, active: e.target.checked ? undefined : true },
+                {},
+                false
+              );
+            }}
+          />
+        }
+        label="Show Archived Participants"
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+        (Archived participants are hidden by default)
+      </Typography>
+    </Box>
+  );
+};
+
 export const ParticipantList = () => (
-  <List filters={participantFilters} actions={<ListActions />} sort={{ field: 'name', order: 'ASC' }}>
+  <List
+    filters={participantFilters}
+    filterDefaultValues={{ active: true }}
+    actions={<ListActions />}
+    sort={{ field: 'name', order: 'ASC' }}
+  >
+    <ShowArchivedToggle />
     <Datagrid
       rowClick="show"
       expand={<BalanceExpandPanel />}
@@ -283,7 +513,35 @@ export const ParticipantList = () => (
       <ReferenceField source="program" reference="programs" link="show">
         <TextField source="name" />
       </ReferenceField>
-      <BooleanField source="active" />
+      <FunctionField
+        label="Status"
+        render={(record: RaRecord) => (
+          <Chip
+            label={record.active ? 'Active' : 'Archived'}
+            size="small"
+            icon={record.active ? <CheckCircleIcon /> : <ArchiveIcon />}
+            sx={{
+              fontWeight: 500,
+              ...(record.active ? {
+                bgcolor: (theme) => theme.palette.mode === 'dark' 
+                  ? 'rgba(46, 125, 50, 0.2)' 
+                  : 'success.light',
+                color: (theme) => theme.palette.mode === 'dark'
+                  ? '#81c784'
+                  : 'success.dark',
+              } : {
+                bgcolor: (theme) => theme.palette.mode === 'dark' 
+                  ? 'rgba(158, 158, 158, 0.2)' 
+                  : 'grey.300',
+                color: (theme) => theme.palette.mode === 'dark'
+                  ? '#bdbdbd'
+                  : 'grey.700',
+              })
+            }}
+          />
+        )}
+        sortable={false}
+      />
       <NumberField source="adults" />
       <NumberField source="children" />
       <DateField source="created_at" label="Joined" />
@@ -298,8 +556,109 @@ const ParticipantTitle = () => {
   return <span>Participant: {record?.name || ''}</span>;
 };
 
+const ParticipantShowActions = () => {
+  const record = useRecordContext();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [action, setAction] = useState<'archive' | 'unarchive'>('archive');
+
+  const handleAction = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${API_URL}/api/v1/participants/${record.id}/${action}/`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Token ${token}`,
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Action failed');
+      }
+      
+      notify(
+        `Participant ${action === 'archive' ? 'archived' : 'restored'} successfully`,
+        { type: 'success' }
+      );
+      refresh();
+    } catch (e) {
+      notify((e as Error).message, { type: 'error' });
+    } finally {
+      setLoading(false);
+      setDialogOpen(false);
+    }
+  };
+
+  if (!record) return null;
+
+  return (
+    <TopToolbar>
+      <EditButton />
+      {record.active ? (
+        <Button
+          color="warning"
+          startIcon={<ArchiveIcon />}
+          onClick={() => {
+            setAction('archive');
+            setDialogOpen(true);
+          }}
+          disabled={loading}
+        >
+          Archive
+        </Button>
+      ) : (
+        <Button
+          color="success"
+          startIcon={<RestoreIcon />}
+          onClick={() => {
+            setAction('unarchive');
+            setDialogOpen(true);
+          }}
+          disabled={loading}
+        >
+          Restore
+        </Button>
+      )}
+      
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+        <DialogTitle>
+          {action === 'archive' ? 'Archive' : 'Restore'} Participant?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {action === 'archive'
+              ? 'This will archive the participant and hide them from the active list. They can be restored later.'
+              : 'This will restore the participant to active status.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAction}
+            color={action === 'archive' ? 'warning' : 'success'}
+            variant="contained"
+            disabled={loading}
+          >
+            {action === 'archive' ? 'Archive' : 'Restore'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </TopToolbar>
+  );
+};
+
 export const ParticipantShow = () => (
-  <Show title={<ParticipantTitle />}>
+  <Show title={<ParticipantTitle />} actions={<ParticipantShowActions />}>
     <TabbedShowLayout>
       <TabbedShowLayout.Tab label="Details">
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
@@ -324,6 +683,23 @@ export const ParticipantShow = () => (
                 <TextField source="name" />
               </ReferenceField>
               <BooleanField source="active" label="Active" />
+              <FunctionField
+                label="Archive Status"
+                render={(record: RaRecord) => {
+                  if (record.active) {
+                    return <Typography variant="body2" color="text.secondary">Active</Typography>;
+                  }
+                  if (record.archived_at) {
+                    const date = new Date(record.archived_at);
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        Archived on {date.toLocaleDateString()} at {date.toLocaleTimeString()}
+                      </Typography>
+                    );
+                  }
+                  return <Typography variant="body2" color="text.secondary">Archived</Typography>;
+                }}
+              />
               <DateField source="created_at" label="Created at" showTime />
               <DateField source="updated_at" label="Updated at" showTime />
             </Box>
