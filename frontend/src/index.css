@@ -66,3 +66,64 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Print Styles - Hide React-Admin Layout for Clean Printouts */
+@media print {
+  /* Hide sidebar and appbar - comprehensive selectors */
+  aside,
+  nav,
+  header[class*="MuiAppBar"],
+  div[class*="RaAppBar"],
+  div[class*="RaSidebar"],
+  div[class*="RaLayout-appBar"],
+  div[class*="RaLayout-sidebar"],
+  div[class*="MuiDrawer"],
+  .RaAppBar-root,
+  .RaSidebar-root,
+  .RaLayout-appBar,
+  .RaLayout-sidebar,
+  .MuiDrawer-root,
+  .MuiDrawer-paper,
+  .MuiDrawer-docked {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* Reset content area margins/padding */
+  .RaLayout-content,
+  .RaLayout-contentWithSidebar,
+  div[class*="RaLayout-content"],
+  main {
+    margin: 0 !important;
+    margin-left: 0 !important;
+    margin-top: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Full width for print content */
+  .RaLayout-root,
+  div[class*="RaLayout-root"] {
+    overflow: visible !important;
+  }
+  
+  /* Print optimizations */
+  body {
+    margin: 0;
+    padding: 0;
+    font-size: 11pt;
+  }
+  
+  /* Prevent page breaks inside tables/cards */
+  table, .MuiCard-root {
+    page-break-inside: avoid;
+  }
+  
+  /* Force black text for better printing */
+  * {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
