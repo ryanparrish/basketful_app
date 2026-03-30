@@ -565,6 +565,7 @@ const ParticipantShowActions = () => {
   const [action, setAction] = useState<'archive' | 'unarchive'>('archive');
 
   const handleAction = async () => {
+    if (!record) return;
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
