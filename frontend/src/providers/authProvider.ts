@@ -9,7 +9,7 @@
  * - Automatic token refresh on 401
  */
 import type { AuthProvider } from 'react-admin';
-import apiClient from '../lib/api/apiClient';
+import apiClient from '../lib/api/apiClient.js';
 
 const USER_STORAGE_KEY = 'basketful_admin_user';
 

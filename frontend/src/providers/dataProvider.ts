@@ -5,7 +5,7 @@
  * and CSRF protection. No manual token management needed.
  */
 import type { DataProvider } from 'react-admin';
-import apiClient from '../lib/api/apiClient';
+import apiClient from '../lib/api/apiClient.js';
 
 /**
  * Custom data provider with enhanced functionality for Basketful

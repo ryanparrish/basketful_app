@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import ReCAPTCHA from 'react-google-recaptcha';
-import apiClient from '../lib/api/apiClient';
+import apiClient from '../lib/api/apiClient.js';
 
 interface ProgramConfig {
   recaptcha_site_key?: string;
