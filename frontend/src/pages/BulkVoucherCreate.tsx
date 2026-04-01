@@ -13,6 +13,7 @@ import {
   useGetList,
   Loading,
 } from 'react-admin';
+import apiClient from '../lib/api/apiClient';
 import {
   Card,
   CardContent,
@@ -106,20 +107,11 @@ export const BulkVoucherCreate = () => {
   const loadProgramParticipants = async (programId: number) => {
     setLoadingParticipants(true);
     try {
-      const response = await fetch(
-        `/api/v1/vouchers/bulk_create/preview/?program_id=${programId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
+      const response = await apiClient.get(
+        `/vouchers/bulk_create/preview/?program_id=${programId}`
       );
       
-      if (!response.ok) {
-        throw new Error('Failed to load participants');
-      }
-      
-      const data: PreviewResponse = await response.json();
+      const data: PreviewResponse = response.data;
       setProgramParticipants(data.participants);
       
       // Pre-select all participants with accounts by default

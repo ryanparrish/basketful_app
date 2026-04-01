@@ -1,226 +1,181 @@
 /**
  * Basketful Admin - Auth Provider
  * 
- * Handles JWT authentication with the Django REST Framework backend.
+ * Handles httpOnly cookie-based JWT authentication with the Django REST Framework backend.
+ * Security features:
+ * - Tokens stored in httpOnly cookies (XSS protection)
+ * - No token storage in localStorage
+ * - CSRF protection via X-CSRFToken header
+ * - Automatic token refresh on 401
  */
 import type { AuthProvider } from 'react-admin';
+import apiClient from '../lib/api/apiClient';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const USER_STORAGE_KEY = 'basketful_admin_user';
 
-interface TokenResponse {
-  access: string;
-  refresh: string;
+interface LoginCredentials {
+  username: string;
+  password: string;
+  recaptcha_token: string;
 }
 
-interface DecodedToken {
-  exp: number;
-  user_id: number;
+interface UserData {
+  id: number;
   username: string;
-  email?: string;
-  is_staff?: boolean;
-  is_superuser?: boolean;
+  email: string;
+  is_staff: boolean;
+  is_superuser: boolean;
   groups?: string[];
   group_ids?: number[];
 }
 
-// Helper to decode JWT payload
-const decodeToken = (token: string): DecodedToken | null => {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    return JSON.parse(jsonPayload);
-  } catch {
-    return null;
-  }
-};
-
-// Check if token is expired
-const isTokenExpired = (token: string): boolean => {
-  const decoded = decodeToken(token);
-  if (!decoded) return true;
-  return decoded.exp * 1000 < Date.now();
-};
-
-// Refresh the access token using refresh token
-const refreshAccessToken = async (): Promise<string | null> => {
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken || isTokenExpired(refreshToken)) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`${API_URL}/token/refresh/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: refreshToken }),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    localStorage.setItem('accessToken', data.access);
-    return data.access;
-  } catch {
-    return null;
-  }
-};
+interface UserResponse {
+  user: UserData;
+  message?: string;
+}
 
 export const authProvider: AuthProvider = {
-  login: async ({ username, password }) => {
-    const response = await fetch(`${API_URL}/token/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+  login: async ({ username, password, recaptcha_token }: LoginCredentials) => {
+    try {
+      const response = await apiClient.post<UserResponse>('/auth/login/', {
+        username,
+        password,
+        recaptcha_token,
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Invalid credentials');
+      const { user } = response.data;
+
+      // Store only user metadata (NOT tokens - they're in httpOnly cookies)
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+
+      return Promise.resolve();
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Pass through the error for the login page to handle
+      return Promise.reject(error);
     }
-
-    const data: TokenResponse = await response.json();
-    localStorage.setItem('accessToken', data.access);
-    localStorage.setItem('refreshToken', data.refresh);
   },
 
-  logout: () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  logout: async () => {
+    try {
+      await apiClient.post('/auth/logout/');
+    } catch (error) {
+      // Ignore errors on logout - cookies will be cleared anyway
+      console.error('Logout error:', error);
+    }
+
+    // Clear cached user data
+    localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem('userPermissions');
     localStorage.removeItem('permissionsCacheTime');
+
     return Promise.resolve();
   },
 
   checkAuth: async () => {
-    const accessToken = localStorage.getItem('accessToken');
-    
-    if (!accessToken) {
-      throw new Error('No access token');
+    const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+
+    if (!storedUser) {
+      return Promise.reject();
     }
 
-    // If access token is expired, try to refresh
-    if (isTokenExpired(accessToken)) {
-      const newToken = await refreshAccessToken();
-      if (!newToken) {
-        throw new Error('Session expired');
+    // Verify session by calling /auth/me/
+    try {
+      const response = await apiClient.get<UserResponse>('/auth/me/');
+
+      // Update cached user data
+      if (response.data.user) {
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.data.user));
       }
+
+      return Promise.resolve();
+    } catch (error) {
+      // Session expired or invalid
+      localStorage.removeItem(USER_STORAGE_KEY);
+      return Promise.reject();
     }
   },
 
   checkError: (error) => {
     const status = error?.status || error?.response?.status;
     if (status === 401 || status === 403) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      localStorage.removeItem(USER_STORAGE_KEY);
+      localStorage.removeItem('userPermissions');
+      localStorage.removeItem('permissionsCacheTime');
       return Promise.reject();
     }
     return Promise.resolve();
   },
 
   getIdentity: async () => {
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken) {
-      throw new Error('No access token');
+    const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+    
+    if (!storedUser) {
+      throw new Error('No user data');
     }
 
-    const decoded = decodeToken(accessToken);
-    if (!decoded) {
-      throw new Error('Invalid token');
-    }
+    try {
+      const user: UserData = JSON.parse(storedUser);
 
-    return {
-      id: decoded.user_id,
-      fullName: decoded.username,
-      email: decoded.email,
-    };
+      return {
+        id: user.id,
+        fullName: user.username,
+        email: user.email,
+      };
+    } catch {
+      throw new Error('Invalid user data');
+    }
   },
 
   getPermissions: async () => {
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken) {
-      return null;
-    }
-
-    const decoded = decodeToken(accessToken);
-    if (!decoded) {
-      return null;
-    }
-
-    // Check if we have cached permissions (less than 30 minutes old)
-    const cachedPermissions = localStorage.getItem('userPermissions');
-    const cacheTimestamp = localStorage.getItem('permissionsCacheTime');
+    const storedUser = localStorage.getItem(USER_STORAGE_KEY);
     
-    if (cachedPermissions && cacheTimestamp) {
-      const cacheAge = Date.now() - parseInt(cacheTimestamp);
-      const THIRTY_MINUTES = 30 * 60 * 1000;
-      
-      if (cacheAge < THIRTY_MINUTES) {
-        return JSON.parse(cachedPermissions);
-      }
+    if (!storedUser) {
+      return null;
     }
 
-    // Fetch fresh permissions from API
     try {
-      const response = await fetch(`${API_URL}/users/me/permissions/`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const user: UserData = JSON.parse(storedUser);
 
-      if (!response.ok) {
-        console.error('Failed to fetch permissions');
-        // Fall back to token data
+      // Check if we have cached permissions (less than 30 minutes old)
+      const cachedPermissions = localStorage.getItem('userPermissions');
+      const cacheTimestamp = localStorage.getItem('permissionsCacheTime');
+
+      if (cachedPermissions && cacheTimestamp) {
+        const cacheAge = Date.now() - parseInt(cacheTimestamp);
+        const THIRTY_MINUTES = 30 * 60 * 1000;
+
+        if (cacheAge < THIRTY_MINUTES) {
+          return JSON.parse(cachedPermissions);
+        }
+      }
+
+      // Fetch fresh permissions from API
+      try {
+        const response = await apiClient.get('/users/me/permissions/');
+        const permissions = response.data;
+
+        // Cache the permissions
+        localStorage.setItem('userPermissions', JSON.stringify(permissions));
+        localStorage.setItem('permissionsCacheTime', Date.now().toString());
+
+        return permissions;
+      } catch (error) {
+        console.error('Error fetching permissions:', error);
+        // Fall back to user data
         return {
-          groups: decoded.groups || [],
-          group_ids: decoded.group_ids || [],
-          is_staff: decoded.is_staff || false,
-          is_superuser: decoded.is_superuser || false,
+          groups: user.groups || [],
+          group_ids: user.group_ids || [],
+          is_staff: user.is_staff || false,
+          is_superuser: user.is_superuser || false,
           permissions: [],
         };
       }
-
-      const permissions = await response.json();
-      
-      // Cache the permissions
-      localStorage.setItem('userPermissions', JSON.stringify(permissions));
-      localStorage.setItem('permissionsCacheTime', Date.now().toString());
-      
-      return permissions;
-    } catch (error) {
-      console.error('Error fetching permissions:', error);
-      // Fall back to token data
-      return {
-        groups: decoded.groups || [],
-        group_ids: decoded.group_ids || [],
-        is_staff: decoded.is_staff || false,
-        is_superuser: decoded.is_superuser || false,
-        permissions: [],
-      };
+    } catch {
+      return null;
     }
   },
-};
-
-// Helper function to get current access token (with auto-refresh)
-export const getAccessToken = async (): Promise<string | null> => {
-  let accessToken = localStorage.getItem('accessToken');
-  
-  if (!accessToken) {
-    return null;
-  }
-
-  if (isTokenExpired(accessToken)) {
-    accessToken = await refreshAccessToken();
-  }
-
-  return accessToken;
 };
 
 export default authProvider;

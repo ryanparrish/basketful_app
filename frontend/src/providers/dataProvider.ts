@@ -1,45 +1,16 @@
 /**
  * Basketful Admin - Data Provider
  * 
- * Custom data provider that wraps ra-data-simple-rest with JWT authentication
- * and handles the Content-Range header for pagination.
+ * Custom data provider using Axios with cookie-based JWT authentication
+ * and CSRF protection. No manual token management needed.
  */
 import type { DataProvider } from 'react-admin';
-import { fetchUtils } from 'react-admin';
-import simpleRestProvider from 'ra-data-simple-rest';
-import { getAccessToken } from './authProvider';
-import { API_BASE as API_URL } from '../utils/apiUrl';
-
-/**
- * Custom HTTP client that adds JWT token to all requests
- */
-const httpClient = async (url: string, options: fetchUtils.Options = {}) => {
-  const token = await getAccessToken();
-  
-  const headers = new Headers(options.headers);
-  
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  return fetchUtils.fetchJson(url, { ...options, headers });
-};
-
-/**
- * Base data provider using simple-rest
- */
-const baseDataProvider = simpleRestProvider(API_URL, httpClient);
+import apiClient from '../lib/api/apiClient';
 
 /**
  * Custom data provider with enhanced functionality for Basketful
  */
 export const dataProvider: DataProvider = {
-  ...baseDataProvider,
-
   // Override getList to handle DRF pagination format
   getList: async (resource, params) => {
     const { page = 1, perPage = 25 } = params.pagination || {};
@@ -67,12 +38,13 @@ export const dataProvider: DataProvider = {
     }
 
     const queryString = new URLSearchParams(query).toString();
-    const url = `${API_URL}/${resource}/?${queryString}`;
+    const url = `/${resource}/?${queryString}`;
 
-    const { json, headers } = await httpClient(url);
+    const response = await apiClient.get(url);
+    const json = response.data;
 
     // Handle Content-Range header from DRF pagination
-    const contentRange = headers.get('Content-Range');
+    const contentRange = response.headers['content-range'];
     let total = json.count;
     
     if (contentRange) {
@@ -90,15 +62,15 @@ export const dataProvider: DataProvider = {
 
   // Override getOne to handle DRF format
   getOne: async (resource, params) => {
-    const url = `${API_URL}/${resource}/${params.id}/`;
-    const { json } = await httpClient(url);
-    return { data: json };
+    const url = `/${resource}/${params.id}/`;
+    const response = await apiClient.get(url);
+    return { data: response.data };
   },
 
   // Override getMany to fetch multiple records by IDs
   getMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
-      httpClient(`${API_URL}/${resource}/${id}/`).then(({ json }) => json)
+      apiClient.get(`/${resource}/${id}/`).then((response) => response.data)
     );
     const results = await Promise.all(queries);
     return { data: results };
@@ -127,11 +99,12 @@ export const dataProvider: DataProvider = {
     }
 
     const queryString = new URLSearchParams(query).toString();
-    const url = `${API_URL}/${resource}/?${queryString}`;
+    const url = `/${resource}/?${queryString}`;
 
-    const { json, headers } = await httpClient(url);
+    const response = await apiClient.get(url);
+    const json = response.data;
 
-    const contentRange = headers.get('Content-Range');
+    const contentRange = response.headers['content-range'];
     let total = json.count;
     
     if (contentRange) {
@@ -149,32 +122,23 @@ export const dataProvider: DataProvider = {
 
   // Override create
   create: async (resource, params) => {
-    const url = `${API_URL}/${resource}/`;
-    const { json } = await httpClient(url, {
-      method: 'POST',
-      body: JSON.stringify(params.data),
-    });
-    return { data: json };
+    const url = `/${resource}/`;
+    const response = await apiClient.post(url, params.data);
+    return { data: response.data };
   },
 
   // Override update — use PATCH so partial payloads (e.g. drag-to-reorder
   // sending only sort_order) are accepted by DRF without requiring every field.
   update: async (resource, params) => {
-    const url = `${API_URL}/${resource}/${params.id}/`;
-    const { json } = await httpClient(url, {
-      method: 'PATCH',
-      body: JSON.stringify(params.data),
-    });
-    return { data: json };
+    const url = `/${resource}/${params.id}/`;
+    const response = await apiClient.patch(url, params.data);
+    return { data: response.data };
   },
 
   // Override updateMany — also PATCH for consistency
   updateMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
-      httpClient(`${API_URL}/${resource}/${id}/`, {
-        method: 'PATCH',
-        body: JSON.stringify(params.data),
-      }).then(({ json }) => json.id)
+      apiClient.patch(`/${resource}/${id}/`, params.data).then((response) => response.data.id)
     );
     const results = await Promise.all(queries);
     return { data: results };
@@ -182,17 +146,15 @@ export const dataProvider: DataProvider = {
 
   // Override delete
   delete: async (resource, params) => {
-    const url = `${API_URL}/${resource}/${params.id}/`;
-    const { json } = await httpClient(url, { method: 'DELETE' });
-    return { data: json || { id: params.id } };
+    const url = `/${resource}/${params.id}/`;
+    const response = await apiClient.delete(url);
+    return { data: response.data || { id: params.id } };
   },
 
   // Override deleteMany
   deleteMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
-      httpClient(`${API_URL}/${resource}/${id}/`, {
-        method: 'DELETE',
-      }).then(() => id)
+      apiClient.delete(`/${resource}/${id}/`).then(() => id)
     );
     const results = await Promise.all(queries);
     return { data: results };

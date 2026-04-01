@@ -1,10 +1,11 @@
 /**
  * Basketful Admin - Main Application
  */
-import type { ReactNode } from 'react';
-import { Admin, Resource, CustomRoutes, Menu, Layout } from 'react-admin';
+import { useEffect, type ReactNode } from 'react';
+import { Admin, Resource, CustomRoutes, Menu, Layout, useNotify } from 'react-admin';
 import { Route } from 'react-router-dom';
 import SettingsIcon from '@mui/icons-material/Settings';
+import { SESSION_EXPIRED_EVENT } from './lib/api/apiClient';
 
 // Providers
 import { authProvider, dataProvider } from './providers';
@@ -77,6 +78,7 @@ import CreateCombinedOrder from './pages/CreateCombinedOrder';
 import PrintPackingList from './pages/PrintPackingList';
 import PrintOrder from './pages/PrintOrder';
 import PrintCustomerList from './pages/PrintCustomerList';
+import LoginPage from './pages/Login';
 
 // Branding
 import { BrandingSettingsEdit, BrandingSettingsIcon } from './resources/brandingSettings';
@@ -121,9 +123,23 @@ const CustomMenu = () => (
   </Menu>
 );
 
-const CustomLayout = ({ children }: { children: ReactNode }) => (
-  <Layout menu={CustomMenu}>{children}</Layout>
-);
+const CustomLayout = ({ children }: { children: ReactNode }) => {
+  const notify = useNotify();
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      notify('Your session has expired. Please log in again.', { type: 'error' });
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, [notify]);
+
+  return <Layout menu={CustomMenu}>{children}</Layout>;
+};
 
 const App = () => (
   <Admin
@@ -132,6 +148,7 @@ const App = () => (
     dashboard={Dashboard}
     title="Basketful Admin"
     layout={CustomLayout}
+    loginPage={LoginPage}
   >
     {/* Core Resources */}
     <Resource
