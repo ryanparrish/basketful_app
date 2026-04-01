@@ -231,3 +231,4 @@ coverage/
 # Local CI / mutation testing artifacts
 .venv-ci/
 .mutmut-cache
+/.claude

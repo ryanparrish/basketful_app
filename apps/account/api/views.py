@@ -308,6 +308,59 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             parts.append(f'Skipped {skipped_no_email} (no email address).')
         return Response({'message': ' '.join(parts) or 'No participants selected.'})
 
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive this participant."""
+        from django.utils import timezone
+        participant = self.get_object()
+        if not participant.active:
+            return Response(
+                {'detail': 'Participant is already archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        participant.active = False
+        participant.archived_at = timezone.now()
+        participant.save(update_fields=['active', 'archived_at'])
+        serializer = self.get_serializer(participant)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def unarchive(self, request, pk=None):
+        """Unarchive this participant."""
+        participant = self.get_object()
+        if participant.active:
+            return Response(
+                {'detail': 'Participant is not archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        participant.active = True
+        participant.archived_at = None
+        participant.save(update_fields=['active', 'archived_at'])
+        serializer = self.get_serializer(participant)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='bulk-archive')
+    def bulk_archive(self, request):
+        """Archive multiple participants."""
+        from django.utils import timezone
+        ids = request.data.get('ids', [])
+        now = timezone.now()
+        updated = Participant.objects.filter(id__in=ids, active=True).update(
+            active=False,
+            archived_at=now
+        )
+        return Response({'message': f'Archived {updated} participant(s).'})
+
+    @action(detail=False, methods=['post'], url_path='bulk-unarchive')
+    def bulk_unarchive(self, request):
+        """Restore multiple participants."""
+        ids = request.data.get('ids', [])
+        updated = Participant.objects.filter(id__in=ids, active=False).update(
+            active=True,
+            archived_at=None
+        )
+        return Response({'message': f'Restored {updated} participant(s).'})
+
 
 class AccountBalanceViewSet(viewsets.ModelViewSet):
     """

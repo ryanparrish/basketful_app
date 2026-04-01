@@ -67,6 +67,10 @@ class Participant(BaseModel):
         null=True,
         help_text="Customer number format: C-XXX-D (e.g., C-BKM-7)"
     )
+    archived_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp when participant was archived"
+    )
 
     def balances(self):
         """
