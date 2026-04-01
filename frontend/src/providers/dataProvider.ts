@@ -70,7 +70,7 @@ export const dataProvider: DataProvider = {
   // Override getMany to fetch multiple records by IDs
   getMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
-      apiClient.get(`/${resource}/${id}/`).then((response) => response.data)
+      apiClient.get(`/${resource}/${id}/`).then((response: any) => response.data)
     );
     const results = await Promise.all(queries);
     return { data: results };
@@ -138,7 +138,7 @@ export const dataProvider: DataProvider = {
   // Override updateMany — also PATCH for consistency
   updateMany: async (resource, params) => {
     const queries = params.ids.map((id) =>
-      apiClient.patch(`/${resource}/${id}/`, params.data).then((response) => response.data.id)
+      apiClient.patch(`/${resource}/${id}/`, params.data).then((response: any) => response.data.id)
     );
     const results = await Promise.all(queries);
     return { data: results };
