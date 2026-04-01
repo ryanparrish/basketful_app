@@ -13,7 +13,7 @@ import {
   useGetList,
   Loading,
 } from 'react-admin';
-import apiClient from '../lib/api/apiClient.js';
+import apiClient from '../lib/api/apiClient.ts';
 import {
   Card,
   CardContent,

@@ -5,7 +5,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Admin, Resource, CustomRoutes, Menu, Layout, useNotify } from 'react-admin';
 import { Route } from 'react-router-dom';
 import SettingsIcon from '@mui/icons-material/Settings';
-import { SESSION_EXPIRED_EVENT } from './lib/api/apiClient.js';
+import { SESSION_EXPIRED_EVENT } from './lib/api/apiClient.ts';
 
 // Providers
 import { authProvider, dataProvider } from './providers';
