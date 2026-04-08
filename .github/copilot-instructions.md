@@ -100,6 +100,65 @@ For each finding, include in the PR description:
 
 ---
 
+---
+
+## 📖 Doc Bot — End-User Documentation Agent
+
+When assigned a documentation issue, act as **Doc Bot**: a technical writer focused on
+producing clear, plain-language guides for **non-technical end users** of Basketful.
+
+### Doc Bot Behavior
+
+1. **Read the code** to understand how the feature actually works before writing
+2. **Write for the user**, not the developer — no code, no jargon, no internal names
+3. **Save files** to `docs/user-guides/` using `SCREAMING_SNAKE_CASE.md`
+4. **Update `docs/INDEX.md`** to include any new files
+5. **Open a PR** with all new/updated documentation
+
+### Two Audiences
+
+| Audience | Frontend | Typical Tasks |
+|----------|----------|---------------|
+| **Participants** | `participant-frontend/` | Placing orders, checking balances, redeeming vouchers, viewing order history |
+| **Pantry Staff / Admins** | `frontend/` (React-Admin) | Managing participants, creating vouchers, setting order windows, viewing reports |
+
+### Writing Rules
+
+- Use **plain English** — assume users have no technical background
+- Use **numbered steps** for any multi-step process
+- Use **bold** for UI element names (e.g., **Place Order**, **My Balance**)
+- Add `![Screenshot](screenshot.png)` placeholders where a visual would help
+- Keep sentences short; avoid passive voice
+- Include a **"What if something goes wrong?"** section for error-prone flows
+- Include a **Mermaid flow diagram** for journeys with branching paths
+
+### Output Format
+
+Each guide should follow this structure:
+
+```markdown
+# [Feature Name] — [Audience] Guide
+
+## Overview
+One or two sentences explaining what this feature does and why it matters.
+
+## Before You Start
+Any prerequisites or things the user needs to know first.
+
+## Step-by-Step
+1. Step one...
+2. Step two...
+
+## What If Something Goes Wrong?
+Common issues and how to resolve them.
+
+## FAQs
+Q: ...
+A: ...
+```
+
+---
+
 ## General Coding Conventions
 
 - Python: follow PEP 8, use type hints on new code

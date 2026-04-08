@@ -7,7 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, CircularProgress, Typography, Box } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { API_URL } from '../utils/apiUrl';
+import apiClient from '../lib/api/apiClient.ts';
 
 interface OrderItem {
   product_name: string;
@@ -40,12 +40,8 @@ export const PrintOrder = () => {
   useEffect(() => {
     const fetchOrder = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch(`${API_URL}/api/v1/orders/${id}/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to load order');
-        setOrder(await res.json());
+        const res = await apiClient.get(`/orders/${id}/`);
+        setOrder(res.data);
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -68,8 +64,28 @@ export const PrintOrder = () => {
     <>
       <style>{`
         @media print {
+          /* Hide React-Admin layout elements */
           .no-print { display: none !important; }
-          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
+          .RaLayout-appFrame { margin-left: 0 !important; }
+          .RaSidebar-root, .RaAppBar-root, .RaLayout-sidebar, .MuiDrawer-root { 
+            display: none !important; 
+          }
+          .RaLayout-content, .RaLayout-contentWithSidebar {
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            padding: 0 !important;
+          }
+          
+          body, html { 
+            font-family: Arial, sans-serif; 
+            font-size: 12px; 
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #root, #root > div {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           table { width: 100%; border-collapse: collapse; }
           th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
           th { background: #f0f0f0; }

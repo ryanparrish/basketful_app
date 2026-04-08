@@ -1,0 +1,128 @@
+name: "📚 Doc Bot End-User Documentation"
+description: "Trigger Doc Bot to create or update end-user facing documentation for Basketful."
+title: "[DOC BOT] End-User Docs — "
+labels: ["documentation", "doc-bot", "end-user"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🤖 Doc Bot — End-User Documentation Agent
+        Assign this issue to `@copilot` to generate or update **end-user facing documentation**.
+
+        Doc Bot will read the current codebase, understand the feature, and write clear,
+        plain-language guides aimed at the people who actually use Basketful — **pantry staff
+        (admin UI)** and **participants (ordering UI)** — not developers.
+
+        > **Writing style:** Plain English, no code, step-by-step where applicable.
+        > Use screenshots placeholders (`![Screenshot](screenshot.png)`) where visuals would help.
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Target Audience
+      description: Who is this documentation written for?
+      options:
+        - "Participants — people placing food orders (participant-frontend)"
+        - "Pantry Staff / Admins — people managing the pantry (admin frontend)"
+        - "Both audiences (create separate sections)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: Task Type
+      description: What should Doc Bot produce?
+      options:
+        - "Write a new how-to guide for a feature"
+        - "Write a full user manual section"
+        - "Write a FAQ for a feature"
+        - "Update an existing user guide to reflect recent changes"
+        - "Write a quick-start / onboarding guide"
+        - "Write step-by-step walkthrough with screenshot placeholders"
+        - "Full end-user documentation pass (audit + write missing guides)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Feature to Document
+      description: Which Basketful feature should be documented?
+      options:
+        - "Placing a food order (participant)"
+        - "Viewing order history (participant)"
+        - "Account login & password (participant)"
+        - "Shopping cart & balances (participant)"
+        - "Order windows — when ordering is open/closed (participant)"
+        - "Voucher redemption (participant)"
+        - "Managing participants (staff)"
+        - "Creating & managing vouchers (staff)"
+        - "Managing products & categories (staff)"
+        - "Viewing order history & reports (staff)"
+        - "Managing order windows (staff)"
+        - "Go Fresh budget management (staff)"
+        - "Email templates & notifications (staff)"
+        - "Program pause & resume (staff)"
+        - "User accounts & permissions (staff)"
+        - "Custom feature (describe below)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: custom_feature
+    attributes:
+      label: Custom Feature or Specific Scenario
+      description: Describe the feature or workflow if not listed above.
+      placeholder: |
+        e.g. "How a participant redeems a hygiene voucher at checkout"
+        e.g. "How staff bulk-import participants from a CSV"
+
+  - type: checkboxes
+    id: doc_format
+    attributes:
+      label: Output Format
+      description: What format(s) should the documentation be in?
+      options:
+        - label: "Markdown guide in `docs/user-guides/`"
+        - label: "Step-by-step numbered walkthrough"
+        - label: "FAQ (Q&A format)"
+        - label: "Quick reference card / cheat sheet"
+        - label: "Onboarding checklist"
+        - label: "Include screenshot placeholders"
+        - label: "Include Mermaid flow diagram of the user journey"
+
+  - type: dropdown
+    id: tone
+    attributes:
+      label: Writing Tone
+      description: How should the documentation be written?
+      options:
+        - "Friendly & simple — assume non-technical users"
+        - "Neutral & professional"
+        - "Concise — bullet points and short sentences"
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: known_pain_points
+    attributes:
+      label: Known User Pain Points or Confusion
+      description: |
+        Describe any common questions, mistakes, or confusion users have with this feature.
+        Doc Bot will address these directly in the documentation.
+      placeholder: |
+        e.g. "Participants often don't understand why their balance is split into categories"
+        e.g. "Staff aren't sure how to re-open an order window after closing it early"
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other context, recent changes, or specific requirements.
+      placeholder: |
+        e.g. "This feature was just added in v2.1 — there are no existing docs"
+        e.g. "The order window feature changed significantly last sprint"
