@@ -31,6 +31,13 @@ class SecurityHeadersMiddleware:
         
         # Content-Security-Policy
         # Allow self, inline styles (needed for MUI), and Google reCAPTCHA
+        if settings.ENVIRONMENT == 'prod':
+            # Production: restrict connect-src to self only (no localhost)
+            connect_src = "'self' https://www.google.com"
+        else:
+            # Development: also allow localhost for hot-reload / dev servers
+            connect_src = "'self' http://localhost:* ws://localhost:* https://www.google.com"
+
         csp_directives = [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com",
@@ -38,7 +45,7 @@ class SecurityHeadersMiddleware:
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
             "frame-src 'self' https://www.google.com",
-            "connect-src 'self' http://localhost:* https://www.google.com",
+            f"connect-src {connect_src}",
         ]
         response['Content-Security-Policy'] = '; '.join(csp_directives)
         

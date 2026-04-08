@@ -125,6 +125,8 @@ class ParticipantViewSet(viewsets.ModelViewSet):
     ViewSet for managing Participants.
     
     Provides full CRUD operations for program participants.
+    Staff users can view all participants; non-staff users can only access
+    their own participant profile.
     """
     queryset = Participant.objects.all().select_related(
         'program', 'assigned_coach', 'user'
@@ -135,6 +137,13 @@ class ParticipantViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'email', 'customer_number']
     ordering_fields = ['name', 'created_at', 'customer_number']
     ordering = ['name']
+
+    def get_queryset(self):
+        """Restrict non-staff users to their own participant profile."""
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -367,6 +376,8 @@ class AccountBalanceViewSet(viewsets.ModelViewSet):
     ViewSet for AccountBalance.
     
     Provides access to participant account balances with computed properties.
+    Staff users can view all balances; non-staff users can only access their
+    own balance.
     """
     queryset = AccountBalance.objects.all().select_related('participant')
     serializer_class = AccountBalanceSerializer
@@ -376,6 +387,13 @@ class AccountBalanceViewSet(viewsets.ModelViewSet):
     search_fields = ['participant__name', 'participant__customer_number']
     ordering_fields = ['last_updated', 'base_balance']
     ordering = ['-last_updated']
+
+    def get_queryset(self):
+        """Restrict non-staff users to their own account balance."""
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(participant__user=self.request.user)
+        return qs
 
 
 class GoFreshSettingsViewSet(viewsets.ModelViewSet):
