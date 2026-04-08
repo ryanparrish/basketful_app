@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button, CircularProgress, Typography, Box, Checkbox, FormControlLabel } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { API_URL } from '../utils/apiUrl';
+import apiClient from '../lib/api/apiClient.ts';
 
 interface Participant {
   id: number;
@@ -39,26 +39,17 @@ export const PrintCustomerList = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const headers = { Authorization: `Bearer ${token}` };
-
     const fetchAll = async () => {
       try {
-        const [brandingRes, ...participantRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/settings/branding-settings/current/`, { headers }),
-          // Fetch each page of participants matching the IDs.
-          // Using filter param ids=1,2,3 — falls back to fetching all then filtering client-side.
-          fetch(
-            `${API_URL}/api/v1/participants/?id__in=${ids.join(',')}&page_size=500`,
-            { headers }
-          ),
+        const [brandingRes, participantRes] = await Promise.all([
+          apiClient.get('/settings/branding-settings/current/'),
+          apiClient.get(`/participants/?id__in=${ids.join(',')}&page_size=500`),
         ]);
 
-        const brandingData = brandingRes.ok ? await brandingRes.json() : null;
-        setBranding(brandingData);
+        setBranding(brandingRes.data ?? null);
 
-        const pData = await participantRes[0].json();
         // Support both paginated { results: [] } and plain array responses
+        const pData = participantRes.data;
         const all: Participant[] = Array.isArray(pData) ? pData : (pData.results ?? []);
         // Filter to only the requested IDs (in case the backend doesn't support id__in)
         const idSet = new Set(ids.map(Number));
@@ -133,15 +124,85 @@ export const PrintCustomerList = () => {
     <>
       <style>{`
         @media print {
+          /* Hide React-Admin layout elements */
           .no-print { display: none !important; }
-          body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
-          h1 { font-size: 16px; margin: 0 0 8px; }
-          h2 { font-size: 13px; margin: 16px 0 4px; }
-          table { width: 100%; border-collapse: collapse; page-break-inside: avoid; }
-          th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
-          th { background: #f0f0f0; }
-          .print-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-          .print-header img { max-height: 48px; }
+          .RaLayout-appFrame { margin-left: 0 !important; }
+          .RaSidebar-root, .RaAppBar-root, .RaLayout-sidebar, .MuiDrawer-root { 
+            display: none !important; 
+          }
+          .RaLayout-content, .RaLayout-contentWithSidebar {
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+            padding: 0 !important;
+          }
+          
+          /* Print-specific styles */
+          body, html { 
+            font-family: Arial, sans-serif; 
+            font-size: 11pt; 
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #000;
+          }
+          #root, #root > div {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          h1 { 
+            font-size: 18pt; 
+            font-weight: bold;
+            margin: 0 0 0.25in;
+            text-align: center;
+          }
+          h2 { 
+            font-size: 14pt; 
+            font-weight: bold;
+            margin: 0.2in 0 0.1in; 
+            border-bottom: 2px solid #333;
+            padding-bottom: 4px;
+          }
+          table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 0.15in;
+          }
+          th, td { 
+            border: 1px solid #666; 
+            padding: 6px 10px; 
+            text-align: left; 
+            font-size: 10pt;
+          }
+          th { 
+            background: #e8e8e8; 
+            font-weight: bold;
+            border: 1px solid #333;
+          }
+          .print-header { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            gap: 16px; 
+            margin-bottom: 0.3in;
+            border-bottom: 3px solid #333;
+            padding-bottom: 0.15in;
+          }
+          .print-header img { 
+            max-height: 60px; 
+          }
+          .print-footer {
+            margin-top: 0.3in;
+            padding-top: 0.1in;
+            border-top: 1px solid #666;
+            font-size: 9pt;
+            text-align: center;
+            color: #666;
+          }
+          .print-content-wrapper {
+            padding: 0.5in !important;
+          }
+          tbody tr:nth-child(odd) {
+            background-color: #f9f9f9;
+          }
         }
         @media screen {
           .print-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -178,13 +239,13 @@ export const PrintCustomerList = () => {
         />
       </Box>
 
-      <Box sx={{ p: 3 }}>
+      <Box className="print-content-wrapper" sx={{ p: 3 }}>
         {/* Branding header */}
         <div className="print-header">
           {branding?.logo && (
             <img src={branding.logo} alt={branding.organization_name ?? 'Logo'} />
           )}
-          <Typography variant="h5" component="h1">
+          <Typography variant="h4" component="h1">
             {branding?.organization_name ?? 'Customer List'}
           </Typography>
         </div>
@@ -198,7 +259,7 @@ export const PrintCustomerList = () => {
           <Typography color="text.secondary">No participants selected.</Typography>
         ) : (
           programNames.map((program) => (
-            <Box key={program} sx={{ mb: 3 }}>
+            <Box key={program} sx={{ mb: 4 }}>
               <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
                 {program}
               </Typography>
@@ -230,9 +291,11 @@ export const PrintCustomerList = () => {
           ))
         )}
 
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-          Printed: {new Date().toLocaleString()} · Total: {selected.size} customer(s)
-        </Typography>
+        <div className="print-footer">
+          <Typography variant="body2" component="div">
+            Printed: {new Date().toLocaleString()} · Total: {selected.size} customer(s)
+          </Typography>
+        </div>
       </Box>
     </>
   );

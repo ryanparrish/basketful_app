@@ -1,0 +1,95 @@
+name: "🔐 Pen Bot Security Review"
+description: "Trigger Pen Bot to scan the codebase for security vulnerabilities and produce a fix PR."
+title: "[PEN BOT] Security Review — "
+labels: ["security", "pen-bot"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🤖 Pen Bot Security Review
+        Assign this issue to `@copilot` to trigger an automated penetration testing and secure code review.
+        Pen Bot will scan the specified scope, report all findings by severity, and open a PR with fixes.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Review Scope
+      description: What area of the codebase should Pen Bot focus on?
+      options:
+        - "Full codebase"
+        - "Backend only (apps/, core/)"
+        - "Frontend only (frontend/, participant-frontend/)"
+        - "Authentication & authorization"
+        - "API endpoints"
+        - "Dependencies (requirements.txt, package.json)"
+        - "Infrastructure & config (Docker, settings)"
+        - "Custom scope (describe below)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: min_severity
+    attributes:
+      label: Minimum Severity to Report
+      description: Only report findings at or above this severity level.
+      options:
+        - "All findings (INFO and above)"
+        - "LOW and above"
+        - "MEDIUM and above"
+        - "HIGH and above"
+        - "CRITICAL only"
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: custom_scope
+    attributes:
+      label: Custom Scope or Specific Concern
+      description: |
+        Describe any specific files, endpoints, or behaviors you want Pen Bot to focus on.
+        Leave blank if using a predefined scope above.
+      placeholder: |
+        e.g. "Check if participants can access other participants' order history via the /orders/ endpoint"
+        e.g. "Review the voucher redemption flow for race conditions"
+
+  - type: checkboxes
+    id: vulnerability_categories
+    attributes:
+      label: Vulnerability Categories to Include
+      description: Check all that apply (leave all unchecked to run the full checklist).
+      options:
+        - label: "Broken Access Control / IDOR"
+        - label: "Authentication & JWT security"
+        - label: "CSRF / Cookie security"
+        - label: "Injection (SQL, command, template)"
+        - label: "Sensitive data exposure / logging"
+        - label: "XSS (frontend)"
+        - label: "Dependency vulnerabilities (CVE scan)"
+        - label: "Security headers & HTTPS"
+        - label: "Rate limiting & brute force"
+        - label: "Mass assignment / insecure deserialization"
+
+  - type: dropdown
+    id: fix_pr
+    attributes:
+      label: Open a Fix PR?
+      description: Should Pen Bot automatically open a PR with patches for findings?
+      options:
+        - "Yes — open a PR with fixes for all HIGH and CRITICAL findings"
+        - "Yes — open a PR with fixes for ALL findings"
+        - "No — report only, do not commit changes"
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other context, recent changes, or deployment details relevant to the review.
+      placeholder: |
+        e.g. "We just added a new /api/v1/vouchers/redeem/ endpoint"
+        e.g. "This is a pre-deployment review before the v2.1 release"
