@@ -10,7 +10,6 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
-from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 # Django auth
@@ -105,11 +104,11 @@ def group_products_by_category(products, all_products_for_cart=None):
                 "name": product.name,
                 "price": float(product.price)
             }
-        all_products_json = mark_safe(json.dumps(cart_products))
+        all_products_json = json.dumps(cart_products)
     else:
-        all_products_json = mark_safe(json.dumps(display_products))
+        all_products_json = json.dumps(display_products)
     
-    products_json = mark_safe(json.dumps(display_products))
+    products_json = json.dumps(display_products)
     return products_by_category, products_json, all_products_json
 
 

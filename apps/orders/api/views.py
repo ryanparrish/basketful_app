@@ -261,6 +261,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {'error': f'AccountBalance not found for participant {participant_id}'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+        # Enforce ownership: non-staff users may only validate for their own participant
+        if not request.user.is_staff:
+            if participant.user_id != request.user.id:
+                return Response(
+                    {'error': 'You do not have permission to validate a cart for this participant.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         # Get program settings for grace allowance
         program_settings = ProgramSettings.get_settings()

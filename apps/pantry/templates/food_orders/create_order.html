@@ -260,10 +260,13 @@
 </div>
 
 <!-- Embed product data -->
+{{ products_json|json_script:"products-data" }}
+{{ all_products_json|json_script:"all-products-data" }}
+{{ session_cart|json_script:"session-cart-data" }}
 <script>
-  const products = JSON.parse("{{ products_json|escapejs }}");
-  const allProducts = JSON.parse("{{ all_products_json|escapejs }}");
-  const sessionCart = JSON.parse("{{ session_cart|escapejs }}");
+  const products = JSON.parse(document.getElementById('products-data').textContent);
+  const allProducts = JSON.parse(document.getElementById('all-products-data').textContent);
+  const sessionCart = JSON.parse(document.getElementById('session-cart-data').textContent);
 </script>
 
 <!-- Cart + Filter JS -->

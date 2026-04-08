@@ -197,6 +197,7 @@ class CookieTokenRefreshView(APIView):
     - Sets new refresh_token cookie (token rotation)
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
     
     def post(self, request):
         jwt_settings = settings.SIMPLE_JWT
