@@ -8,6 +8,9 @@ This directory contains comprehensive documentation for the Basketful food pantr
 
 ## 🗂️ Documentation Structure
 
+### User Guides
+- **[user-guides/ADDING_INDIVIDUAL_VOUCHER.md](user-guides/ADDING_INDIVIDUAL_VOUCHER.md)** - Step-by-step guide for staff: creating and applying a single voucher
+
 ### Architecture & Setup
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture, balance calculations, ER diagrams
 - **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Folder layout and key files
@@ -45,6 +48,7 @@ This directory contains comprehensive documentation for the Basketful food pantr
 
 | Task | Documentation |
 |------|--------------|
+| Adding an individual voucher | [user-guides/ADDING_INDIVIDUAL_VOUCHER.md](user-guides/ADDING_INDIVIDUAL_VOUCHER.md) |
 | Creating bulk vouchers | [BULK_VOUCHER_CREATION.md](BULK_VOUCHER_CREATION.md) |
 | Setting order windows | [ORDER_WINDOW_FEATURE.md](ORDER_WINDOW_FEATURE.md) |
 | Combining orders | [COMBINED_ORDER_FEATURE.md](COMBINED_ORDER_FEATURE.md) |
