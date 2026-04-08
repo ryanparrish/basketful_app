@@ -124,7 +124,15 @@ export const dataProvider: DataProvider = {
   create: async (resource, params) => {
     const url = `/${resource}/`;
     const response = await apiClient.post(url, params.data);
-    return { data: response.data };
+    const data = response.data;
+    
+    // Ensure the response has an id field for React-Admin
+    if (!data.id) {
+      console.error('Create response missing id:', data);
+      throw new Error(`Invalid dataProvider response for create: missing id. Response: ${JSON.stringify(data)}`);
+    }
+    
+    return { data };
   },
 
   // Override update — use PATCH so partial payloads (e.g. drag-to-reorder

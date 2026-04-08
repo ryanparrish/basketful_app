@@ -69,6 +69,20 @@ class VoucherViewSet(viewsets.ModelViewSet):
             return BulkVoucherCreateSerializer
         return VoucherSerializer
 
+    def create(self, request, *args, **kwargs):
+        """Create a voucher and return the full object with id."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        voucher = serializer.save()
+        # Use VoucherSerializer for the response to include all fields including id
+        response_serializer = VoucherSerializer(voucher)
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+
     @action(detail=False, methods=['get'])
     def active_vouchers(self, request):
         """Return only active vouchers."""
