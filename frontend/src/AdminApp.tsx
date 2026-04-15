@@ -73,6 +73,7 @@ import {
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
 import BulkVoucherCreate from './pages/BulkVoucherCreate';
+import BulkVoucherStatusUpdate from './pages/BulkVoucherStatusUpdate';
 import Settings from './pages/Settings';
 import CreateCombinedOrder from './pages/CreateCombinedOrder';
 import PrintPackingList from './pages/PrintPackingList';
@@ -301,6 +302,7 @@ const App = () => (
     {/* Custom Routes */}
     <CustomRoutes>
       <Route path="/vouchers/bulk-create" element={<BulkVoucherCreate />} />
+      <Route path="/vouchers/bulk-status-update" element={<BulkVoucherStatusUpdate />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/combined-orders/create-wizard" element={<CreateCombinedOrder />} />
       <Route path="/packing-lists/:id/print" element={<PrintPackingList />} />

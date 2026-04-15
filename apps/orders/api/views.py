@@ -2,7 +2,7 @@
 ViewSets for the Orders app.
 """
 from decimal import Decimal
-from datetime import timedelta
+from datetime import timedelta, date
 from django.utils import timezone
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.permissions import IsAuthenticated
@@ -467,16 +467,29 @@ class OrderViewSet(viewsets.ModelViewSet):
     )
     def product_consumption(self, request):
         """
-        Get product consumption stats for the current calendar week (Mon–Sun).
+        Get product consumption stats for a date range.
 
         Query params:
         - statuses: Comma-separated order statuses (default: pending,confirmed,packing,completed)
         - category: Category ID to filter (optional)
         - limit: Max products to return (default: 20, max: 100)
+        - date_from: ISO date string YYYY-MM-DD (optional, defaults to start of current week)
+        - date_to: ISO date string YYYY-MM-DD (optional, defaults to end of current week)
         """
         today = timezone.now().date()
-        week_start = today - timedelta(days=today.weekday())  # Monday
-        week_end = week_start + timedelta(days=6)             # Sunday
+        default_week_start = today - timedelta(days=today.weekday())  # Monday
+        default_week_end = default_week_start + timedelta(days=6)     # Sunday
+
+        date_from_param = request.query_params.get('date_from')
+        date_to_param = request.query_params.get('date_to')
+        try:
+            week_start = date.fromisoformat(date_from_param) if date_from_param else default_week_start
+        except ValueError:
+            week_start = default_week_start
+        try:
+            week_end = date.fromisoformat(date_to_param) if date_to_param else default_week_end
+        except ValueError:
+            week_end = default_week_end
 
         default_statuses = ['pending', 'confirmed', 'packing', 'completed']
         statuses_param = request.query_params.get('statuses', '')

@@ -110,6 +110,41 @@ class BulkVoucherCreateSerializer(serializers.Serializer):
         return data
 
 
+class BulkVoucherStatusUpdateSerializer(serializers.Serializer):
+    """Serializer for bulk voucher status updates."""
+    ALLOWED_TRANSITIONS = {
+        'pending': ['applied', 'expired'],
+        'applied': ['expired'],
+    }
+
+    voucher_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="List of voucher IDs to update"
+    )
+    new_state = serializers.ChoiceField(
+        choices=['applied', 'expired'],
+        help_text="Target state for the selected vouchers"
+    )
+
+    def validate(self, data):
+        new_state = data['new_state']
+        invalid = []
+        for vid in data['voucher_ids']:
+            try:
+                v = Voucher.objects.get(pk=vid)
+                allowed = self.ALLOWED_TRANSITIONS.get(v.state, [])
+                if new_state not in allowed:
+                    invalid.append(
+                        f"Voucher {vid} cannot transition from '{v.state}' to '{new_state}'"
+                    )
+            except Voucher.DoesNotExist:
+                invalid.append(f"Voucher {vid} does not exist")
+        if invalid:
+            raise serializers.ValidationError(invalid)
+        return data
+
+
 class OrderVoucherSerializer(serializers.ModelSerializer):
     """Serializer for OrderVoucher model."""
     order_number = serializers.CharField(

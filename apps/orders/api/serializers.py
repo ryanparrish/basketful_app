@@ -214,12 +214,13 @@ class CombinedOrderSerializer(serializers.ModelSerializer):
     order_count = serializers.SerializerMethodField()
     orders = OrderListSerializer(many=True, read_only=True)
     packing_lists = serializers.SerializerMethodField()
+    total_price = serializers.SerializerMethodField()
 
     class Meta:
         model = CombinedOrder
         fields = [
             'id', 'name', 'program', 'program_name', 'orders', 'order_count',
-            'split_strategy', 'summarized_data', 'packing_lists',
+            'total_price', 'split_strategy', 'summarized_data', 'packing_lists',
             'is_parent', 'week', 'year', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -228,6 +229,9 @@ class CombinedOrderSerializer(serializers.ModelSerializer):
 
     def get_order_count(self, obj) -> int:
         return obj.orders.count()
+
+    def get_total_price(self, obj):
+        return sum(order.total_price() for order in obj.orders.all())
 
     def get_packing_lists(self, obj):
         return PackingListSerializer(
@@ -239,17 +243,26 @@ class CombinedOrderListSerializer(serializers.ModelSerializer):
     """Simplified serializer for CombinedOrder list views."""
     program_name = serializers.CharField(source='program.name', read_only=True)
     order_count = serializers.SerializerMethodField()
+    packing_list_count = serializers.SerializerMethodField()
+    total_price = serializers.SerializerMethodField()
 
     class Meta:
         model = CombinedOrder
         fields = [
             'id', 'name', 'program', 'program_name', 'order_count',
-            'split_strategy', 'week', 'year', 'created_at'
+            'packing_list_count', 'total_price', 'split_strategy',
+            'week', 'year', 'created_at'
         ]
         read_only_fields = ['id', 'week', 'year', 'created_at']
 
     def get_order_count(self, obj) -> int:
         return obj.orders.count()
+
+    def get_packing_list_count(self, obj) -> int:
+        return obj.packing_lists.count()
+
+    def get_total_price(self, obj):
+        return sum(order.total_price() for order in obj.orders.all())
 
 
 class PackingSplitRuleSerializer(serializers.ModelSerializer):

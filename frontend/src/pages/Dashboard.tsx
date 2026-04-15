@@ -265,7 +265,7 @@ const STATUS_CHIP_COLORS: Record<string, 'warning' | 'success' | 'info' | 'prima
 };
 const TREND_COLORS = ['#1976d2', '#00897b', '#f57c00', '#8e24aa', '#e53935', '#00acc1', '#43a047', '#fb8c00', '#5e35b1', '#d81b60'];
 
-type ViewMode = 'week' | 'trends' | 'mom';
+type ViewMode = 'week' | 'trends' | 'mom' | 'range';
 type WeekItem = { product_name: string; category_name: string; total_quantity: number; avg_per_order: number };
 type TrendProduct = { product_id: number; product_name: string; monthly_data: Array<{ month: string; month_label: string; total_quantity: number }> };
 type TrendData = { months: string[]; products: TrendProduct[] };
@@ -282,6 +282,18 @@ const ProductConsumptionChart = () => {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([...ALL_STATUSES]);
   const [loading, setLoading] = useState(true);
   const [weekLabel, setWeekLabel] = useState('');
+
+  // Date range state
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const mondayStr = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const [dateFrom, setDateFrom] = useState(mondayStr);
+  const [dateTo, setDateTo] = useState(todayStr);
+  const [rangeData, setRangeData] = useState<WeekItem[]>([]);
+  const [rangeLabel, setRangeLabel] = useState('');
 
   const fetchWeekData = useCallback(() => {
     const token = localStorage.getItem('accessToken');
@@ -334,6 +346,29 @@ const ProductConsumptionChart = () => {
       .catch(() => setLoading(false));
   }, [selectedCategory, selectedStatuses]);
 
+  const fetchRangeData = useCallback(() => {
+    const token = localStorage.getItem('accessToken');
+    const params = new URLSearchParams();
+    if (selectedCategory) params.set('category', selectedCategory);
+    if (selectedStatuses.length > 0) params.set('statuses', selectedStatuses.join(','));
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/orders/product-consumption/?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (json) {
+          setRangeData(json.results);
+          const fmt = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          setRangeLabel(`${fmt(json.week_start)} – ${fmt(json.week_end)}`);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [selectedCategory, selectedStatuses, dateFrom, dateTo]);
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     fetch(`${API_URL}/api/v1/categories/`, {
@@ -350,8 +385,9 @@ const ProductConsumptionChart = () => {
   useEffect(() => {
     if (viewMode === 'week') fetchWeekData();
     else if (viewMode === 'trends') fetchTrendData();
+    else if (viewMode === 'range') fetchRangeData();
     else fetchMomData();
-  }, [viewMode, fetchWeekData, fetchTrendData, fetchMomData]);
+  }, [viewMode, fetchWeekData, fetchTrendData, fetchMomData, fetchRangeData]);
 
   const toggleStatus = (s: string) => {
     setSelectedStatuses(prev =>
@@ -371,10 +407,12 @@ const ProductConsumptionChart = () => {
   const cardTitle =
     viewMode === 'week' ? 'Product Consumption This Week'
     : viewMode === 'trends' ? 'Product Consumption Trends'
+    : viewMode === 'range' ? 'Product Consumption by Date Range'
     : 'Month-over-Month Comparison';
   const cardSubheader =
     viewMode === 'week' ? weekLabel
     : viewMode === 'trends' ? 'Monthly totals — top 5 products'
+    : viewMode === 'range' ? rangeLabel
     : momData ? `${momData.prev_month} → ${momData.current_month}` : '';
 
   return (
@@ -408,6 +446,14 @@ const ProductConsumptionChart = () => {
               onClick={() => setViewMode('mom')}
               sx={{ cursor: 'pointer' }}
             />
+            <Chip
+              label="Date Range"
+              size="small"
+              color={viewMode === 'range' ? 'primary' : 'default'}
+              variant={viewMode === 'range' ? 'filled' : 'outlined'}
+              onClick={() => setViewMode('range')}
+              sx={{ cursor: 'pointer' }}
+            />
           </div>
         }
       />
@@ -437,6 +483,40 @@ const ProductConsumptionChart = () => {
             ))}
           </div>
         </div>
+        {viewMode === 'range' && (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+            <label style={{ fontSize: '0.875rem', color: '#555' }}>
+              From&nbsp;
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || todayStr}
+                onChange={e => setDateFrom(e.target.value)}
+                style={{ padding: '5px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.875rem' }}
+              />
+            </label>
+            <label style={{ fontSize: '0.875rem', color: '#555' }}>
+              To&nbsp;
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom}
+                max={todayStr}
+                onChange={e => setDateTo(e.target.value)}
+                style={{ padding: '5px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.875rem' }}
+              />
+            </label>
+            <button
+              onClick={fetchRangeData}
+              style={{
+                padding: '6px 16px', borderRadius: 4, border: 'none',
+                background: '#1976d2', color: '#fff', fontSize: '0.875rem', cursor: 'pointer',
+              }}
+            >
+              Apply
+            </button>
+          </div>
+        )}
         {loading ? (
           <Loading />
         ) : viewMode === 'week' ? (
@@ -465,6 +545,35 @@ const ProductConsumptionChart = () => {
                 <Legend verticalAlign="top" />
                 <Bar dataKey="total_quantity" name="total_quantity" fill="#1976d2" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="avg_per_order" name="avg_per_order" fill="#00897b" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )
+        ) : viewMode === 'range' ? (
+          rangeData.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#999', padding: '40px 0' }}>No orders in this date range</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={380}>
+              <BarChart data={rangeData} margin={{ top: 4, right: 16, left: 0, bottom: 10 }}>
+                <XAxis
+                  dataKey="product_name"
+                  interval={0}
+                  height={80}
+                  tick={({ x, y, payload }) => {
+                    const label = payload.value.length > 14 ? payload.value.slice(0, 13) + '…' : payload.value;
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={0} y={0} dy={6} textAnchor="end" fill="#666" fontSize={11} transform="rotate(-40)">
+                          {label}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
+                <YAxis allowDecimals={false} />
+                <Tooltip formatter={(value, name) => [value, name === 'total_quantity' ? 'Total Qty' : 'Avg / Order']} />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="total_quantity" name="total_quantity" fill="#7b1fa2" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="avg_per_order" name="avg_per_order" fill="#f57c00" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )

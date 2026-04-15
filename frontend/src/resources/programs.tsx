@@ -20,8 +20,9 @@ import {
   TabbedShowLayout,
   FunctionField,
   Button,
+  useGetList,
 } from 'react-admin';
-import { Box } from '@mui/material';
+import { Box, Chip } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
 const MEETING_DAY_CHOICES = [
@@ -99,8 +100,91 @@ export const ProgramShow = () => {
         <TabbedShowLayout.Tab label="Packers">
           <PackersTab navigate={navigate} />
         </TabbedShowLayout.Tab>
+        <TabbedShowLayout.Tab label="Combined Orders">
+          <CombinedOrdersTab />
+        </TabbedShowLayout.Tab>
       </TabbedShowLayout>
     </Show>
+  );
+};
+
+const CombinedOrdersTab = () => {
+  const record = useRecordContext();
+  const { data: combinedOrders, isPending } = useGetList(
+    'combined-orders',
+    {
+      pagination: { page: 1, perPage: 20 },
+      sort: { field: 'created_at', order: 'DESC' },
+      filter: { program: record?.id },
+    },
+    { enabled: !!record?.id }
+  );
+
+  const grandTotal = (combinedOrders ?? []).reduce(
+    (sum, co) => sum + Number(co.total_price ?? 0),
+    0
+  );
+
+  if (isPending) return <Box sx={{ p: 2, color: 'text.secondary' }}>Loading…</Box>;
+  if (!combinedOrders || combinedOrders.length === 0) {
+    return <Box sx={{ p: 2, color: 'text.secondary' }}>No combined orders for this program yet.</Box>;
+  }
+
+  return (
+    <Box sx={{ p: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box component="h3" sx={{ m: 0, fontSize: '1rem', fontWeight: 600 }}>
+          {combinedOrders.length} Combined Order{combinedOrders.length !== 1 ? 's' : ''}
+        </Box>
+        <Box sx={{
+          fontWeight: 700,
+          fontSize: '1rem',
+          px: 2, py: 0.5,
+          borderRadius: 2,
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+        }}>
+          Grand Total: ${grandTotal.toFixed(2)}
+        </Box>
+      </Box>
+
+      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'rgba(0,0,0,0.04)' }}>
+              {['Name', 'Week', 'Orders', 'Split Strategy', 'Total Price', 'Created', ''].map(h => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '0.8rem', fontWeight: 600, borderBottom: '1px solid rgba(0,0,0,0.12)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {combinedOrders.map((co, i) => (
+              <tr key={co.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                <td style={{ padding: '8px 12px', fontSize: '0.875rem' }}>{co.name}</td>
+                <td style={{ padding: '8px 12px', fontSize: '0.875rem' }}>
+                  {co.week ? `Wk ${co.week}, ${co.year}` : '—'}
+                </td>
+                <td style={{ padding: '8px 12px', fontSize: '0.875rem' }}>
+                  <Chip label={co.order_count ?? (co.orders?.length ?? 0)} size="small" />
+                </td>
+                <td style={{ padding: '8px 12px', fontSize: '0.875rem', textTransform: 'capitalize' }}>
+                  {(co.split_strategy ?? 'none').replace('_', ' ')}
+                </td>
+                <td style={{ padding: '8px 12px', fontSize: '0.875rem', fontWeight: 600, color: '#2e7d32' }}>
+                  ${Number(co.total_price ?? 0).toFixed(2)}
+                </td>
+                <td style={{ padding: '8px 12px', fontSize: '0.8rem', color: '#888' }}>
+                  {new Date(co.created_at).toLocaleDateString()}
+                </td>
+                <td style={{ padding: '8px 12px' }}>
+                  <a href={`#/combined-orders/${co.id}/show`} style={{ fontSize: '0.8rem' }}>View →</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+    </Box>
   );
 };
 

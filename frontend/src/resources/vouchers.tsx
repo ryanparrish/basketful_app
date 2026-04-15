@@ -57,24 +57,30 @@ const ListActions = () => (
     <FilterButton />
     <CreateButton />
     <BulkCreateButton />
+    <BulkStatusUpdateButton />
     <ExportButton />
   </TopToolbar>
 );
 
 // Bulk Create Button
-const BulkCreateButton = () => {
-  // This would open a modal for bulk voucher creation
-  // For now, just a placeholder that links to a custom route
-  return (
-    <Button
-      label="Bulk Create"
-      onClick={() => {
-        // Navigate to bulk create page or open modal
-        window.location.href = '#/vouchers/bulk-create';
-      }}
-    />
-  );
-};
+const BulkCreateButton = () => (
+  <Button
+    label="Bulk Create"
+    onClick={() => {
+      window.location.href = '#/vouchers/bulk-create';
+    }}
+  />
+);
+
+// Bulk Status Update Button
+const BulkStatusUpdateButton = () => (
+  <Button
+    label="Bulk Status Update"
+    onClick={() => {
+      window.location.href = '#/vouchers/bulk-status-update';
+    }}
+  />
+);
 
 // State color mapping
 const getStateColor = (state: string): string => {

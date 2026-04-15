@@ -351,11 +351,11 @@ export const CombinedOrderList = () => (
       />
       <FunctionField
         label="Orders"
-        render={(record: { orders?: unknown[] }) => record?.orders?.length || 0}
+        render={(record: { order_count?: number }) => record?.order_count ?? 0}
       />
       <FunctionField
         label="Packing Lists"
-        render={(record: { packing_lists?: unknown[] }) => record?.packing_lists?.length || 0}
+        render={(record: { packing_list_count?: number }) => record?.packing_list_count ?? 0}
       />
       <DateField source="created_at" showTime />
       <DateField source="updated_at" showTime />
@@ -376,6 +376,19 @@ export const CombinedOrderShow = () => (
       />
       <DateField source="created_at" showTime />
       <DateField source="updated_at" showTime />
+      <FunctionField
+        label="Total Order Value"
+        render={(record: { total_price?: number; order_count?: number }) => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 700 }}>
+              ${Number(record?.total_price ?? 0).toFixed(2)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              across {record?.order_count ?? 0} order{(record?.order_count ?? 0) !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+        )}
+      />
 
       <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
         Orders

@@ -219,7 +219,6 @@ class CookieTokenRefreshView(APIView):
             # Blacklist old token and get new refresh token
             if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', True):
                 refresh.blacklist()
-                new_refresh = RefreshToken.for_user(refresh.payload.get('user_id'))
                 # Get the user to create proper token
                 from django.contrib.auth.models import User
                 try:

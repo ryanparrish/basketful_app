@@ -7,7 +7,6 @@
 import { useState } from 'react';
 import {
   Title,
-  useDataProvider,
   useNotify,
   useRedirect,
   useGetList,
@@ -61,7 +60,6 @@ interface PreviewResponse {
 }
 
 export const BulkVoucherCreate = () => {
-  const dataProvider = useDataProvider();
   const notify = useNotify();
   const redirect = useRedirect();
 
@@ -209,9 +207,7 @@ export const BulkVoucherCreate = () => {
         return;
       }
 
-      const response = await dataProvider.create('vouchers/bulk_create', {
-        data: payload,
-      });
+      const response = await apiClient.post('/vouchers/bulk_create/', payload);
 
       setResult(response.data as { created_count: number });
       notify(`Successfully created ${response.data.created_count} vouchers`, {

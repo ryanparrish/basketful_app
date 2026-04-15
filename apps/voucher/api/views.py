@@ -5,6 +5,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django_filters import rest_framework as django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.db.models import Sum
@@ -17,6 +18,7 @@ from apps.voucher.api.serializers import (
     VoucherListSerializer,
     VoucherCreateSerializer,
     BulkVoucherCreateSerializer,
+    BulkVoucherStatusUpdateSerializer,
     VoucherSettingSerializer,
     OrderVoucherSerializer,
 )
@@ -41,6 +43,15 @@ class VoucherSettingViewSet(viewsets.ModelViewSet):
         )
 
 
+class VoucherFilter(django_filters.FilterSet):
+    """Custom FilterSet for Voucher that supports filtering by participant."""
+    participant = django_filters.NumberFilter(field_name='account__participant')
+
+    class Meta:
+        model = Voucher
+        fields = ['active', 'voucher_type', 'state', 'account', 'participant']
+
+
 class VoucherViewSet(viewsets.ModelViewSet):
     """ViewSet for Voucher model."""
     queryset = Voucher.objects.all().select_related(
@@ -51,7 +62,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
     filter_backends = [
         DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
     ]
-    filterset_fields = ['active', 'voucher_type', 'state', 'account']
+    filterset_class = VoucherFilter
     search_fields = [
         'account__participant__name',
         'account__participant__customer_number',
@@ -192,6 +203,33 @@ class VoucherViewSet(viewsets.ModelViewSet):
             'created_count': len(created_vouchers),
             'vouchers': VoucherListSerializer(created_vouchers, many=True).data
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='bulk_update_status', permission_classes=[IsAuthenticated, IsStaffUser])
+    def bulk_update_status(self, request):
+        """Update state for multiple vouchers in bulk."""
+        serializer = BulkVoucherStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        new_state = data['new_state']
+        voucher_ids = data['voucher_ids']
+
+        updated = []
+        skipped = []
+        with transaction.atomic():
+            for vid in voucher_ids:
+                voucher = Voucher.objects.get(pk=vid)
+                update_kwargs: dict = {'state': new_state}
+                if new_state == 'expired':
+                    update_kwargs['active'] = False
+                Voucher.objects.filter(pk=vid).update(**update_kwargs)
+                voucher.refresh_from_db()
+                updated.append(voucher)
+
+        return Response({
+            'updated_count': len(updated),
+            'skipped_count': len(skipped),
+            'vouchers': VoucherListSerializer(updated, many=True).data,
+        })
 
     @action(detail=True, methods=['post'])
     def apply(self, request, pk=None):
