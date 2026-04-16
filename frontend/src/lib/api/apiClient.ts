@@ -9,7 +9,7 @@
  */
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 // Session expiry event for UI handling
 export const SESSION_EXPIRED_EVENT = 'session-expired';
@@ -20,11 +20,10 @@ const dispatchSessionExpired = () => {
 };
 
 // Create axios instance - cookies sent automatically with credentials: 'include'
+// NOTE: No default Content-Type here — Axios must auto-set it so that FormData
+// payloads get 'multipart/form-data; boundary=...' instead of 'application/json'.
 export const apiClient = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
   withCredentials: true, // Always send cookies
 });
 
@@ -53,6 +52,12 @@ const addRefreshSubscriber = (callback: (success: boolean) => void) => {
 // Request interceptor - add CSRF token for mutations
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    // Set Content-Type to JSON only when the body isn't already FormData.
+    // FormData needs Axios to auto-generate the multipart boundary.
+    if (!(config.data instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+
     // Add CSRF token for mutation requests
     if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
       const csrfToken = getCsrfToken();
