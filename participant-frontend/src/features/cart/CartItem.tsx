@@ -66,7 +66,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
         {/* Product Image */}
         <Avatar
           variant="rounded"
-          src={item.image}
+          src={item.image?.replace(/^http:/, 'https:')}
           alt={item.name}
           sx={{ width: 60, height: 60 }}
         >

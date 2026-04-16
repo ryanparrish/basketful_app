@@ -178,7 +178,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
           backgroundSize: 'contain',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          backgroundImage: product.image ? `url(${product.image})` : 'none',
+          backgroundImage: product.image ? `url(${product.image.replace(/^http:/, 'https:')})` : 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

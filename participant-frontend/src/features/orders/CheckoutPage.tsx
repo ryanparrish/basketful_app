@@ -199,7 +199,7 @@ export const CheckoutPage: React.FC = () => {
             {items.map((item: CartItemData) => (
               <ListItem key={item.id} disableGutters sx={{ py: 1 }}>
                 <ListItemAvatar>
-                  <Avatar variant="rounded" src={item.image}>
+                  <Avatar variant="rounded" src={item.image?.replace(/^http:/, 'https:')}>
                     {item.name.charAt(0)}
                   </Avatar>
                 </ListItemAvatar>

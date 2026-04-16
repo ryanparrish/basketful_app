@@ -48,6 +48,17 @@ def get_effective_config(program) -> dict:
 
     global_s = OrderWindowSettings.get_settings()
 
+    if program is None:
+        return {
+            'hours_before_class': global_s.hours_before_class,
+            'hours_before_close': global_s.hours_before_close,
+            'enabled': global_s.enabled,
+            'is_overridden': False,
+            'hours_before_class_source': 'global',
+            'hours_before_close_source': 'global',
+            'enabled_source': 'global',
+        }
+
     try:
         ow = program.order_window  # OneToOneField reverse accessor
     except ProgramOrderWindow.DoesNotExist:

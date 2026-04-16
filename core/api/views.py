@@ -258,10 +258,19 @@ class MyWindowView(APIView):
 
         program = getattr(participant, 'program', None)
         if program is None:
-            return Response(
-                {'detail': 'Participant has no program assigned.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            # No program assigned — fall back to global OrderWindowSettings
+            from core.models import OrderWindowSettings
+            global_s = OrderWindowSettings.get_settings()
+            is_open = global_s.enabled
+            return Response({
+                'is_open': is_open,
+                'window_status': 'open' if is_open else 'disabled',
+                'seconds_until_change': None,
+                'next_opens_at': None,
+                'next_closes_at': None,
+                'program_name': None,
+                'override_reason': None,
+            })
 
         ws = get_program_window_status(program)
         config = get_effective_config(program)
