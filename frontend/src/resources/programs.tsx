@@ -34,6 +34,7 @@ const MEETING_DAY_CHOICES = [
 ];
 
 const SPLIT_STRATEGY_CHOICES = [
+  { id: 'none', name: 'None (Single Packer)' },
   { id: 'fifty_fifty', name: '50/50 Split' },
   { id: 'round_robin', name: 'Round Robin' },
 ];
@@ -245,6 +246,7 @@ export const ProgramEdit = () => (
       <SelectInput
         source="default_split_strategy"
         choices={SPLIT_STRATEGY_CHOICES}
+        helperText="Optional — choose 'None' if orders won't be split between packers"
       />
     </SimpleForm>
   </Edit>
@@ -261,6 +263,7 @@ export const ProgramCreate = () => (
         source="default_split_strategy"
         choices={SPLIT_STRATEGY_CHOICES}
         defaultValue="none"
+        helperText="Optional — choose 'None' if orders won't be split between packers"
       />
     </SimpleForm>
   </Create>
