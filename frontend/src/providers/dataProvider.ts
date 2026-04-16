@@ -8,6 +8,35 @@ import type { DataProvider } from 'react-admin';
 import apiClient from '../lib/api/apiClient.ts';
 
 /**
+ * If the data payload contains any React Admin file/image field objects
+ * (shape: { rawFile: File, src: string }), convert the whole payload to
+ * FormData so Django's ImageField / FileField can parse the upload.
+ * All other scalar/array/object values are JSON-stringified into the form.
+ */
+function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Record<string, unknown> {
+  const hasFile = Object.values(data).some(
+    (v) => v && typeof v === 'object' && (v as { rawFile?: unknown }).rawFile instanceof File
+  );
+  if (!hasFile) return data;
+
+  const form = new FormData();
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) continue;
+    if (value && typeof value === 'object' && (value as { rawFile?: unknown }).rawFile instanceof File) {
+      form.append(key, (value as { rawFile: File }).rawFile);
+    } else if (Array.isArray(value)) {
+      // DRF accepts repeated keys for ManyToMany / array fields
+      value.forEach((item) => form.append(key, String(item)));
+    } else if (typeof value === 'object') {
+      form.append(key, JSON.stringify(value));
+    } else {
+      form.append(key, String(value));
+    }
+  }
+  return form;
+}
+
+/**
  * Custom data provider with enhanced functionality for Basketful
  */
 export const dataProvider: DataProvider = {
@@ -123,7 +152,8 @@ export const dataProvider: DataProvider = {
   // Override create
   create: async (resource, params) => {
     const url = `/${resource}/`;
-    const response = await apiClient.post(url, params.data);
+    const body = toFormDataIfNeeded(params.data);
+    const response = await apiClient.post(url, body);
     const data = response.data;
     
     // Ensure the response has an id field for React-Admin
@@ -139,7 +169,8 @@ export const dataProvider: DataProvider = {
   // sending only sort_order) are accepted by DRF without requiring every field.
   update: async (resource, params) => {
     const url = `/${resource}/${params.id}/`;
-    const response = await apiClient.patch(url, params.data);
+    const body = toFormDataIfNeeded(params.data);
+    const response = await apiClient.patch(url, body);
     return { data: response.data };
   },
 
