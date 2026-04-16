@@ -5,16 +5,27 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.core.cache import cache
+from django.utils import timezone
 
-from apps.api.permissions import IsSingletonAdmin
-from core.models import OrderWindowSettings, EmailSettings, BrandingSettings, ProgramSettings, ThemeSettings
+from apps.api.permissions import IsSingletonAdmin, IsStaffUser
+from core.models import (
+    OrderWindowSettings,
+    EmailSettings,
+    BrandingSettings,
+    ProgramSettings,
+    ThemeSettings,
+    ProgramOrderWindow,
+    ProgramWindowOverride,
+)
 from core.api.serializers import (
     OrderWindowSettingsSerializer,
     EmailSettingsSerializer,
     BrandingSettingsSerializer,
     ProgramSettingsSerializer,
     ThemeSettingsSerializer,
+    ProgramWindowStatusSerializer,
 )
 
 
@@ -171,3 +182,41 @@ class RulesVersionViewSet(viewsets.ViewSet):
             rules_version = cache.get('rules_version', 'unknown')
         
         return Response({'rules_version': rules_version})
+
+
+class OrderWindowDashboardView(APIView):
+    """
+    GET /api/v1/order-windows/status/
+
+    Returns the computed order-window status for every program, plus the
+    current global OrderWindowSettings.  Designed to be polled every 30 s
+    by the React-Admin dashboard.
+
+    All state is derived on the fly — nothing is written.
+    Uses select_related to avoid N+1 queries across programs.
+    """
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    def get(self, request):
+        from apps.lifeskills.models import Program
+        from core.utils import get_program_window_status
+
+        programs = Program.objects.select_related(
+            'order_window',
+            'window_override',
+            'window_override__created_by',
+        ).all()
+
+        statuses = [get_program_window_status(p) for p in programs]
+        serializer = ProgramWindowStatusSerializer(statuses, many=True)
+
+        global_settings = OrderWindowSettings.get_settings()
+        global_serializer = OrderWindowSettingsSerializer(
+            global_settings, context={'request': request}
+        )
+
+        return Response({
+            'programs': serializer.data,
+            'global': global_serializer.data,
+            'as_of': timezone.now().isoformat(),
+        })

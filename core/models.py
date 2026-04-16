@@ -4,6 +4,119 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
 
 
+class ProgramOrderWindow(models.Model):
+    """
+    Sparse per-program override for order window settings.
+
+    Each field is nullable — null means "inherit from the global
+    OrderWindowSettings singleton".  Only programs that need custom
+    behaviour get a row here; all others fall through to the global
+    defaults automatically via get_effective_config() in core/utils.py.
+
+    3NF note: MeetingDay / meeting_time live on Program, never here.
+    Derived state (current status, next open/close times) is computed
+    at request time and never stored.
+    """
+    program = models.OneToOneField(
+        'lifeskills.Program',
+        on_delete=models.CASCADE,
+        related_name='order_window',
+    )
+    hours_before_class = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(168)],
+        help_text=(
+            "Override: hours before class the window opens. "
+            "Leave blank to use the global default."
+        ),
+    )
+    hours_before_close = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(168)],
+        help_text=(
+            "Override: hours before class the window closes. "
+            "Leave blank to use the global default."
+        ),
+    )
+    enabled = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override: enable/disable this program's order window. "
+            "Leave blank to use the global default."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Program Order Window Override"
+        verbose_name_plural = "Program Order Window Overrides"
+
+    def __str__(self) -> str:
+        return f"Order window override for {self.program.name}"
+
+
+class ProgramWindowOverride(models.Model):
+    """
+    Manual force-open / force-close for a single program's order window.
+
+    Staff can push a program into a forced state (e.g. force-close during
+    an inventory audit) with an explicit expiry time.  The backend expires
+    the record lazily on read; a Celery beat task also cleans up expired
+    rows nightly.
+
+    OneToOneField ensures only one active override per program at the DB
+    level — replacing an override is an upsert, not an append.
+    """
+    FORCE_STATUS_CHOICES = [
+        ('open', 'Force Open'),
+        ('closed', 'Force Closed'),
+    ]
+
+    program = models.OneToOneField(
+        'lifeskills.Program',
+        on_delete=models.CASCADE,
+        related_name='window_override',
+    )
+    force_status = models.CharField(
+        max_length=10,
+        choices=FORCE_STATUS_CHOICES,
+    )
+    expires_at = models.DateTimeField(
+        help_text="Override is automatically ignored after this time.",
+    )
+    reason = models.TextField(
+        blank=True,
+        help_text="Why is this override active? Shown to other staff.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='window_overrides_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Program Window Override"
+        verbose_name_plural = "Program Window Overrides"
+
+    def __str__(self) -> str:
+        return (
+            f"Force-{self.force_status} override for {self.program.name} "
+            f"until {self.expires_at:%Y-%m-%d %H:%M}"
+        )
+
+    def is_active(self) -> bool:
+        """Return True if the override has not yet expired."""
+        from django.utils import timezone
+        return self.expires_at > timezone.now()
+
+
 class OrderWindowSettings(models.Model):
     """
     Singleton model for controlling when participants can place orders.

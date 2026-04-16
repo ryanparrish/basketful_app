@@ -1,9 +1,9 @@
 /**
  * Settings Page
- * 
+ *
  * Manage system-wide settings including order window, email, and branding.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Title,
   useDataProvider,
@@ -36,9 +36,17 @@ import {
   CircularProgress,
   Divider,
   Typography,
+  Collapse,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { API_URL } from '../utils/apiUrl';
 import { useDebounce } from '../utils/useDebounce';
+
+const getCsrfToken = (): string =>
+  document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] ?? '';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -109,6 +117,552 @@ interface HygieneSettings {
   enabled: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Order Window Dashboard types
+// ---------------------------------------------------------------------------
+
+type WindowStatus = 'open' | 'closed' | 'force_open' | 'force_closed' | 'disabled' | 'no_schedule';
+
+interface WindowCycle {
+  meeting_at: string;
+  opens_at: string;
+  closes_at: string;
+}
+
+interface ActiveOverride {
+  id: number;
+  force_status: 'open' | 'closed';
+  expires_at: string;
+  reason: string;
+  created_by_username: string | null;
+  is_active: boolean;
+}
+
+interface EffectiveConfig {
+  hours_before_class: number;
+  hours_before_close: number;
+  enabled: boolean;
+  is_overridden: boolean;
+  hours_before_class_source: 'program' | 'global';
+  hours_before_close_source: 'program' | 'global';
+  enabled_source: 'program' | 'global';
+}
+
+interface ProgramWindowStatus {
+  program_id: number;
+  program_name: string;
+  meeting_day: string;
+  meeting_time: string;
+  window_status: WindowStatus;
+  cycles: WindowCycle[];
+  seconds_until_change: number | null;
+  active_order_count: number;
+  override: ActiveOverride | null;
+  config: EffectiveConfig;
+}
+
+interface OrderWindowDashboardData {
+  programs: ProgramWindowStatus[];
+  global: OrderWindowSettings;
+  as_of: string;
+}
+
+// ---------------------------------------------------------------------------
+// Status badge helpers
+// ---------------------------------------------------------------------------
+
+const STATUS_META: Record<WindowStatus, { label: string; color: 'success' | 'warning' | 'error' | 'default' | 'info' }> = {
+  open: { label: 'OPEN', color: 'success' },
+  closed: { label: 'CLOSED', color: 'default' },
+  force_open: { label: 'FORCE OPEN', color: 'warning' },
+  force_closed: { label: 'FORCE CLOSED', color: 'error' },
+  disabled: { label: 'DISABLED', color: 'info' },
+  no_schedule: { label: 'NO SCHEDULE', color: 'default' },
+};
+
+const fmt = (iso: string) => new Date(iso).toLocaleString(undefined, {
+  weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+
+function useCountdown(seconds: number | null): string {
+  const [display, setDisplay] = useState('');
+  useEffect(() => {
+    if (seconds === null) { setDisplay(''); return; }
+    const tick = () => {
+      const s = Math.max(0, seconds - Math.floor((Date.now() - start) / 1000));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      setDisplay(h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${sec}s` : `${sec}s`);
+    };
+    const start = Date.now();
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [seconds]);
+  return display;
+}
+
+// ---------------------------------------------------------------------------
+// CycleTimeline — visual strip of the next 3 windows
+// ---------------------------------------------------------------------------
+
+const CycleTimeline = ({ cycles }: { cycles: WindowCycle[] }) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1 }}>
+    {cycles.map((c, i) => (
+      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.78rem' }}>
+        <Chip label={i === 0 ? 'Next' : `+${i}wk`} size="small" sx={{ minWidth: 46, fontSize: '0.7rem' }} />
+        <Box sx={{ color: 'success.main', fontWeight: 500 }}>{fmt(c.opens_at)}</Box>
+        <Box sx={{ color: 'text.disabled' }}>→</Box>
+        <Box sx={{ color: 'error.main' }}>{fmt(c.closes_at)}</Box>
+        <Box sx={{ color: 'text.secondary' }}>· class {fmt(c.meeting_at)}</Box>
+      </Box>
+    ))}
+  </Box>
+);
+
+// ---------------------------------------------------------------------------
+// InlineConfigPanel — per-program config override fields
+// ---------------------------------------------------------------------------
+
+const InlineConfigPanel = ({
+  programId,
+  config,
+  onSaved,
+}: {
+  programId: number;
+  config: EffectiveConfig;
+  onSaved: () => void;
+}) => {
+  const notify = useNotify();
+  const [hbc, setHbc] = useState<string>(String(config.hours_before_class));
+  const [hbcl, setHbcl] = useState<string>(String(config.hours_before_close));
+  const [enabled, setEnabled] = useState<boolean>(config.enabled);
+  const [saving, setSaving] = useState(false);
+
+  const isOverriding = config.is_overridden;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({
+          hours_before_class: parseInt(hbc) || null,
+          hours_before_close: parseInt(hbcl) || null,
+          enabled,
+        }),
+      });
+      if (res.ok) { notify('Program window config saved.', { type: 'success' }); onSaved(); }
+      else { notify('Error saving config.', { type: 'error' }); }
+    } catch { notify('Network error.', { type: 'error' }); }
+    setSaving(false);
+  };
+
+  const revert = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      });
+      notify('Reverted to global defaults.', { type: 'success' });
+      onSaved();
+    } catch { notify('Network error.', { type: 'error' }); }
+    setSaving(false);
+  };
+
+  const srcLabel = (src: 'program' | 'global') =>
+    src === 'global' ? <Chip label="global" size="small" variant="outlined" sx={{ ml: 1, fontSize: '0.65rem', height: 18 }} /> : null;
+
+  return (
+    <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+        Window Config {isOverriding ? '(program override)' : '(using global defaults)'}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <TextField
+            size="small" type="number" label="Opens (hrs before)"
+            value={hbc} onChange={e => setHbc(e.target.value)}
+            sx={{ width: 150 }} inputProps={{ min: 1, max: 168 }}
+          />
+          {srcLabel(config.hours_before_class_source)}
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <TextField
+            size="small" type="number" label="Closes (hrs before)"
+            value={hbcl} onChange={e => setHbcl(e.target.value)}
+            sx={{ width: 150 }} inputProps={{ min: 0, max: 168 }}
+          />
+          {srcLabel(config.hours_before_close_source)}
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <FormControlLabel
+            control={<Switch checked={enabled} size="small" onChange={e => setEnabled(e.target.checked)} />}
+            label="Enabled"
+          />
+          {srcLabel(config.enabled_source)}
+        </Box>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+        <Button size="small" variant="contained" onClick={save} disabled={saving}>
+          {saving ? <CircularProgress size={14} /> : 'Save'}
+        </Button>
+        {isOverriding && (
+          <Button size="small" variant="outlined" color="warning" onClick={revert} disabled={saving}>
+            Revert to Global
+          </Button>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// ManualOverridePanel — force-open / force-close with expiry
+// ---------------------------------------------------------------------------
+
+const DURATION_PRESETS = [
+  { label: '1 hour', minutes: 60 },
+  { label: '2 hours', minutes: 120 },
+  { label: '4 hours', minutes: 240 },
+  { label: 'End of today', minutes: -1 },
+];
+
+const ManualOverridePanel = ({
+  programId,
+  programName,
+  override,
+  onSaved,
+}: {
+  programId: number;
+  programName: string;
+  override: ActiveOverride | null;
+  onSaved: () => void;
+}) => {
+  const notify = useNotify();
+  const [open, setOpen] = useState(false);
+  const [forceStatus, setForceStatus] = useState<'open' | 'closed'>('closed');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!expiresAt) { notify('Expiry time is required.', { type: 'error' }); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/override/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ force_status: forceStatus, expires_at: expiresAt, reason }),
+      });
+      if (res.ok) {
+        notify(`Override applied — window force-${forceStatus}.`, { type: 'success' });
+        setOpen(false); setReason(''); onSaved();
+      } else {
+        const d = await res.json();
+        notify(d.detail || 'Error applying override.', { type: 'error' });
+      }
+    } catch { notify('Network error.', { type: 'error' }); }
+    setSaving(false);
+  };
+
+  const clearOverride = async () => {
+    try {
+      await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/override/`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      });
+      notify('Override cleared.', { type: 'success' });
+      onSaved();
+    } catch { notify('Network error.', { type: 'error' }); }
+  };
+
+  const setPreset = (minutes: number) => {
+    const d = new Date();
+    if (minutes === -1) { d.setHours(23, 59, 0, 0); }
+    else { d.setMinutes(d.getMinutes() + minutes); }
+    setExpiresAt(d.toISOString().slice(0, 16));
+  };
+
+  if (override) {
+    return (
+      <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, bgcolor: 'warning.lighter', border: '1px solid', borderColor: 'warning.main' }}>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          ⚠️ Override active — force {override.force_status} until {fmt(override.expires_at)}
+          {override.created_by_username && ` · set by ${override.created_by_username}`}
+        </Typography>
+        {override.reason && <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>{override.reason}</Typography>}
+        <Button size="small" variant="outlined" color="warning" sx={{ mt: 1 }} onClick={clearOverride}>
+          Clear Override
+        </Button>
+      </Box>
+    );
+  }
+
+  return (
+    <>
+      <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setOpen(true)}>
+        Manual Override
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Override: {programName}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, mt: 1 }}>
+            {(['closed', 'open'] as const).map(s => (
+              <Button
+                key={s}
+                variant={forceStatus === s ? 'contained' : 'outlined'}
+                color={s === 'open' ? 'success' : 'error'}
+                onClick={() => setForceStatus(s)}
+                fullWidth
+              >
+                Force {s === 'open' ? '🔓 Open' : '🔒 Closed'}
+              </Button>
+            ))}
+          </Box>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+            Quick expiry:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+            {DURATION_PRESETS.map(p => (
+              <Chip key={p.label} label={p.label} size="small" onClick={() => setPreset(p.minutes)} clickable />
+            ))}
+          </Box>
+          <TextField
+            fullWidth size="small" label="Expires at" type="datetime-local"
+            value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
+            InputLabelProps={{ shrink: true }} sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth size="small" label="Reason (optional)"
+            value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="e.g. inventory audit"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={submit} disabled={saving}>
+            {saving ? <CircularProgress size={16} /> : 'Apply Override'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// ProgramWindowRow — one row in the dashboard table
+// ---------------------------------------------------------------------------
+
+const ProgramWindowRow = ({
+  program,
+  onRefresh,
+}: {
+  program: ProgramWindowStatus;
+  onRefresh: () => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const countdown = useCountdown(program.seconds_until_change);
+  const meta = STATUS_META[program.window_status];
+
+  return (
+    <>
+      <TableRow sx={{ '& td': { verticalAlign: 'middle' } }}>
+        <TableCell sx={{ fontWeight: 500 }}>{program.program_name}</TableCell>
+        <TableCell sx={{ textTransform: 'capitalize' }}>
+          {program.meeting_day} {program.meeting_time.slice(0, 5)}
+        </TableCell>
+        <TableCell>
+          <Chip label={meta.label} color={meta.color} size="small" sx={{ fontWeight: 700, letterSpacing: 0.5 }} />
+        </TableCell>
+        <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
+          {countdown && (
+            <Tooltip title={
+              program.window_status === 'open' ? 'Closes in' :
+              program.window_status === 'closed' ? 'Opens in' : 'Changes in'
+            }>
+              <span>{countdown}</span>
+            </Tooltip>
+          )}
+        </TableCell>
+        <TableCell align="center">
+          <Chip label={program.active_order_count} size="small" variant="outlined" />
+        </TableCell>
+        <TableCell>
+          <IconButton size="small" onClick={() => setExpanded(e => !e)}>
+            {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+          </IconButton>
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell colSpan={6} sx={{ p: 0, borderBottom: expanded ? undefined : 'none' }}>
+          <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <Box sx={{ p: 2, bgcolor: 'action.hover' }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                Upcoming Windows
+              </Typography>
+              <CycleTimeline cycles={program.cycles} />
+              <Divider sx={{ my: 1.5 }} />
+              <InlineConfigPanel
+                programId={program.program_id}
+                config={program.config}
+                onSaved={onRefresh}
+              />
+              <Divider sx={{ my: 1.5 }} />
+              <ManualOverridePanel
+                programId={program.program_id}
+                programName={program.program_name}
+                override={program.override}
+                onSaved={onRefresh}
+              />
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// OrderWindowDashboard — the full tab content
+// ---------------------------------------------------------------------------
+
+const OrderWindowDashboard = ({
+  globalSettings,
+  onSaveGlobal,
+  saving,
+}: {
+  globalSettings: OrderWindowSettings;
+  onSaveGlobal: (settings: OrderWindowSettings) => void;
+  saving: boolean;
+}) => {
+  const [global, setGlobal] = useState(globalSettings);
+  const [dashboard, setDashboard] = useState<OrderWindowDashboardData | null>(null);
+  const [dashLoading, setDashLoading] = useState(true);
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/order-windows/status/`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const data: OrderWindowDashboardData = await res.json();
+        setDashboard(data);
+        setAsOf(data.as_of);
+      }
+    } catch {
+      // silent — stale data is still useful
+    }
+    setDashLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+    pollRef.current = setInterval(fetchDashboard, 30_000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [fetchDashboard]);
+
+  const saveGlobal = async () => {
+    onSaveGlobal(global);
+  };
+
+  const secondsAgo = asOf
+    ? Math.round((Date.now() - new Date(asOf).getTime()) / 1000)
+    : null;
+
+  return (
+    <Box>
+      {/* Global defaults panel */}
+      <Box sx={{ maxWidth: 560, mb: 4 }}>
+        <Typography variant="h6" sx={{ mb: 2, fontSize: '0.95rem', fontWeight: 600 }}>
+          Global Defaults
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+          Programs without a custom override inherit these values.
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <TextField
+            size="small" type="number" label="Opens (hrs before class)"
+            value={global.hours_before_class}
+            onChange={e => setGlobal({ ...global, hours_before_class: parseInt(e.target.value) || 0 })}
+            helperText="1–168 hours" sx={{ width: 200 }}
+          />
+          <TextField
+            size="small" type="number" label="Closes (hrs before class)"
+            value={global.hours_before_close}
+            onChange={e => setGlobal({ ...global, hours_before_close: parseInt(e.target.value) || 0 })}
+            helperText="0 = closes at class time" sx={{ width: 200 }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={global.enabled}
+                onChange={e => setGlobal({ ...global, enabled: e.target.checked })}
+              />
+            }
+            label="Enabled"
+            sx={{ mt: 0.5 }}
+          />
+        </Box>
+        <Button variant="contained" sx={{ mt: 2 }} onClick={saveGlobal} disabled={saving}>
+          Save Global Defaults
+        </Button>
+      </Box>
+
+      <Divider sx={{ mb: 3 }} />
+
+      {/* Live program status table */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="h6" sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
+          Live Program Status
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {secondsAgo !== null ? `Updated ${secondsAgo}s ago` : ''}
+          <Button size="small" sx={{ ml: 1 }} onClick={fetchDashboard}>↻ Refresh</Button>
+        </Typography>
+      </Box>
+
+      {dashLoading ? (
+        <CircularProgress size={24} />
+      ) : !dashboard || dashboard.programs.length === 0 ? (
+        <Alert severity="info">No programs found.</Alert>
+      ) : (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Program</TableCell>
+              <TableCell>Schedule</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Changes In</TableCell>
+              <TableCell align="center">Active Orders</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {dashboard.programs.map(p => (
+              <ProgramWindowRow
+                key={p.program_id}
+                program={p}
+                onRefresh={fetchDashboard}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Box>
+  );
+};
+
 export const Settings = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -176,15 +730,17 @@ export const Settings = () => {
   }, [dataProvider, notify]);
 
   // Save Order Window Settings
-  const saveOrderWindow = async () => {
-    if (!orderWindow) return;
+  const saveOrderWindow = async (updatedSettings?: OrderWindowSettings) => {
+    const data = updatedSettings ?? orderWindow;
+    if (!data) return;
     setSaving(true);
     try {
       await dataProvider.update('settings/order-window-settings', {
         id: 'current',
-        data: orderWindow,
-        previousData: orderWindow,
+        data,
+        previousData: data,
       });
+      setOrderWindow(data);
       notify('Order window settings saved', { type: 'success' });
     } catch {
       notify('Error saving settings', { type: 'error' });
@@ -473,93 +1029,14 @@ export const Settings = () => {
 
           {/* Order Window Tab */}
           <TabPanel value={tab} index={0}>
-            {orderWindow && (
-              <Box sx={{ maxWidth: 560 }}>
-
-                {/* Live status banner */}
-                <Alert
-                  severity={orderWindow.enabled ? (orderWindow.is_open ? 'success' : 'warning') : 'info'}
-                  sx={{ mb: 3 }}
-                  action={
-                    orderWindow.enabled ? (
-                      <Chip
-                        label={orderWindow.is_open ? 'OPEN' : 'CLOSED'}
-                        color={orderWindow.is_open ? 'success' : 'warning'}
-                        size="small"
-                        sx={{ fontWeight: 'bold', mt: 0.5 }}
-                      />
-                    ) : undefined
-                  }
-                >
-                  <AlertTitle>
-                    {!orderWindow.enabled
-                      ? 'Order window restrictions are disabled — participants can order anytime'
-                      : orderWindow.is_open
-                      ? 'Order window is currently open'
-                      : 'Order window is currently closed'}
-                  </AlertTitle>
-                  {orderWindow.enabled && orderWindow.is_open && orderWindow.next_closes_at && (
-                    <>Closes at <strong>{new Date(orderWindow.next_closes_at).toLocaleString()}</strong></>
-                  )}
-                  {orderWindow.enabled && !orderWindow.is_open && orderWindow.next_opens_at && (
-                    <>Opens at <strong>{new Date(orderWindow.next_opens_at).toLocaleString()}</strong></>
-                  )}
-                  {orderWindow.enabled && !orderWindow.is_open && !orderWindow.next_opens_at && (
-                    <>No upcoming class scheduled — check that programs have a meeting day and time set.</>
-                  )}
-                </Alert>
-
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={orderWindow.enabled}
-                      onChange={(e) =>
-                        setOrderWindow({ ...orderWindow, enabled: e.target.checked })
-                      }
-                    />
-                  }
-                  label="Enable Order Window Restrictions"
-                  sx={{ mb: 2 }}
-                />
-
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Hours Before Class (Window Opens)"
-                  value={orderWindow.hours_before_class}
-                  onChange={(e) =>
-                    setOrderWindow({
-                      ...orderWindow,
-                      hours_before_class: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  helperText="Orders can be placed this many hours before class starts (1–168)"
-                  sx={{ mb: 2 }}
-                />
-
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Hours Before Close (Window Closes)"
-                  value={orderWindow.hours_before_close}
-                  onChange={(e) =>
-                    setOrderWindow({
-                      ...orderWindow,
-                      hours_before_close: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  helperText="Orders must be placed at least this many hours before class (0 = right up until class time)"
-                  sx={{ mb: 3 }}
-                />
-
-                <Button
-                  variant="contained"
-                  onClick={saveOrderWindow}
-                  disabled={saving}
-                >
-                  Save Order Window Settings
-                </Button>
-              </Box>
+            {orderWindow ? (
+              <OrderWindowDashboard
+                globalSettings={orderWindow}
+                onSaveGlobal={saveOrderWindow}
+                saving={saving}
+              />
+            ) : (
+              <CircularProgress size={24} />
             )}
           </TabPanel>
 

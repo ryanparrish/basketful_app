@@ -11,6 +11,7 @@ from core.api.views import (
     ProgramSettingsViewSet,
     ThemeSettingsViewSet,
     RulesVersionViewSet,
+    OrderWindowDashboardView,
 )
 
 router = DefaultRouter()
@@ -37,4 +38,6 @@ router.register(
 
 urlpatterns = [
     path('settings/', include(router.urls)),
+    # Live per-program order window dashboard (polled by React-Admin)
+    path('order-windows/status/', OrderWindowDashboardView.as_view(), name='order-windows-status'),
 ]

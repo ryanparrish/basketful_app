@@ -17,6 +17,12 @@ from apps.lifeskills.api.serializers import (
     LifeskillsCoachSerializer,
     ProgramPauseSerializer,
 )
+from core.models import ProgramOrderWindow, ProgramWindowOverride
+from core.api.serializers import (
+    ProgramOrderWindowSerializer,
+    ProgramWindowOverrideSerializer,
+    ProgramWindowStatusSerializer,
+)
 
 
 class ProgramViewSet(viewsets.ModelViewSet):
@@ -62,6 +68,90 @@ class ProgramViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = OrderListSerializer(orders, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get', 'put', 'delete'], url_path='order-window')
+    def order_window(self, request, pk=None):
+        """
+        GET    /programs/{id}/order-window/  — return effective config + sources
+        PUT    /programs/{id}/order-window/  — upsert sparse override
+        DELETE /programs/{id}/order-window/  — revert to global defaults
+        """
+        program = self.get_object()
+
+        if request.method == 'GET':
+            from core.utils import get_program_window_status
+            status_data = get_program_window_status(program)
+            serializer = ProgramWindowStatusSerializer(status_data)
+            return Response(serializer.data)
+
+        if request.method == 'DELETE':
+            try:
+                program.order_window.delete()
+            except ProgramOrderWindow.DoesNotExist:
+                pass
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # PUT — upsert the sparse override row
+        try:
+            ow = program.order_window
+        except ProgramOrderWindow.DoesNotExist:
+            ow = ProgramOrderWindow(program=program)
+
+        serializer = ProgramOrderWindowSerializer(ow, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post', 'delete'], url_path='order-window/override')
+    def window_override(self, request, pk=None):
+        """
+        POST   /programs/{id}/order-window/override/  — upsert a force-open/close
+        DELETE /programs/{id}/order-window/override/  — clear the override early
+        """
+        program = self.get_object()
+
+        if request.method == 'DELETE':
+            try:
+                program.window_override.delete()
+            except ProgramWindowOverride.DoesNotExist:
+                pass
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # POST — validate and upsert
+        force_status_val = request.data.get('force_status')
+        expires_at = request.data.get('expires_at')
+        reason = request.data.get('reason', '')
+
+        if force_status_val not in ('open', 'closed'):
+            return Response(
+                {'detail': 'force_status must be "open" or "closed".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not expires_at:
+            return Response(
+                {'detail': 'expires_at is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from django.utils.dateparse import parse_datetime
+        expires_dt = parse_datetime(expires_at)
+        if not expires_dt or expires_dt <= timezone.now():
+            return Response(
+                {'detail': 'expires_at must be a valid datetime in the future.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        override, _ = ProgramWindowOverride.objects.update_or_create(
+            program=program,
+            defaults={
+                'force_status': force_status_val,
+                'expires_at': expires_dt,
+                'reason': reason,
+                'created_by': request.user,
+            },
+        )
+        serializer = ProgramWindowOverrideSerializer(override)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class LifeskillsCoachViewSet(viewsets.ModelViewSet):
