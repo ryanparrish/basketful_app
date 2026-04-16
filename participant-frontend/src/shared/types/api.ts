@@ -153,6 +153,24 @@ export interface OrderWindowStatus {
   closes_at: string | null;
 }
 
+export type WindowStatusCode =
+  | 'open'
+  | 'closed'
+  | 'force_open'
+  | 'force_closed'
+  | 'disabled'
+  | 'no_schedule';
+
+export interface ParticipantWindowStatus {
+  is_open: boolean;
+  window_status: WindowStatusCode;
+  seconds_until_change: number | null;
+  next_opens_at: string | null;
+  next_closes_at: string | null;
+  program_name: string;
+  override_reason: string | null;
+}
+
 export interface OrderListItem {
   id: number;
   order_number: string;

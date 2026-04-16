@@ -31,6 +31,7 @@ import { useCartContext } from '../../providers/CartProvider';
 import { useCanCheckout, useValidation } from '../../providers/ValidationContext';
 import { ValidationFeedback } from '../cart/ValidationFeedback';
 import { createOrder } from '../../shared/api/endpoints';
+import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import type { CartItemData } from '../../providers/CartProvider';
 import { MAX_WIDTHS, PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
@@ -39,6 +40,7 @@ export const CheckoutPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { items, cartTotal, clearCart, getApiCartItems } = useCartContext();
   const { canCheckout, checkoutBlockedReason, balances, programConfig } = useCanCheckout();
+  const { isOpen: windowIsOpen, windowStatus } = useOrderWindow();
   const { revalidate } = useValidation();
 
   const [orderSuccess, setOrderSuccess] = useState(false);
@@ -172,9 +174,13 @@ export const CheckoutPage: React.FC = () => {
       </Box>
 
       {/* Order Window Status */}
-      {!programConfig?.order_window_open && (
+      {!windowIsOpen && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          The order window is currently closed. You cannot submit orders at this time.
+          {windowStatus === 'force_closed'
+            ? 'Orders are temporarily paused. Please try again later.'
+            : windowStatus === 'no_schedule'
+            ? 'No class schedule found for your program. Please contact staff.'
+            : 'The order window is currently closed. You cannot submit orders at this time.'}
         </Alert>
       )}
 

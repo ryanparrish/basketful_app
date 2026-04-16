@@ -220,3 +220,75 @@ class OrderWindowDashboardView(APIView):
             'global': global_serializer.data,
             'as_of': timezone.now().isoformat(),
         })
+
+
+class MyWindowView(APIView):
+    """
+    GET /api/v1/settings/my-window/
+
+    Returns the order-window status for the authenticated participant's
+    own program.  Used by the participant frontend to decide whether
+    checkout is available.
+
+    Response shape:
+        {
+          is_open: bool,
+          window_status: str,          # open|closed|force_open|force_closed|disabled|no_schedule
+          seconds_until_change: int|null,
+          next_opens_at: str|null,     # ISO-8601 aware datetime
+          next_closes_at: str|null,
+          program_name: str,
+          override_reason: str|null,
+        }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.utils import get_program_window_status, generate_window_cycles, get_effective_config
+
+        user = request.user
+        # Resolve participant → program
+        try:
+            participant = user.participant
+        except Exception:
+            return Response(
+                {'detail': 'No participant profile linked to this account.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        program = getattr(participant, 'program', None)
+        if program is None:
+            return Response(
+                {'detail': 'Participant has no program assigned.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ws = get_program_window_status(program)
+        config = get_effective_config(program)
+
+        # Pull next open/close times from the first upcoming cycle
+        cycles = ws.get('cycles', [])
+        next_opens_at = None
+        next_closes_at = None
+        if cycles:
+            c = cycles[0]
+            # c values are datetime objects from generate_window_cycles
+            next_opens_at = c['opens_at'].isoformat() if c['opens_at'] else None
+            next_closes_at = c['closes_at'].isoformat() if c['closes_at'] else None
+
+        is_open = ws['window_status'] in ('open', 'force_open')
+
+        override = ws.get('override')
+        override_reason = None
+        if override:
+            override_reason = getattr(override, 'reason', None) or None
+
+        return Response({
+            'is_open': is_open,
+            'window_status': ws['window_status'],
+            'seconds_until_change': ws.get('seconds_until_change'),
+            'next_opens_at': next_opens_at,
+            'next_closes_at': next_closes_at,
+            'program_name': program.name,
+            'override_reason': override_reason,
+        })

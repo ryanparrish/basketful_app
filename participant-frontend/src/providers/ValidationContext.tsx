@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCartContext } from './CartProvider';
 import { validateCart, getProgramConfig, getBalances } from '../shared/api/endpoints';
+import { useOrderWindow } from '../shared/hooks/useOrderWindow';
 import type { ProgramConfig, Balances, ValidationError } from '../shared/types/api';
 
 interface ValidationState {
@@ -217,24 +218,32 @@ export const useValidation = (): ValidationContextType => {
 export const useCanCheckout = () => {
   const { isValid, isValidating, errors, balances, programConfig } = useValidation();
   const { isEmpty } = useCartContext();
+  const { isOpen: windowIsOpen, windowStatus, isLoading: windowLoading } = useOrderWindow();
 
   const canCheckout = useMemo(() => {
     if (isEmpty) return false;
     if (isValidating) return false;
+    if (windowLoading) return false;
+    if (!windowIsOpen) return false;
     if (!isValid) return false;
     if (errors.length > 0) return false;
-    if (!programConfig?.order_window_open) return false;
     return true;
-  }, [isEmpty, isValidating, isValid, errors, programConfig]);
+  }, [isEmpty, isValidating, windowLoading, windowIsOpen, isValid, errors]);
 
   const checkoutBlockedReason = useMemo(() => {
     if (isEmpty) return 'Cart is empty';
     if (isValidating) return 'Validating cart...';
-    if (!programConfig?.order_window_open) return 'Order window is closed';
+    if (windowLoading) return 'Checking order window...';
+    if (!windowIsOpen) {
+      if (windowStatus === 'force_closed') return 'Order window is temporarily closed';
+      if (windowStatus === 'disabled') return 'Order window is not enabled';
+      if (windowStatus === 'no_schedule') return 'No class schedule found';
+      return 'Order window is closed';
+    }
     if (errors.length > 0) return 'Please fix cart errors';
     if (!isValid) return 'Cart is not valid';
     return null;
-  }, [isEmpty, isValidating, isValid, errors, programConfig]);
+  }, [isEmpty, isValidating, windowLoading, windowIsOpen, windowStatus, isValid, errors]);
 
   return {
     canCheckout,

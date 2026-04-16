@@ -12,7 +12,7 @@ import { useSearchParams } from 'react-router-dom';
 import { getProducts, getCategories } from '../../shared/api/endpoints';
 import { CategoryTabs } from './CategoryTabs';
 import { ProductGrid } from './ProductGrid';
-import { useOrderWindow } from '../../shared/hooks/useRuleVersion';
+import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
 import { DesktopLayoutContext } from '../../App';
 import { CONTAINER_PADDING, useFullWidth } from '../../shared/constants/layout';

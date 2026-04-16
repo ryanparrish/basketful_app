@@ -12,6 +12,7 @@ import type {
   ValidationResponse,
   RulesVersionResponse,
   OrderWindowStatus,
+  ParticipantWindowStatus,
   Order,
   OrderListItem,
   CreateOrderRequest,
@@ -49,6 +50,12 @@ export const getRulesVersion = async (): Promise<RulesVersionResponse> => {
 // Order Window
 export const getOrderWindow = async (): Promise<OrderWindowStatus> => {
   const response = await apiClient.get('/settings/order-window-status/');
+  return response.data;
+};
+
+// Per-participant program window status (uses new per-program engine)
+export const getMyWindowStatus = async (): Promise<ParticipantWindowStatus> => {
+  const response = await apiClient.get('/settings/my-window/');
   return response.data;
 };
 
