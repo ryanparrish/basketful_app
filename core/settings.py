@@ -147,6 +147,8 @@ if USE_S3:
                 "custom_domain": AWS_S3_CUSTOM_DOMAIN,
                 "location": MEDIAFILES_LOCATION,
                 "endpoint_url": AWS_S3_ENDPOINT_URL,
+                "querystring_auth": False,
+                "secure_urls": True,
             },
         },
     }
