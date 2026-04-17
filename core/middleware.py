@@ -4,10 +4,13 @@ import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from apps.log.models import OrderValidationLog
 
 logger = logging.getLogger("custom_validation")
+
+_IS_PROD = getattr(settings, 'IS_PROD', False)
 
 
 class SecurityHeadersMiddleware:
@@ -31,7 +34,7 @@ class SecurityHeadersMiddleware:
         
         # Content-Security-Policy
         # Allow self, inline styles (needed for MUI), and Google reCAPTCHA
-        if settings.ENVIRONMENT == 'prod':
+        if _IS_PROD:
             # Production: restrict connect-src to self only (no localhost)
             connect_src = "'self' https://www.google.com"
         else:
@@ -57,7 +60,7 @@ class SecurityHeadersMiddleware:
             response['X-Frame-Options'] = 'DENY'
         
         # HSTS - only in production with HTTPS
-        if settings.ENVIRONMENT == 'prod':
+        if _IS_PROD:
             response['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
         
         # Referrer policy - send origin only for cross-origin requests
@@ -88,29 +91,40 @@ class GlobalErrorMiddleware:
             # Let Django show full tracebacks in dev
             return self.get_response(request)
 
+        is_api = request.path.startswith("/api/")
+
         try:
             return self.get_response(request)
 
         except ValidationError as e:
             self.handle_validation_error(request, e)
 
-            # For non-admin/API paths → redirect with toast
-            if not (
-                request.path.startswith("/admin/") or request.path.startswith("/api/")
-            ):
+            if is_api:
+                return JsonResponse(
+                    {'detail': str(e)}, status=400
+                )
+
+            # For non-API paths → redirect with toast
+            if not request.path.startswith("/admin/"):
                 messages.error(request, str(e))
                 return redirect("participant_dashboard")
 
-            # Let admin/API bubble the error
-            raise e
+            raise
 
         except Exception as e:  # pylint: disable=broad-except
-            # Log and fallback redirect for unhandled errors
             logger.exception(
                 "Unhandled exception on path=%s", request.path, exc_info=e
             )
+
+            if is_api:
+                # Return a generic JSON error — never expose internal detail
+                return JsonResponse(
+                    {'detail': 'An unexpected error occurred. Please try again.'},
+                    status=500,
+                )
+
             messages.error(request, "Something went wrong. Please try again.")
-            return redirect("home")  # Safe fallback page
+            return redirect("home")
 
     def handle_validation_error(self, request, exception):
         """Log ValidationError details appropriately based on DEBUG setting."""

@@ -1,21 +1,23 @@
 """
 ViewSets for the Orders app.
 """
+import io
+import logging
+import zipfile
 from decimal import Decimal
 from datetime import timedelta, date
-from django.utils import timezone
-from rest_framework import viewsets, filters, status, mixins
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.http import HttpResponse
-import io
-import zipfile
-from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Count, Sum, Q
-from django.core.exceptions import ValidationError
+
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.db.models import Count, Sum, Q
+from django.http import HttpResponse
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import viewsets, filters, status, mixins
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from apps.api.pagination import StandardResultsSetPagination
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsOwnerOrAdmin
@@ -43,6 +45,8 @@ from apps.orders.api.serializers import (
 )
 from apps.orders.api.throttles import OrderSubmissionThrottle
 from core.models import ProgramSettings
+
+logger = logging.getLogger(__name__)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -124,38 +128,50 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
     
     def get_client_ip(self, request):
-        """Extract client IP address from request."""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        """Extract the real client IP address from request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR', '')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
+            # The leftmost IP is the original client; strip whitespace
+            ip = x_forwarded_for.split(',')[0].strip()
         else:
-            ip = request.META.get('REMOTE_ADDR')
+            ip = request.META.get('REMOTE_ADDR', '')
         return ip
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def confirm(self, request, pk=None):
-        """Confirm an order."""
+        """Confirm an order (staff only)."""
         order = self.get_object()
         try:
             order.confirm()
             return Response(OrderSerializer(order).data)
-        except Exception as e:
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Unexpected error confirming order pk=%s", pk)
             return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': 'An unexpected error occurred while confirming the order.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def cancel(self, request, pk=None):
-        """Cancel an order."""
+        """Cancel an order (staff only). Restores vouchers and stock if already confirmed."""
+        from django.db import transaction as db_transaction
         order = self.get_object()
         if order.status in ['completed', 'cancelled']:
             return Response(
                 {'error': f'Cannot cancel order with status: {order.status}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        order.status = 'cancelled'
-        order.save(update_fields=['status', 'updated_at'])
+        was_confirmed = order.status == 'confirmed'
+        # Wrap status update + restoration in a single atomic block so that
+        # a failure mid-restore rolls back the status change too — preventing
+        # a permanently-cancelled order with un-restored vouchers/stock.
+        with db_transaction.atomic():
+            order.status = 'cancelled'
+            if was_confirmed:
+                order._restore_on_cancel()
+            order.save(update_fields=['status', 'updated_at'])
         return Response(OrderSerializer(order).data)
 
     @action(detail=False, methods=['get'])
@@ -169,9 +185,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = OrderListSerializer(orders, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsStaffUser])
     def by_program(self, request):
-        """Return orders grouped by program."""
+        """Return orders grouped by program (staff only)."""
         from apps.lifeskills.models import Program
         programs = Program.objects.all()
         result = []
@@ -234,17 +250,23 @@ class OrderViewSet(viewsets.ModelViewSet):
         from apps.account.models import Participant, AccountBalance
         from apps.pantry.models import Product, ProductLimit
         from apps.orders.utils.validators import CategoryLimitValidator
-        
+        from django.db import transaction as _tx
+
+        class _ValidationDone(Exception):
+            """Sentinel: forces atomic rollback while preserving response data."""
+            def __init__(self, response):
+                self.response = response
+
         # Get request data
         participant_id = request.data.get('participant_id')
         items_data = request.data.get('items', [])
-        
+
         if not participant_id:
             return Response(
                 {'error': 'participant_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get participant and account
         try:
             participant = Participant.objects.select_related(
@@ -269,195 +291,190 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {'error': 'You do not have permission to validate a cart for this participant.'},
                     status=status.HTTP_403_FORBIDDEN
                 )
-        
+
         # Get program settings for grace allowance
         program_settings = ProgramSettings.get_settings()
-        
-        # Create temporary order and items (not saved to DB)
-        temp_order = Order(
-            account=account,
-            user=request.user,
-            status='confirmed'  # Set to confirmed to trigger validation
-        )
-        
-        # We need to save the order first to add items
-        temp_order.save()
-        
-        temp_items = []
-        total_price = Decimal('0.00')
-        
+
+        # Wrap temp records in an atomic savepoint that is *always* rolled back.
+        # This guarantees zero DB side-effects even on SIGKILL / OOM — the
+        # Postgres transaction is never committed.
+        # Using _ValidationDone sentinel forces rollback while preserving result.
         try:
-            for item_data in items_data:
-                product_id = item_data.get('product_id')
-                quantity = item_data.get('quantity', 1)
-                
-                try:
-                    product = Product.objects.get(id=product_id)
-                    item = OrderItem.objects.create(
-                        order=temp_order,
-                        product=product,
-                        quantity=quantity,
-                        price=product.price
+            with _tx.atomic():
+                temp_order = Order(
+                    account=account,
+                    user=request.user,
+                    status='pending',
+                )
+                temp_order.save()
+
+                temp_items = []
+                total_price = Decimal('0.00')
+
+                for item_data in items_data:
+                    product_id = item_data.get('product_id')
+                    quantity = item_data.get('quantity', 1)
+                    try:
+                        product = Product.objects.get(id=product_id)
+                        item = OrderItem.objects.create(
+                            order=temp_order,
+                            product=product,
+                            quantity=quantity,
+                            price=product.price
+                        )
+                        temp_items.append(item)
+                        total_price += item.total_price()
+                    except Product.DoesNotExist:
+                        raise _ValidationDone(Response(
+                            {'error': f'Product {product_id} not found'},
+                            status=status.HTTP_404_NOT_FOUND
+                        ))
+
+                # Now run validation
+                violations = []
+
+                # Separate items by category
+                food_items = []
+                hygiene_items = []
+                go_fresh_items = []
+
+                for item in temp_items:
+                    category_name = item.product.category.name.lower() if item.product.category else ''
+                    if category_name == 'hygiene':
+                        hygiene_items.append(item)
+                    elif category_name == 'go fresh':
+                        go_fresh_items.append(item)
+                    else:
+                        food_items.append(item)
+
+                # Calculate totals
+                food_total = sum(item.total_price() for item in food_items)
+                hygiene_total = sum(item.total_price() for item in hygiene_items)
+                go_fresh_total = sum(item.total_price() for item in go_fresh_items)
+
+                # Get balances
+                available_balance = account.available_balance
+                hygiene_balance = account.hygiene_balance
+                go_fresh_balance = account.go_fresh_balance
+
+                # Validate available balance (food items)
+                if food_total > available_balance:
+                    amount_over = float(food_total - available_balance)
+                    grace_allowed = (
+                        program_settings.grace_enabled and
+                        amount_over <= float(program_settings.grace_amount)
                     )
-                    temp_items.append(item)
-                    total_price += item.total_price()
-                except Product.DoesNotExist:
-                    temp_order.delete()  # Clean up
-                    return Response(
-                        {'error': f'Product {product_id} not found'},
-                        status=status.HTTP_404_NOT_FOUND
-                    )
-            
-            # Now run validation
-            violations = []
-            
-            # Separate items by category
-            food_items = []
-            hygiene_items = []
-            go_fresh_items = []
-            
-            for item in temp_items:
-                category_name = item.product.category.name.lower() if item.product.category else ''
-                if category_name == 'hygiene':
-                    hygiene_items.append(item)
-                elif category_name == 'go fresh':
-                    go_fresh_items.append(item)
-                else:
-                    food_items.append(item)
-            
-            # Calculate totals
-            food_total = sum(item.total_price() for item in food_items)
-            hygiene_total = sum(item.total_price() for item in hygiene_items)
-            go_fresh_total = sum(item.total_price() for item in go_fresh_items)
-            
-            # Get balances
-            available_balance = account.available_balance
-            hygiene_balance = account.hygiene_balance
-            go_fresh_balance = account.go_fresh_balance
-            
-            # Validate available balance (food items)
-            if food_total > available_balance:
-                amount_over = float(food_total - available_balance)
-                grace_allowed = (
-                    program_settings.grace_enabled and 
-                    amount_over <= float(program_settings.grace_amount)
-                )
-                violations.append({
-                    'type': 'balance',
-                    'severity': 'warning' if grace_allowed else 'error',
-                    'message': program_settings.grace_message if grace_allowed else f'Food balance exceeded by ${amount_over:.2f}',
-                    'amount_over': amount_over,
-                    'grace_allowed': grace_allowed
-                })
-            
-            # Validate hygiene balance
-            if hygiene_total > hygiene_balance:
-                amount_over = float(hygiene_total - hygiene_balance)
-                grace_allowed = (
-                    program_settings.grace_enabled and 
-                    amount_over <= float(program_settings.grace_amount)
-                )
-                violations.append({
-                    'type': 'balance',
-                    'severity': 'warning' if grace_allowed else 'error',
-                    'message': program_settings.grace_message if grace_allowed else f'Hygiene balance exceeded by ${amount_over:.2f}',
-                    'amount_over': amount_over,
-                    'grace_allowed': grace_allowed
-                })
-            
-            # Validate Go Fresh balance
-            if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
-                amount_over = float(go_fresh_total - go_fresh_balance)
-                grace_allowed = (
-                    program_settings.grace_enabled and 
-                    amount_over <= float(program_settings.grace_amount)
-                )
-                violations.append({
-                    'type': 'balance',
-                    'severity': 'warning' if grace_allowed else 'error',
-                    'message': program_settings.grace_message if grace_allowed else f'Go Fresh balance exceeded by ${amount_over:.2f}',
-                    'amount_over': amount_over,
-                    'grace_allowed': grace_allowed
-                })
-            
-            # Validate category limits
-            try:
-                CategoryLimitValidator.validate_category_limits(temp_items, participant)
-            except ValidationError as e:
-                error_messages = e.error_list if hasattr(e, 'error_list') else [str(e)]
-                for msg in error_messages:
                     violations.append({
-                        'type': 'limit',
-                        'severity': 'error',
-                        'message': str(msg),
-                        'amount_over': 0,
-                        'grace_allowed': False
+                        'type': 'balance',
+                        'severity': 'warning' if grace_allowed else 'error',
+                        'message': program_settings.grace_message if grace_allowed else f'Food balance exceeded by ${amount_over:.2f}',
+                        'amount_over': amount_over,
+                        'grace_allowed': grace_allowed
                     })
-            
-            # Build limits summary
-            limits = []
-            from collections import defaultdict
-            category_counts = defaultdict(int)
-            
-            for item in temp_items:
-                if item.product.category:
-                    category_counts[item.product.category.id] += item.quantity
-            
-            # Get product limits
-            product_limits = ProductLimit.objects.filter(
-                Q(category__id__in=category_counts.keys()) |
-                Q(subcategory__category__id__in=category_counts.keys())
-            ).select_related('category', 'subcategory')
-            
-            household_size = participant.adults + participant.children + participant.infants
-            
-            for limit in product_limits:
-                category = limit.category or limit.subcategory.category
-                used = category_counts.get(category.id, 0)
-                
-                # Calculate max based on scope
-                if limit.limit_scope == 'per_adult':
-                    max_allowed = limit.limit * participant.adults
-                elif limit.limit_scope == 'per_child':
-                    max_allowed = limit.limit * participant.children
-                elif limit.limit_scope == 'per_infant':
-                    max_allowed = limit.limit * participant.infants
-                elif limit.limit_scope == 'per_household':
-                    max_allowed = limit.limit * household_size
-                else:  # per_order
-                    max_allowed = limit.limit
-                
-                limits.append({
-                    'category_name': limit.name or category.name,
-                    'used': used,
-                    'max': limit.limit,
-                    'scope': limit.limit_scope,
-                    'per_household_max': max_allowed
-                })
-            
-            # Check if cart is valid (no error severity violations)
-            has_blocking_violations = any(v['severity'] == 'error' for v in violations)
-            
-            # Get rules version from Redis
-            rules_version = cache.get('rules_version', 'unknown')
-            
-            response_data = {
-                'valid': not has_blocking_violations,
-                'violations': violations,
-                'balances': {
-                    'available': str(available_balance),
-                    'hygiene': str(hygiene_balance),
-                    'go_fresh': str(go_fresh_balance)
-                },
-                'limits': limits,
-                'rules_version': rules_version
-            }
-            
-            return Response(response_data)
-            
-        finally:
-            # Clean up temp order and items
-            temp_order.delete()
+
+                # Validate hygiene balance
+                if hygiene_total > hygiene_balance:
+                    amount_over = float(hygiene_total - hygiene_balance)
+                    grace_allowed = (
+                        program_settings.grace_enabled and
+                        amount_over <= float(program_settings.grace_amount)
+                    )
+                    violations.append({
+                        'type': 'balance',
+                        'severity': 'warning' if grace_allowed else 'error',
+                        'message': program_settings.grace_message if grace_allowed else f'Hygiene balance exceeded by ${amount_over:.2f}',
+                        'amount_over': amount_over,
+                        'grace_allowed': grace_allowed
+                    })
+
+                # Validate Go Fresh balance
+                if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
+                    amount_over = float(go_fresh_total - go_fresh_balance)
+                    grace_allowed = (
+                        program_settings.grace_enabled and
+                        amount_over <= float(program_settings.grace_amount)
+                    )
+                    violations.append({
+                        'type': 'balance',
+                        'severity': 'warning' if grace_allowed else 'error',
+                        'message': program_settings.grace_message if grace_allowed else f'Go Fresh balance exceeded by ${amount_over:.2f}',
+                        'amount_over': amount_over,
+                        'grace_allowed': grace_allowed
+                    })
+
+                # Validate category limits
+                try:
+                    CategoryLimitValidator.validate_category_limits(temp_items, participant)
+                except ValidationError as e:
+                    error_messages = e.error_list if hasattr(e, 'error_list') else [str(e)]
+                    for msg in error_messages:
+                        violations.append({
+                            'type': 'limit',
+                            'severity': 'error',
+                            'message': str(msg),
+                            'amount_over': 0,
+                            'grace_allowed': False
+                        })
+
+                # Build limits summary
+                limits = []
+                from collections import defaultdict
+                category_counts = defaultdict(int)
+
+                for item in temp_items:
+                    if item.product.category:
+                        category_counts[item.product.category.id] += item.quantity
+
+                product_limits = ProductLimit.objects.filter(
+                    Q(category__id__in=category_counts.keys()) |
+                    Q(subcategory__category__id__in=category_counts.keys())
+                ).select_related('category', 'subcategory')
+
+                household_size = participant.adults + participant.children + participant.infants
+
+                for limit in product_limits:
+                    category = limit.category or limit.subcategory.category
+                    used = category_counts.get(category.id, 0)
+
+                    if limit.limit_scope == 'per_adult':
+                        max_allowed = limit.limit * participant.adults
+                    elif limit.limit_scope == 'per_child':
+                        max_allowed = limit.limit * participant.children
+                    elif limit.limit_scope == 'per_infant':
+                        max_allowed = limit.limit * participant.infants
+                    elif limit.limit_scope == 'per_household':
+                        max_allowed = limit.limit * household_size
+                    else:  # per_order
+                        max_allowed = limit.limit
+
+                    limits.append({
+                        'category_name': limit.name or category.name,
+                        'used': used,
+                        'max': limit.limit,
+                        'scope': limit.limit_scope,
+                        'per_household_max': max_allowed
+                    })
+
+                has_blocking_violations = any(v['severity'] == 'error' for v in violations)
+                rules_version = cache.get('rules_version', 'unknown')
+
+                response_data = {
+                    'valid': not has_blocking_violations,
+                    'violations': violations,
+                    'balances': {
+                        'available': str(available_balance),
+                        'hygiene': str(hygiene_balance),
+                        'go_fresh': str(go_fresh_balance)
+                    },
+                    'limits': limits,
+                    'rules_version': rules_version
+                }
+
+                # Always raise sentinel to force rollback — temp records never commit.
+                raise _ValidationDone(Response(response_data))
+
+        except _ValidationDone as done:
+            return done.response
 
     @action(
         detail=False,
@@ -1157,8 +1174,12 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            logger.exception("Unexpected error in create_with_packing for program_id=%s", program_id)
+            return Response(
+                {'error': 'An unexpected error occurred while creating the combined order.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class PackingSplitRuleViewSet(viewsets.ModelViewSet):

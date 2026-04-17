@@ -107,25 +107,25 @@ class ProgramSettingsViewSet(viewsets.ModelViewSet):
     queryset = ProgramSettings.objects.all()
     serializer_class = ProgramSettingsSerializer
     pagination_class = None  # Singleton
-    
+
     def get_permissions(self):
-        """Allow unauthenticated GET requests for program config (needed for login page)."""
-        if self.action in ['list', 'retrieve', 'current']:
+        """
+        Safe methods (GET/HEAD/OPTIONS) are public — the login page needs
+        program config before a token exists.  All mutations require a
+        logged-in admin.
+        """
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [AllowAny()]
         return [IsAuthenticated(), IsSingletonAdmin()]
-    
-    @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[AllowAny])
+
+    @action(detail=False, methods=['get', 'put', 'patch'])
     def current(self, request):
         """Get or update the current settings."""
         settings_obj = ProgramSettings.get_settings()
         if request.method == 'GET':
             serializer = ProgramSettingsSerializer(settings_obj)
             return Response(serializer.data)
-        
-        # Require admin permissions for updates
-        self.permission_classes = [IsAuthenticated, IsSingletonAdmin]
-        self.check_permissions(request)
-        
+
         serializer = ProgramSettingsSerializer(
             settings_obj, data=request.data, partial=(request.method == 'PATCH')
         )
@@ -139,27 +139,29 @@ class ThemeSettingsViewSet(viewsets.ModelViewSet):
     queryset = ThemeSettings.objects.all()
     serializer_class = ThemeSettingsSerializer
     pagination_class = None  # Singleton
-    
+
     def get_permissions(self):
-        """Allow unauthenticated GET requests for theme config (needed for login page branding)."""
-        if self.action in ['list', 'retrieve', 'current']:
+        """
+        Safe methods are public — the login page needs branding before
+        a token exists.  All mutations require a logged-in admin.
+        """
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [AllowAny()]
         return [IsAuthenticated(), IsSingletonAdmin()]
-    
-    @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[AllowAny])
+
+    @action(detail=False, methods=['get', 'put', 'patch'])
     def current(self, request):
         """Get or update the current settings."""
         settings_obj = ThemeSettings.get_settings()
         if request.method == 'GET':
             serializer = ThemeSettingsSerializer(settings_obj, context={'request': request})
             return Response(serializer.data)
-        
-        # Require admin permissions for updates
-        self.permission_classes = [IsAuthenticated, IsSingletonAdmin]
-        self.check_permissions(request)
-        
+
         serializer = ThemeSettingsSerializer(
-            settings_obj, data=request.data, partial=(request.method == 'PATCH'), context={'request': request}
+            settings_obj,
+            data=request.data,
+            partial=(request.method == 'PATCH'),
+            context={'request': request},
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -169,19 +171,25 @@ class ThemeSettingsViewSet(viewsets.ModelViewSet):
 class RulesVersionViewSet(viewsets.ViewSet):
     """ViewSet for retrieving current rules version hash."""
     permission_classes = [AllowAny]
-    
+
     def list(self, request):
-        """Get current rules version hash from Redis cache."""
-        rules_version = cache.get('rules_version')
+        """
+        Return the current rules version hash.
+
+        On a cache miss we recompute the hash directly from the DB — no
+        model.save() / signal firing needed, so this stays a pure read.
+        The freshly computed value is written back to the cache so the
+        next caller gets a hit.
+        """
+        from core.signals import _compute_rules_hash, RULES_VERSION_CACHE_KEY, RULES_VERSION_TTL
+
+        rules_version = cache.get(RULES_VERSION_CACHE_KEY)
         if not rules_version:
-            # If cache is empty, trigger regeneration
-            from core.models import ProgramSettings
-            program_settings = ProgramSettings.get_settings()
-            # Signal will regenerate hash
-            program_settings.save()
-            rules_version = cache.get('rules_version', 'unknown')
-        
-        return Response({'rules_version': rules_version})
+            rules_version = _compute_rules_hash()
+            if rules_version:
+                cache.set(RULES_VERSION_CACHE_KEY, rules_version, timeout=RULES_VERSION_TTL)
+
+        return Response({'rules_version': rules_version or 'unknown'})
 
 
 class OrderWindowDashboardView(APIView):
@@ -244,13 +252,17 @@ class MyWindowView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from core.utils import get_program_window_status, generate_window_cycles, get_effective_config
+        from core.utils import get_program_window_status
 
-        user = request.user
-        # Resolve participant → program
+        # Single query: resolve participant + program together
+        from apps.account.models import Participant
         try:
-            participant = user.participant
-        except Exception:
+            participant = (
+                Participant.objects
+                .select_related('program')
+                .get(user=request.user)
+            )
+        except Participant.DoesNotExist:
             return Response(
                 {'detail': 'No participant profile linked to this account.'},
                 status=status.HTTP_404_NOT_FOUND,
@@ -259,7 +271,6 @@ class MyWindowView(APIView):
         program = getattr(participant, 'program', None)
         if program is None:
             # No program assigned — fall back to global OrderWindowSettings
-            from core.models import OrderWindowSettings
             global_s = OrderWindowSettings.get_settings()
             is_open = global_s.enabled
             return Response({
@@ -273,28 +284,28 @@ class MyWindowView(APIView):
             })
 
         ws = get_program_window_status(program)
-        config = get_effective_config(program)
 
-        # Pull next open/close times from the first upcoming cycle
-        cycles = ws.get('cycles', [])
+        # Pull next open/close times from the first upcoming cycle.
+        # Use .get() throughout — defensive against any future shape change.
+        cycles = ws.get('cycles') or []
         next_opens_at = None
         next_closes_at = None
         if cycles:
             c = cycles[0]
-            # c values are datetime objects from generate_window_cycles
-            next_opens_at = c['opens_at'].isoformat() if c['opens_at'] else None
-            next_closes_at = c['closes_at'].isoformat() if c['closes_at'] else None
+            opens = c.get('opens_at')
+            closes = c.get('closes_at')
+            next_opens_at = opens.isoformat() if opens else None
+            next_closes_at = closes.isoformat() if closes else None
 
-        is_open = ws['window_status'] in ('open', 'force_open')
+        window_status = ws.get('window_status', 'disabled')
+        is_open = window_status in ('open', 'force_open')
 
         override = ws.get('override')
-        override_reason = None
-        if override:
-            override_reason = getattr(override, 'reason', None) or None
+        override_reason = override.reason if override else None
 
         return Response({
             'is_open': is_open,
-            'window_status': ws['window_status'],
+            'window_status': window_status,
             'seconds_until_change': ws.get('seconds_until_change'),
             'next_opens_at': next_opens_at,
             'next_closes_at': next_closes_at,

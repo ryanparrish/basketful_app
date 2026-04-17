@@ -15,3 +15,4 @@ export * from './groups';
 export * from './permissions';
 export * from './users';
 export * from './brandingSettings';
+export * from './coaches';

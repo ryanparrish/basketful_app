@@ -172,22 +172,22 @@ class GoFreshSettings(models.Model):
     small_household_budget = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=10.00,
-        validators=[MinValueValidator(0.01)],
+        default=Decimal('10.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
         help_text="Budget for households with 1-2 people (default: $10.00)"
     )
     medium_household_budget = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=20.00,
-        validators=[MinValueValidator(0.01)],
+        default=Decimal('20.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
         help_text="Budget for households with 3-5 people (default: $20.00)"
     )
     large_household_budget = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=25.00,
-        validators=[MinValueValidator(0.01)],
+        default=Decimal('25.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
         help_text="Budget for households with 6+ people (default: $25.00)"
     )
     small_threshold = models.PositiveIntegerField(

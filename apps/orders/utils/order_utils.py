@@ -151,12 +151,11 @@ class OrderOrchestration:
                 # STEP 2: All validation passed - create Order and items atomically.
                 with transaction.atomic():
                     order = Order.objects.create(
-                        account=account, 
+                        account=account,
                         status="pending",
                         program_pause_at_creation=pause_name if pause_multiplier > 1 else None,
                         pause_multiplier_at_creation=pause_multiplier if pause_multiplier > 1 else None
                     )
-                    order.save()
 
                     items_bulk = [
                         OrderItem(
@@ -292,22 +291,36 @@ class OrderOrchestration:
 
     @transaction.atomic
     def confirm(self):
-        """Confirm the order, setting its status to 'confirmed' and marking it as paid."""
+        """Confirm the order, setting its status to 'confirmed' and marking it as paid.
+        
+        Delegates to Order.confirm() which holds a select_for_update() row-level
+        lock, preventing double-confirm race conditions on multi-node deployments.
+        After confirmation the paid flag is also persisted in the same transaction.
+        """
         if not self.order:
             raise ValidationError("Order must be set before calling confirm()")
-        if self.order.status == "confirmed":
-            return 
-        self.order.status = "confirmed"
-        self.order.paid = True
-        self.order.save(update_fields=["status", "updated_at"])
+        # Delegate to model method — acquires select_for_update() lock internally.
+        self.order.confirm()
+        # Ensure paid=True is persisted (model.confirm() only saves status).
+        if not self.order.paid:
+            from apps.orders.models import Order
+            Order.objects.filter(pk=self.order.pk).update(paid=True)
+            self.order.paid = True
         logger.info("Order %s confirmed.", self.order.id)
 
     @transaction.atomic
     def cancel(self):
-        """Cancel the order, setting its status to 'cancelled'."""
+        """Cancel the order, setting its status to 'cancelled'.
+        
+        If the order was already confirmed, vouchers and stock are restored
+        atomically before the status is committed.
+        """
         if not self.order:
             raise ValueError("Order must be set before calling cancel()")
-        self.order.status = "cancelled"
+        was_confirmed = self.order.status == 'confirmed'
+        self.order.status = 'cancelled'
+        if was_confirmed:
+            self.order._restore_on_cancel()
         self.order.save(update_fields=["status", "updated_at"])
         logger.info("Order %s cancelled.", self.order.id)
 

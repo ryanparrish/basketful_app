@@ -105,4 +105,19 @@ class OrderValidation:
                 logger.warning("[Validator] %s - Go Fresh total exceeds balance", participant)
                 raise ValidationError(f"[{participant}] {msg}")
 
+        # Step 5: Validate stock availability — prevent confirming orders for out-of-stock items.
+        out_of_stock = []
+        for item in items:
+            available = getattr(item.product, 'quantity_in_stock', None)
+            if available is not None and available < item.quantity:
+                out_of_stock.append(
+                    f"{item.product.name}: requested {item.quantity}, only {available} in stock"
+                )
+        if out_of_stock:
+            detail = "; ".join(out_of_stock)
+            logger.warning("[Validator] %s - insufficient stock: %s", participant, detail)
+            raise ValidationError(
+                f"[{participant}] Insufficient stock: {detail}"
+            )
+
 

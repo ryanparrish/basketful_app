@@ -213,11 +213,24 @@ class VoucherViewSet(viewsets.ModelViewSet):
         new_state = data['new_state']
         voucher_ids = data['voucher_ids']
 
+        # Valid state transitions — consumed vouchers may not be re-opened by staff.
+        ALLOWED_TRANSITIONS: dict = {
+            'pending':  {'applied', 'expired'},
+            'applied':  {'expired'},
+            'consumed': set(),        # terminal — no transitions allowed
+            'expired':  set(),        # terminal — no transitions allowed
+        }
+
         updated = []
         skipped = []
         with transaction.atomic():
             for vid in voucher_ids:
-                voucher = Voucher.objects.get(pk=vid)
+                # Lock row before check+update to prevent concurrent modification.
+                voucher = Voucher.objects.select_for_update().get(pk=vid)
+                allowed = ALLOWED_TRANSITIONS.get(voucher.state, set())
+                if new_state not in allowed:
+                    skipped.append(vid)
+                    continue
                 update_kwargs: dict = {'state': new_state}
                 if new_state == 'expired':
                     update_kwargs['active'] = False
@@ -234,30 +247,37 @@ class VoucherViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def apply(self, request, pk=None):
         """Apply a voucher (change state from pending to applied)."""
-        voucher = self.get_object()
-        if voucher.state != 'pending':
-            return Response(
-                {'error': f'Cannot apply voucher with state: {voucher.state}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        # Use queryset update to bypass editable=False restriction
-        Voucher.objects.filter(pk=voucher.pk).update(state='applied')
-        voucher.refresh_from_db()
+        with transaction.atomic():
+            voucher = Voucher.objects.select_for_update().get(pk=pk)
+            if voucher.state != 'pending':
+                return Response(
+                    {'error': f'Cannot apply voucher with state: {voucher.state}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # Use queryset update to bypass editable=False restriction
+            Voucher.objects.filter(pk=voucher.pk).update(state='applied')
+            voucher.refresh_from_db()
         return Response(VoucherSerializer(voucher).data)
 
     @action(detail=True, methods=['post'])
     def expire(self, request, pk=None):
         """Expire a voucher."""
-        voucher = self.get_object()
-        if voucher.state == 'consumed':
-            return Response(
-                {'error': 'Cannot expire a consumed voucher'},
-                status=status.HTTP_400_BAD_REQUEST
+        with transaction.atomic():
+            voucher = Voucher.objects.select_for_update().get(pk=pk)
+            if voucher.state == 'consumed':
+                return Response(
+                    {'error': 'Cannot expire a consumed voucher'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if voucher.state == 'expired':
+                return Response(
+                    {'error': 'Voucher is already expired'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            Voucher.objects.filter(pk=voucher.pk).update(
+                state='expired', active=False
             )
-        Voucher.objects.filter(pk=voucher.pk).update(
-            state='expired', active=False
-        )
-        voucher.refresh_from_db()
+            voucher.refresh_from_db()
         return Response(VoucherSerializer(voucher).data)
 
 

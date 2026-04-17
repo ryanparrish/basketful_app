@@ -4,6 +4,8 @@ Cookie-based JWT authentication views.
 These views set JWT tokens as httpOnly cookies instead of returning them
 in the response body for enhanced security against XSS attacks.
 """
+import logging
+
 from django.conf import settings
 from django.middleware.csrf import get_token
 from rest_framework import status
@@ -18,6 +20,8 @@ import requests
 from .jwt_serializers import FlexibleTokenObtainPairSerializer
 from .serializers import ParticipantSerializer
 from apps.account.models import Participant
+
+logger = logging.getLogger(__name__)
 
 
 class LoginRateThrottle(AnonRateThrottle):
@@ -114,8 +118,10 @@ def verify_recaptcha(token, action=None):
             errors = result.get('error-codes', ['unknown-error'])
             return False, f'reCAPTCHA verification failed: {", ".join(errors)}'
             
-    except requests.RequestException as e:
-        return False, f'reCAPTCHA verification error: {str(e)}'
+    except requests.RequestException:
+        # Log internally; never surface connection details to the caller
+        logger.exception("reCAPTCHA verification request failed")
+        return False, 'reCAPTCHA verification is temporarily unavailable. Please try again.'
 
 
 class CookieTokenObtainView(APIView):

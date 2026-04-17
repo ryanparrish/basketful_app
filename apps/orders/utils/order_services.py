@@ -104,12 +104,15 @@ def distributed_order_lock(participant_id: int, timeout: int = 10):
                 "Possible concurrent order submission."
             )
     except Exception as e:
-        # Redis unavailable - allow request to continue without lock.
-        logger.warning(
-            f"Redis unavailable for distributed lock (participant {participant_id}): {e}. "
-            "Allowing request to proceed without lock."
+        # Redis is unavailable. Fail CLOSED — do NOT allow orders without the
+        # distributed lock. Silent fail-open would expose the full race window
+        # on every node during a Redis failover.
+        logger.critical(
+            "Redis unavailable for distributed lock (participant %s): %s. "
+            "Order submission blocked until Redis recovers.",
+            participant_id, e
         )
-        lock_acquired = True
+        lock_acquired = False
         lock_via_cache = False
 
     try:

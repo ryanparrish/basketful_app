@@ -1,6 +1,8 @@
 """
 ViewSets for the Lifeskills app.
 """
+from datetime import timedelta
+
 from rest_framework import viewsets, filters, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -9,7 +11,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 
 from apps.api.pagination import StandardResultsSetPagination
-from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser
+from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsCoachOrStaff
 from apps.lifeskills.models import Program, LifeskillsCoach, ProgramPause
 from apps.lifeskills.api.serializers import (
     ProgramSerializer,
@@ -40,9 +42,9 @@ class ProgramViewSet(viewsets.ModelViewSet):
             return ProgramListSerializer
         return ProgramSerializer
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated, IsStaffUser])
     def participants(self, request, pk=None):
-        """Return participants for this program."""
+        """Return participants for this program (staff only)."""
         from apps.account.api.serializers import ParticipantSerializer
         program = self.get_object()
         participants = program.participants.all()
@@ -53,9 +55,9 @@ class ProgramViewSet(viewsets.ModelViewSet):
         serializer = ParticipantSerializer(participants, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated, IsStaffUser])
     def orders(self, request, pk=None):
-        """Return orders for this program."""
+        """Return orders for this program (staff only)."""
         from apps.orders.api.serializers import OrderListSerializer
         from apps.orders.models import Order
         program = self.get_object()
@@ -155,15 +157,119 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
 
 class LifeskillsCoachViewSet(viewsets.ModelViewSet):
-    """ViewSet for LifeskillsCoach model."""
-    queryset = LifeskillsCoach.objects.all()
+    """ViewSet for LifeskillsCoach model.
+
+    Staff: full CRUD over all coaches.
+    Lifeskills Coach: read/update their own profile only; cannot create or delete.
+    """
     serializer_class = LifeskillsCoachSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated, IsCoachOrStaff]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'email']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
+
+    def get_queryset(self):
+        qs = LifeskillsCoach.objects.select_related('user', 'program').all()
+        # Non-staff coaches can only see their own profile
+        if (
+            not self.request.user.is_staff
+            and self.request.user.groups.filter(name='Lifeskills Coach').exists()
+        ):
+            return qs.filter(user=self.request.user)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response(
+                {'detail': 'Only staff can create coach profiles.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response(
+                {'detail': 'Only staff can delete coach profiles.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='my-dashboard')
+    def my_dashboard(self, request):
+        """
+        GET /api/v1/coaches/my-dashboard/
+
+        Returns the authenticated coach's dashboard:
+        - Their coach profile
+        - Their program's order window status
+        - Each assigned participant with recent-order status (last 14 days)
+        - Summary counts
+        """
+        try:
+            coach = LifeskillsCoach.objects.select_related('program', 'user').get(
+                user=request.user
+            )
+        except LifeskillsCoach.DoesNotExist:
+            return Response(
+                {'detail': 'No coach profile found for this user.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        window_status_data = None
+        participants_data = []
+        summary: dict = {}
+
+        if coach.program:
+            from core.utils import get_program_window_status
+            window_status_data = get_program_window_status(coach.program)
+
+            from apps.account.models import Participant
+            from apps.orders.models import Order
+
+            cutoff = timezone.now() - timedelta(days=14)
+            participants = Participant.objects.filter(
+                assigned_coach=coach
+            ).order_by('name')
+
+            for participant in participants:
+                last_order = (
+                    Order.objects.filter(
+                        account__participant=participant,
+                        order_date__gte=cutoff,
+                    )
+                    .order_by('-order_date')
+                    .first()
+                )
+                participants_data.append({
+                    'id': participant.id,
+                    'name': participant.name,
+                    'customer_number': participant.customer_number,
+                    'email': participant.email,
+                    'is_active': participant.active,
+                    'has_recent_order': last_order is not None,
+                    'last_order_date': last_order.order_date if last_order else None,
+                    'last_order_id': last_order.id if last_order else None,
+                })
+
+            active_count = sum(1 for p in participants_data if p['is_active'])
+            orders_placed = sum(
+                1 for p in participants_data if p['is_active'] and p['has_recent_order']
+            )
+            summary = {
+                'total_participants': len(participants_data),
+                'active_participants': active_count,
+                'orders_placed_recently': orders_placed,
+                'orders_pending': max(active_count - orders_placed, 0),
+            }
+
+        return Response({
+            'coach': LifeskillsCoachSerializer(coach, context={'request': request}).data,
+            'window_status': window_status_data,
+            'participants': participants_data,
+            'summary': summary,
+        })
 
 
 class ProgramPauseViewSet(viewsets.ModelViewSet):

@@ -14,13 +14,34 @@ import apiClient from '../lib/api/apiClient.ts';
  * All other scalar/array/object values are JSON-stringified into the form.
  */
 function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Record<string, unknown> {
-  const hasFile = Object.values(data).some(
+  // Strip React Admin ImageInput empty/cleared values (e.g. { src: '', rawFile: undefined })
+  // to avoid sending unparseable image descriptors as JSON to Django's ImageField.
+  // Also strip empty strings so DRF field defaults (e.g. weight_lbs=0) can apply.
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof File) &&
+      !(value as { rawFile?: unknown }).rawFile
+    ) {
+      // Object with no rawFile — likely a cleared or pre-existing ImageInput descriptor.
+      // Skip it so we don't send { src: 'https://...' } as the image field value.
+      continue;
+    }
+    // Skip empty strings so DRF field defaults kick in instead of rejecting ""
+    if (value === '') continue;
+    cleaned[key] = value;
+  }
+
+  const hasFile = Object.values(cleaned).some(
     (v) => v && typeof v === 'object' && (v as { rawFile?: unknown }).rawFile instanceof File
   );
-  if (!hasFile) return data;
+  if (!hasFile) return cleaned;
 
   const form = new FormData();
-  for (const [key, value] of Object.entries(data)) {
+  for (const [key, value] of Object.entries(cleaned)) {
     if (value === null || value === undefined) continue;
     if (value && typeof value === 'object' && (value as { rawFile?: unknown }).rawFile instanceof File) {
       form.append(key, (value as { rawFile: File }).rawFile);
@@ -153,7 +174,14 @@ export const dataProvider: DataProvider = {
   create: async (resource, params) => {
     const url = `/${resource}/`;
     const body = toFormDataIfNeeded(params.data);
-    const response = await apiClient.post(url, body);
+    let response;
+    try {
+      response = await apiClient.post(url, body);
+    } catch (err: any) {
+      // Log the full DRF error body so it's visible in the browser console
+      console.error(`[dataProvider] POST ${url} failed:`, err?.response?.data ?? err);
+      throw err;
+    }
     const data = response.data;
     
     // Ensure the response has an id field for React-Admin

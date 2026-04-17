@@ -86,6 +86,9 @@ class ProductSerializer(serializers.ModelSerializer):
             'description': {'required': False},
             'price': {'required': False},
             'quantity_in_stock': {'required': False},
+            'image': {'required': False, 'allow_null': True},
+            'weight_lbs': {'required': False, 'default': 0},
+            'sort_order': {'required': False, 'default': 0},
         }
 
     def get_limit(self, obj):

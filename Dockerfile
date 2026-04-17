@@ -1,5 +1,5 @@
-# Use official Python image
-FROM python:3.14.2-slim-trixie
+# Use official Python image (3.13 stable)
+FROM python:3.13-slim
 
 # Prevent Python from writing .pyc files and buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1

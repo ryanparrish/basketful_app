@@ -158,4 +158,73 @@ class ProgramAdmin(admin.ModelAdmin):
         js = ('admin/js/timezone_display.js',)
 
 
-admin.site.register(LifeskillsCoach)
+@admin.register(LifeskillsCoach)
+class LifeskillsCoachAdmin(admin.ModelAdmin):
+    """
+    Admin for LifeskillsCoach.
+
+    Staff/superusers: full CRUD, can assign user accounts and programs.
+    Lifeskills Coach users: can only view/edit their own profile (read-only user/program).
+    """
+    list_display = ('name', 'email', 'phone_number', 'program', 'linked_user', 'created_at')
+    list_filter = ('program',)
+    search_fields = ('name', 'email')
+    autocomplete_fields = ['program']
+    raw_id_fields = ['user']
+
+    def get_fieldsets(self, request, obj=None):
+        """Show user/program assignment only to staff."""
+        base = ('Coach Information', {'fields': ('name', 'email', 'phone_number', 'image')})
+        if request.user.is_staff and not request.user.groups.filter(
+            name='Lifeskills Coach'
+        ).exists() or request.user.is_superuser:
+            assignment = (
+                'Assignment',
+                {
+                    'fields': ('program', 'user'),
+                    'description': (
+                        'Assigning a User account will automatically grant that user '
+                        'Lifeskills Coach group membership and Django admin access.'
+                    ),
+                },
+            )
+            return [base, assignment]
+        # Coach role — hide user/program from self-edit form
+        return [base]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related('user', 'program')
+        # Coaches can only see their own profile
+        if (
+            not request.user.is_superuser
+            and request.user.groups.filter(name='Lifeskills Coach').exists()
+        ):
+            return qs.filter(user=request.user)
+        return qs
+
+    def has_add_permission(self, request):
+        if (
+            not request.user.is_superuser
+            and request.user.groups.filter(name='Lifeskills Coach').exists()
+        ):
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        if (
+            not request.user.is_superuser
+            and request.user.groups.filter(name='Lifeskills Coach').exists()
+        ):
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def linked_user(self, obj):
+        if obj.user:
+            return format_html(
+                '<a href="/admin/auth/user/{}/change/">{}</a>',
+                obj.user.pk,
+                obj.user.username,
+            )
+        return '—'
+    linked_user.short_description = 'User Account'
+    linked_user.allow_tags = True

@@ -31,14 +31,16 @@ if os.path.exists(env_path):
 
 SECRET_KEY = env('SECRET_KEY')
 DOMAIN_NAME = env('DOMAIN_NAME', default='localhost')
-HASHIDS_SALT = env('HASHIDS_SALT', default='default-salt-change-in-production')
+HASHIDS_SALT = env('HASHIDS_SALT')  # No default — must be set in all environments
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
 ENVIRONMENT = env('DJANGO_ENV', default='dev')
 DEBUG = env.bool('DEBUG', default=False)
 
+IS_PROD = ENVIRONMENT == 'prod'
+
 # Cookie settings based on environment
-if ENVIRONMENT == 'prod':
+if IS_PROD:
     AUTH_COOKIE_SECURE = True
     AUTH_COOKIE_SAMESITE = 'Lax'
     AUTH_COOKIE_DOMAIN = env('COOKIE_DOMAIN', default=None)
@@ -58,10 +60,8 @@ if 'pytest' in sys.modules or any('pytest' in arg for arg in sys.argv):
     CELERY_TASK_EAGER_PROPAGATES = True
 
 
-environ.Env.read_env()  # reads from .env
-
 # Set defaults based on environment
-if ENVIRONMENT == 'prod':
+if IS_PROD:
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
     # Use Mailgun HTTP API (bypasses SMTP port restrictions)
     EMAIL_BACKEND = 'anymail.backends.mailgun.EmailBackend'
@@ -290,8 +290,18 @@ RECAPTCHA_PUBLIC_KEY = env('RECAPTCHA_PUBLIC_KEY', default='test-public-key')
 RECAPTCHA_PRIVATE_KEY = env('RECAPTCHA_PRIVATE_KEY', default='test-private-key')
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+# Secure cookies only in production — plain HTTP dev sessions still work
+CSRF_COOKIE_SECURE = IS_PROD
+SESSION_COOKIE_SECURE = IS_PROD
+
+# Always keep cookies httpOnly and samesite-guarded
+CSRF_COOKIE_HTTPONLY = False  # CSRF token must be readable by JS for SPA
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# Redirect all HTTP → HTTPS in production (Render terminates TLS upstream)
+SECURE_SSL_REDIRECT = IS_PROD
+
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Celery Settings

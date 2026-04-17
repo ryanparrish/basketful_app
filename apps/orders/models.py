@@ -135,11 +135,20 @@ class Order(models.Model):
     def confirm(self):
         """
         Confirm the order after validation.
+        Uses select_for_update() to prevent double-confirm race conditions
+        on multi-node deployments.
         NOTE: Validation should happen BEFORE this method is called.
-        This method only updates status to confirmed.
         """
-        self.status = "confirmed"
-        self.save(update_fields=['status'])
+        with transaction.atomic():
+            locked = Order.objects.select_for_update().get(pk=self.pk)
+            if locked.status == "confirmed":
+                # Already confirmed by a concurrent request — nothing to do.
+                self.status = "confirmed"
+                self.paid = True
+                return
+            self.status = "confirmed"
+            self.paid = True
+            self.save(update_fields=['status', 'paid'])
 
     @staticmethod
     def _generate_order_number():
@@ -259,6 +268,73 @@ class Order(models.Model):
                     )
             raise ValidationError(errors)
 
+    def _restore_on_cancel(self):
+        """
+        Reverse the side-effects of confirmation when a confirmed order is cancelled.
+        - Returns consumed grocery vouchers back to 'applied' state.
+        - Restores decremented product stock (additive, no cap).
+        """
+        from apps.voucher.models import Voucher, OrderVoucher
+        from django.db.models import F, Value
+
+        # Restore vouchers: re-activate each one consumed for this order.
+        # select_for_update() prevents a concurrent cancel from racing and
+        # double-restoring the same voucher.
+        order_vouchers = OrderVoucher.objects.select_for_update().filter(
+            order=self
+        ).select_related('voucher')
+        restored_voucher_ids = []
+        for ov in order_vouchers:
+            Voucher.objects.filter(pk=ov.voucher_id, state='consumed').update(
+                active=True,
+                state='applied',
+            )
+            restored_voucher_ids.append(ov.voucher_id)
+        if restored_voucher_ids:
+            order_vouchers.delete()
+            logger.info(
+                "Order %s cancelled: restored %d voucher(s) to 'applied'.",
+                self.id,
+                len(restored_voucher_ids),
+            )
+
+        # Restore stock: add back the ordered quantities.
+        from apps.pantry.models import Product
+        restored_items = 0
+        for item in self.items.select_related('product').all():
+            Product.objects.filter(pk=item.product_id).update(
+                quantity_in_stock=F('quantity_in_stock') + Value(item.quantity)
+            )
+            restored_items += 1
+        if restored_items:
+            logger.info(
+                "Order %s cancelled: stock restored for %d item(s).",
+                self.id,
+                restored_items,
+            )
+
+    def _decrement_stock(self):
+        """
+        Decrement product stock when order is confirmed.
+        Uses F() expressions for race-condition safety and floors at 0.
+        """
+        from django.db.models import F, Value
+        from django.db.models.functions import Greatest
+        from apps.pantry.models import Product
+
+        for item in self.items.select_related('product').all():
+            Product.objects.filter(pk=item.product_id).update(
+                quantity_in_stock=Greatest(
+                    F('quantity_in_stock') - Value(item.quantity),
+                    Value(0)
+                )
+            )
+        logger.info(
+            "Order %s: stock decremented for %d item(s).",
+            self.id,
+            self.items.count(),
+        )
+
     def _consume_vouchers(self):
         """
         Consume vouchers when order is confirmed.
@@ -277,8 +353,11 @@ class Order(models.Model):
         if order_total == 0:
             return
         
-        # Get active grocery vouchers for this account (max 2)
-        active_vouchers = list(Voucher.objects.filter(
+        # Get active grocery vouchers for this account (max 2).
+        # select_for_update() serialises concurrent confirms — prevents
+        # two workers both reading the same vouchers as 'applied' and
+        # both consuming them (double-spend).
+        active_vouchers = list(Voucher.objects.select_for_update().filter(
             account=self.account,
             voucher_type='grocery',
             active=True,
@@ -372,9 +451,10 @@ class Order(models.Model):
                 self.full_clean()
             super().save(*args, **kwargs)
             
-            # Consume vouchers if order is being confirmed
+            # Consume vouchers and decrement stock if order is being confirmed
             if self.status == "confirmed" and old_status != "confirmed":
                 self._consume_vouchers()
+                self._decrement_stock()
 
 
 class OrderItem(models.Model):

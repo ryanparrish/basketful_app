@@ -39,6 +39,8 @@ services:
         value: ".onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://basketful-api.onrender.com"
+      - key: DJANGO_ENV
+        value: "prod"
       - key: AUTH_COOKIE_SECURE
         value: "True"
       - key: AUTH_COOKIE_SAMESITE
@@ -58,7 +60,7 @@ services:
       pip install -r requirements.txt &&
       python manage.py collectstatic --noinput &&
       python manage.py migrate --noinput
-    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60 --max-requests 1000 --max-requests-jitter 100
 
   # =========================================
   # Celery Background Worker

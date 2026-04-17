@@ -102,8 +102,8 @@ class ProductFactory(factory.django.DjangoModelFactory):
     # create a corresponding Category instance using `CategoryFactory`.
     category = factory.SubFactory(CategoryFactory)
 
-    # --- Set a default quantity for the product's stock ---
-    quantity_in_stock = 10
+    # --- Set a high default so category-limit tests are not blocked by stock checks ---
+    quantity_in_stock = 9999
 
 
 # --- Factory for the Participant Model ---

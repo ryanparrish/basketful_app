@@ -68,7 +68,12 @@ import {
   OrderPackerEdit,
   FailedOrderAttemptList,
   FailedOrderAttemptShow,
+  CoachList,
+  CoachShow,
+  CoachEdit,
+  CoachCreate,
 } from './resources';
+import CoachDashboard from './pages/CoachDashboard';
 
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
@@ -100,6 +105,8 @@ import SecurityIcon from '@mui/icons-material/Security';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import BackpackIcon from '@mui/icons-material/Backpack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import SportsIcon from '@mui/icons-material/Sports';
+import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 
 const CustomMenu = () => (
   <Menu>
@@ -119,6 +126,8 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="users" />
     <Menu.ResourceItem name="groups" />
     <Menu.ResourceItem name="permissions" />
+    <Menu.ResourceItem name="coaches" />
+    <Menu.Item to="/coach-dashboard" primaryText="Coach Dashboard" leftIcon={<DashboardCustomizeIcon />} />
     <Menu.Item to="/branding-settings/current/edit" primaryText="Branding" leftIcon={<BrandingSettingsIcon />} />
     <Menu.Item to="/settings" primaryText="Settings" leftIcon={<SettingsIcon />} />
   </Menu>
@@ -285,11 +294,21 @@ const App = () => (
       options={{ label: 'Permissions' }}
     />
 
+    {/* Coaches */}
+    <Resource
+      name="coaches"
+      list={CoachList}
+      show={CoachShow}
+      edit={CoachEdit}
+      create={CoachCreate}
+      icon={SportsIcon}
+      options={{ label: 'Coaches' }}
+    />
+
     {/* Supporting Resources (no menu items) */}
     <Resource name="subcategories" list={SubcategoryList} edit={SubcategoryEdit} create={SubcategoryCreate} />
     <Resource name="account-balances" />
     <Resource name="order-items" />
-    <Resource name="coaches" />
 
     {/* Branding Settings (singleton — edit only) */}
     <Resource
@@ -308,6 +327,7 @@ const App = () => (
       <Route path="/packing-lists/:id/print" element={<PrintPackingList />} />
       <Route path="/orders/:id/print" element={<PrintOrder />} />
       <Route path="/participants/print-customer-list" element={<PrintCustomerList />} />
+      <Route path="/coach-dashboard" element={<CoachDashboard />} />
     </CustomRoutes>
   </Admin>
 );

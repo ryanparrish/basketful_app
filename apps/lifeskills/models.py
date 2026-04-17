@@ -242,6 +242,22 @@ class LifeskillsCoach(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField()
     phone_number = models.CharField(max_length=15)
+    user = models.OneToOneField(
+        'auth.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='coach_profile',
+        help_text="Django user account for this coach (grants login access to admin)"
+    )
+    program = models.ForeignKey(
+        'Program',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='coaches',
+        help_text="Program this coach is assigned to"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='coaches/', blank=True, null=True)
@@ -249,7 +265,7 @@ class LifeskillsCoach(models.Model):
     class Meta:
         db_table = 'food_orders_lifeskillscoach'
         app_label = 'lifeskills'
- 
+
     def __str__(self) -> str:
         return str(self.name)
 

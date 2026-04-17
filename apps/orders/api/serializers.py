@@ -172,6 +172,26 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['account', 'items']
 
+    def validate_account(self, account):
+        """
+        Prevent IDOR: non-staff participants may only create orders for their
+        own account.  Staff can create orders for any participant.
+        """
+        request = self.context.get('request')
+        if request and not request.user.is_staff:
+            # Traverse account → participant → user
+            try:
+                participant_user = account.participant.user
+            except Exception:
+                raise serializers.ValidationError(
+                    "Account does not have an associated participant."
+                )
+            if participant_user != request.user:
+                raise serializers.ValidationError(
+                    "You may not place an order for another participant's account."
+                )
+        return account
+
     def create(self, validated_data):
         """
         Create order using OrderOrchestration with idempotency and validation.
