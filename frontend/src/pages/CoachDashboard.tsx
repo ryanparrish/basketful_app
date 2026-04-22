@@ -211,20 +211,20 @@ const CoachDashboard = () => {
       {/* Summary stats */}
       {summary && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <StatCard label="Total Participants" value={summary.total_participants} />
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <StatCard label="Active" value={summary.active_participants} />
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <StatCard
               label="Orders Placed (14d)"
               value={summary.orders_placed_recently}
               color="success.main"
             />
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <StatCard
               label="Orders Pending"
               value={summary.orders_pending}
