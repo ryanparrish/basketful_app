@@ -60,7 +60,7 @@ interface WindowStatus {
 }
 
 interface DashboardData {
-  coach: { name: string; email: string; program_name: string | null };
+  coach: { name: string; email: string; program_names: string[] };
   window_status: WindowStatus | null;
   participants: ParticipantStatus[];
   summary: Summary;
@@ -162,7 +162,7 @@ const CoachDashboard = () => {
         </Typography>
         <Typography variant="body1" color="text.secondary">
           Welcome back, <strong>{identity?.fullName ?? coach.name}</strong>
-          {coach.program_name && ` · ${coach.program_name}`}
+          {coach.program_names?.length > 0 && ` · ${coach.program_names.join(', ')}`}
         </Typography>
       </Box>
 

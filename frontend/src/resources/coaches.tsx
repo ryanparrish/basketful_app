@@ -14,7 +14,9 @@ import {
   TabbedShowLayout,
   TextInput,
   ReferenceInput,
+  ReferenceArrayInput,
   SelectInput,
+  SelectArrayInput,
   ImageInput,
   ImageField,
   EditButton,
@@ -33,7 +35,20 @@ export const CoachList = () => (
       <TextField source="name" />
       <EmailField source="email" />
       <TextField source="phone_number" label="Phone" />
-      <TextField source="program_name" label="Program" />
+      <FunctionField
+        label="Programs"
+        render={(record: RaRecord) =>
+          record.program_names?.length ? (
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {record.program_names.map((p: string) => (
+                <Chip key={p} label={p} size="small" />
+              ))}
+            </Box>
+          ) : (
+            <Chip label="No program" size="small" variant="outlined" />
+          )
+        }
+      />
       <FunctionField
         label="User Account"
         render={(record: RaRecord) =>
@@ -75,7 +90,20 @@ export const CoachShow = () => (
         <TextField source="name" />
         <EmailField source="email" />
         <TextField source="phone_number" label="Phone" />
-        <TextField source="program_name" label="Program" />
+        <FunctionField
+          label="Programs"
+          render={(record: RaRecord) =>
+            record.program_names?.length ? (
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                {record.program_names.map((p: string) => (
+                  <Chip key={p} label={p} size="small" color="primary" variant="outlined" />
+                ))}
+              </Box>
+            ) : (
+              <Chip label="No programs assigned" size="small" variant="outlined" />
+            )
+          }
+        />
         <FunctionField
           label="Linked User"
           render={(record: RaRecord) =>
@@ -114,14 +142,14 @@ export const CoachEdit = () => (
       </ImageInput>
 
       <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Assignment</Typography>
-      <ReferenceInput source="program" reference="programs">
-        <SelectInput
+      <ReferenceArrayInput source="programs" reference="programs">
+        <SelectArrayInput
           optionText="name"
-          label="Assigned Program"
-          helperText="The program this coach manages"
+          label="Assigned Programs"
+          helperText="Select all programs this coach manages"
           fullWidth
         />
-      </ReferenceInput>
+      </ReferenceArrayInput>
       <ReferenceInput source="user" reference="users">
         <SelectInput
           optionText="username"
@@ -148,14 +176,14 @@ export const CoachCreate = () => (
       </ImageInput>
 
       <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Assignment</Typography>
-      <ReferenceInput source="program" reference="programs">
-        <SelectInput
+      <ReferenceArrayInput source="programs" reference="programs">
+        <SelectArrayInput
           optionText="name"
-          label="Assigned Program"
-          helperText="The program this coach manages"
+          label="Assigned Programs"
+          helperText="Select all programs this coach manages"
           fullWidth
         />
-      </ReferenceInput>
+      </ReferenceArrayInput>
       <ReferenceInput source="user" reference="users">
         <SelectInput
           optionText="username"
