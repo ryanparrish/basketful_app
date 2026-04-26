@@ -148,7 +148,14 @@ class Order(models.Model):
                 return
             self.status = "confirmed"
             self.paid = True
-            self.save(update_fields=['status', 'paid'])
+            # Calculate and persist go_fresh_total at confirmation time.
+            go_fresh_items = [
+                item for item in self.items.select_related("product__category")
+                if item.product.category
+                and item.product.category.name.lower() == "go fresh"
+            ]
+            self.go_fresh_total = sum(item.total_price() for item in go_fresh_items)
+            self.save(update_fields=['status', 'paid', 'go_fresh_total'])
 
     @staticmethod
     def _generate_order_number():

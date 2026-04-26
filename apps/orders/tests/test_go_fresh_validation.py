@@ -260,3 +260,54 @@ class TestGoFreshEdgeCases:
         
         # Should have zero go_fresh_total
         assert order.go_fresh_total == Decimal('0.00')
+
+
+@pytest.mark.django_db
+class TestGoFreshTotalPersistedOnConfirm:
+    """Regression tests: go_fresh_total must be written to DB when order is confirmed."""
+
+    def test_go_fresh_total_persisted_via_confirm(self):
+        """
+        Regression: confirm() previously called save(update_fields=['status', 'paid'])
+        which excluded go_fresh_total, leaving it 0 in the DB.
+        """
+        participant = ParticipantFactory(adults=2, children=2)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
+
+        go_fresh_category = CategoryFactory(name="Go Fresh")
+        product = ProductFactory(category=go_fresh_category, price=Decimal("5.00"))
+
+        # Create a pending order (as participant-frontend would submit it)
+        order = OrderFactory(account=account, status='pending')
+        OrderItemFactory(order=order, product=product, quantity=5)  # $25.00
+
+        # Confirm the order (staff action)
+        order.confirm()
+
+        # Reload from DB — this is what the admin UI serializes
+        order.refresh_from_db()
+        assert order.go_fresh_total == Decimal('25.00'), (
+            "go_fresh_total must be persisted to DB by confirm(); was it missing from update_fields?"
+        )
+
+    def test_non_go_fresh_items_dont_affect_go_fresh_total(self):
+        """Orders with no Go Fresh items should have go_fresh_total=0 after confirm."""
+        participant = ParticipantFactory(adults=2, children=0)
+        account = participant.accountbalance
+        account.base_balance = Decimal("100.00")
+        account.save()
+        VoucherFactory(account=account, state='applied', multiplier=1)
+
+        food_category = CategoryFactory(name="Pantry Food")
+        product = ProductFactory(category=food_category, price=Decimal("3.00"))
+
+        order = OrderFactory(account=account, status='pending')
+        OrderItemFactory(order=order, product=product, quantity=4)
+
+        order.confirm()
+        order.refresh_from_db()
+
+        assert order.go_fresh_total == Decimal('0.00')
