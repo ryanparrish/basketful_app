@@ -171,7 +171,7 @@ class LifeskillsCoachViewSet(viewsets.ModelViewSet):
     ordering = ['name']
 
     def get_queryset(self):
-        qs = LifeskillsCoach.objects.select_related('user', 'program').all()
+        qs = LifeskillsCoach.objects.select_related('user').prefetch_related('programs').all()
         # Non-staff coaches can only see their own profile
         if (
             not self.request.user.is_staff
@@ -208,7 +208,7 @@ class LifeskillsCoachViewSet(viewsets.ModelViewSet):
         - Summary counts
         """
         try:
-            coach = LifeskillsCoach.objects.select_related('program', 'user').get(
+            coach = LifeskillsCoach.objects.prefetch_related('programs').select_related('user').get(
                 user=request.user
             )
         except LifeskillsCoach.DoesNotExist:
@@ -221,9 +221,10 @@ class LifeskillsCoachViewSet(viewsets.ModelViewSet):
         participants_data = []
         summary: dict = {}
 
-        if coach.program:
+        program = coach.programs.first()
+        if program:
             from core.utils import get_program_window_status
-            window_status_data = get_program_window_status(coach.program)
+            window_status_data = get_program_window_status(program)
 
             from apps.account.models import Participant
             from apps.orders.models import Order

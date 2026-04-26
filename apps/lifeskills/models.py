@@ -250,13 +250,11 @@ class LifeskillsCoach(models.Model):
         related_name='coach_profile',
         help_text="Django user account for this coach (grants login access to admin)"
     )
-    program = models.ForeignKey(
+    programs = models.ManyToManyField(
         'Program',
-        null=True,
         blank=True,
-        on_delete=models.SET_NULL,
         related_name='coaches',
-        help_text="Program this coach is assigned to"
+        help_text="Programs this coach is assigned to"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

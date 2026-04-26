@@ -56,8 +56,8 @@ class SubcategoryViewSet(viewsets.ModelViewSet):
     ]
     filterset_fields = ['category']
     search_fields = ['name']
-    ordering_fields = ['name', 'category__name']
-    ordering = ['name']
+    ordering_fields = ['name', 'category__name', 'sort_order']
+    ordering = ['sort_order', 'name']
 
 
 class TagViewSet(viewsets.ModelViewSet):

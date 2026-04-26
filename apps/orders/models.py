@@ -677,13 +677,14 @@ class PackingList(models.Model):
         Calculate aggregated product quantities for this packer's orders/categories.
         
         Returns dict of {category_name: {product_name: quantity}}, sorted by
-        category sort_order then product sort_order so packing lists reflect
-        the warehouse pick sequence.
+        category sort_order → subcategory sort_order (9999 for none) → product
+        sort_order so packing lists reflect the full 3-level warehouse pick sequence.
         """
         summary = defaultdict(lambda: defaultdict(int))
         
         # Track sort metadata so we can order the final dict
         category_sort = {}
+        # product_sort stores (subcategory_sort_order, product_sort_order) tuples
         product_sort = {}
 
         # Get the split strategy from the combined order
@@ -694,32 +695,38 @@ class PackingList(models.Model):
             assigned_category_ids = set(self.categories.values_list('id', flat=True))
             
             for order in self.combined_order.orders.all():
-                for item in order.items.select_related('product__category'):
+                for item in order.items.select_related('product__category', 'product__subcategory'):
                     product = item.product
                     if product.category_id in assigned_category_ids:
                         category_name = product.category.name if product.category else "Uncategorized"
                         summary[category_name][product.name] += item.quantity
                         if product.category:
                             category_sort[category_name] = product.category.sort_order
-                        product_sort.setdefault(category_name, {})[product.name] = product.sort_order
+                        sub_order = product.subcategory.sort_order if product.subcategory else 9999
+                        product_sort.setdefault(category_name, {})[product.name] = (
+                            sub_order, product.sort_order
+                        )
         else:
             # For other strategies (fifty_fifty, round_robin), use assigned orders
             for order in self.orders.all():
-                for item in order.items.select_related('product__category'):
+                for item in order.items.select_related('product__category', 'product__subcategory'):
                     product = item.product
                     category_name = product.category.name if product.category else "Uncategorized"
                     summary[category_name][product.name] += item.quantity
                     if product.category:
                         category_sort[category_name] = product.category.sort_order
-                    product_sort.setdefault(category_name, {})[product.name] = product.sort_order
+                    sub_order = product.subcategory.sort_order if product.subcategory else 9999
+                    product_sort.setdefault(category_name, {})[product.name] = (
+                        sub_order, product.sort_order
+                    )
         
-        # Build sorted output: categories by sort_order, products within by sort_order
+        # Build sorted output: categories by sort_order, products by (subcategory_sort_order, product_sort_order)
         sorted_result = {}
         for cat_name in sorted(summary.keys(), key=lambda c: (category_sort.get(c, 0), c)):
             products = summary[cat_name]
             cat_product_sort = product_sort.get(cat_name, {})
             sorted_result[cat_name] = dict(
-                sorted(products.items(), key=lambda p: (cat_product_sort.get(p[0], 0), p[0]))
+                sorted(products.items(), key=lambda p: (*cat_product_sort.get(p[0], (9999, 0)), p[0]))
             )
         
         return sorted_result

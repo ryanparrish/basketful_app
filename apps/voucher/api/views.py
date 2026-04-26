@@ -215,10 +215,10 @@ class VoucherViewSet(viewsets.ModelViewSet):
 
         # Valid state transitions — consumed vouchers may not be re-opened by staff.
         ALLOWED_TRANSITIONS: dict = {
-            'pending':  {'applied', 'expired'},
-            'applied':  {'expired'},
+            'pending': {'applied', 'expired'},
+            'applied': {'expired'},
             'consumed': set(),        # terminal — no transitions allowed
-            'expired':  set(),        # terminal — no transitions allowed
+            'expired': set(),         # terminal — no transitions allowed
         }
 
         updated = []
@@ -256,6 +256,20 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 )
             # Use queryset update to bypass editable=False restriction
             Voucher.objects.filter(pk=voucher.pk).update(state='applied')
+            voucher.refresh_from_db()
+        return Response(VoucherSerializer(voucher).data)
+
+    @action(detail=True, methods=['post'], url_path='revert_to_pending')
+    def revert_to_pending(self, request, pk=None):
+        """Revert a voucher from applied back to pending."""
+        with transaction.atomic():
+            voucher = Voucher.objects.select_for_update().get(pk=pk)
+            if voucher.state != 'applied':
+                return Response(
+                    {'error': f'Only applied vouchers can be reverted to pending (current state: {voucher.state})'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            Voucher.objects.filter(pk=voucher.pk).update(state='pending')
             voucher.refresh_from_db()
         return Response(VoucherSerializer(voucher).data)
 

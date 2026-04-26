@@ -22,16 +22,21 @@ class OrderItemSerializer(serializers.ModelSerializer):
     product_category = serializers.CharField(
         source='product.category.name', read_only=True
     )
+    product_subcategory = serializers.CharField(
+        source='product.subcategory.name', read_only=True, default=None
+    )
     total = serializers.SerializerMethodField()
     category_sort_order = serializers.SerializerMethodField()
+    subcategory_sort_order = serializers.SerializerMethodField()
     product_sort_order = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             'id', 'order', 'product', 'product_name', 'product_category',
+            'product_subcategory',
             'quantity', 'price', 'price_at_order', 'total', 'created_at',
-            'category_sort_order', 'product_sort_order',
+            'category_sort_order', 'subcategory_sort_order', 'product_sort_order',
         ]
         read_only_fields = ['id', 'price', 'price_at_order', 'created_at']
 
@@ -43,6 +48,19 @@ class OrderItemSerializer(serializers.ModelSerializer):
             return obj.product.category.sort_order if obj.product.category else 0
         except Exception:
             return 0
+
+    def get_subcategory_sort_order(self, obj) -> int:
+        """Return subcategory sort_order, or 9999 for products with no subcategory.
+        
+        Using 9999 places un-subcategorised products after all explicitly
+        positioned subcategories within the same category on packing lists.
+        """
+        try:
+            if obj.product.subcategory:
+                return obj.product.subcategory.sort_order
+            return 9999
+        except Exception:
+            return 9999
 
     def get_product_sort_order(self, obj) -> int:
         try:

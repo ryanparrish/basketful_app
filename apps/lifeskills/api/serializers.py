@@ -33,22 +33,24 @@ class LifeskillsCoachSerializer(serializers.ModelSerializer):
     """Serializer for LifeskillsCoach model."""
     user_username = serializers.CharField(source='user.username', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
-    program_name = serializers.CharField(source='program.name', read_only=True)
+    program_names = serializers.SlugRelatedField(
+        source='programs', many=True, read_only=True, slug_field='name'
+    )
 
     class Meta:
         model = LifeskillsCoach
         fields = [
             'id', 'name', 'email', 'phone_number', 'image',
             'user', 'user_username', 'user_email',
-            'program', 'program_name',
+            'programs', 'program_names',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'user_username', 'user_email', 'program_name', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user_username', 'user_email', 'program_names', 'created_at', 'updated_at']
         extra_kwargs = {
             'email': {'required': False, 'allow_blank': True, 'default': ''},
             'phone_number': {'required': False, 'allow_blank': True, 'default': ''},
             'user': {'required': False, 'allow_null': True},
-            'program': {'required': False, 'allow_null': True},
+            'programs': {'required': False},
             'image': {'required': False, 'allow_null': True},
         }
 

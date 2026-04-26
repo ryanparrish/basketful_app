@@ -29,7 +29,7 @@ class SubcategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subcategory
-        fields = ['id', 'name', 'category', 'category_name']
+        fields = ['id', 'name', 'category', 'category_name', 'sort_order']
         read_only_fields = ['id']
 
 
@@ -98,14 +98,24 @@ class ProductSerializer(serializers.ModelSerializer):
 class ProductListSerializer(serializers.ModelSerializer):
     """Simplified serializer for Product list views."""
     category_name = serializers.CharField(source='category.name', read_only=True)
+    subcategory_name = serializers.CharField(source='subcategory.name', read_only=True, default=None)
+    subcategory_sort_order = serializers.SerializerMethodField()
+    is_available = serializers.BooleanField(source='active', read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'price', 'category', 'category_name',
-            'image', 'active', 'quantity_in_stock', 'sort_order'
+            'subcategory', 'subcategory_name', 'subcategory_sort_order',
+            'image', 'active', 'is_available', 'quantity_in_stock', 'sort_order'
         ]
         read_only_fields = ['id']
+
+    def get_subcategory_sort_order(self, obj) -> int:
+        """9999 for products with no subcategory so they sort after subcategorised items."""
+        if obj.subcategory:
+            return obj.subcategory.sort_order
+        return 9999
 
 
 class OrderPackerSerializer(serializers.ModelSerializer):

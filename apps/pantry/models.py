@@ -39,12 +39,17 @@ class Subcategory(models.Model):
         on_delete=models.CASCADE, 
         related_name='subcategories'
     )
+    sort_order = models.IntegerField(
+        default=0,
+        help_text='Pick sequence within parent category. 0 = top (newly created). Reorder via drag-and-drop in admin.'
+    )
 
     def __str__(self):
         return f"{self.category.name} > {self.name}"
 
     class Meta:
         db_table = 'food_orders_subcategory'
+        ordering = ['sort_order', 'name']
 
 
 class Tag(models.Model):

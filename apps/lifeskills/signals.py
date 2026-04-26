@@ -85,8 +85,6 @@ def sync_coach_user_group(sender, instance, created, **kwargs):
         )
 
 
-
-
 @receiver(post_save, sender=ProgramPause)
 def handle_program_pause(sender, instance, created, **kwargs):
     """

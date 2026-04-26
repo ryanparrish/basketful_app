@@ -164,13 +164,17 @@ class LifeskillsCoachAdmin(admin.ModelAdmin):
     Admin for LifeskillsCoach.
 
     Staff/superusers: full CRUD, can assign user accounts and programs.
-    Lifeskills Coach users: can only view/edit their own profile (read-only user/program).
+    Lifeskills Coach users: can only view/edit their own profile (read-only user/programs).
     """
-    list_display = ('name', 'email', 'phone_number', 'program', 'linked_user', 'created_at')
-    list_filter = ('program',)
+    list_display = ('name', 'email', 'phone_number', 'get_programs', 'linked_user', 'created_at')
+    list_filter = ('programs',)
     search_fields = ('name', 'email')
-    autocomplete_fields = ['program']
+    filter_horizontal = ['programs']
     raw_id_fields = ['user']
+
+    def get_programs(self, obj):
+        return ', '.join(p.name for p in obj.programs.all()) or '—'
+    get_programs.short_description = 'Programs'
 
     def get_fieldsets(self, request, obj=None):
         """Show user/program assignment only to staff."""
@@ -181,7 +185,7 @@ class LifeskillsCoachAdmin(admin.ModelAdmin):
             assignment = (
                 'Assignment',
                 {
-                    'fields': ('program', 'user'),
+                    'fields': ('programs', 'user'),
                     'description': (
                         'Assigning a User account will automatically grant that user '
                         'Lifeskills Coach group membership and Django admin access.'
@@ -193,7 +197,7 @@ class LifeskillsCoachAdmin(admin.ModelAdmin):
         return [base]
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request).select_related('user', 'program')
+        qs = super().get_queryset(request).select_related('user').prefetch_related('programs')
         # Coaches can only see their own profile
         if (
             not request.user.is_superuser

@@ -12,10 +12,12 @@ import { API_URL } from '../utils/apiUrl';
 interface OrderItem {
   product_name: string;
   product_category: string;
+  product_subcategory: string | null;
   quantity: number;
   price: number | string;
   total: number | string;
   category_sort_order: number;
+  subcategory_sort_order: number;
   product_sort_order: number;
 }
 
@@ -128,10 +130,13 @@ export const PrintPackingList = () => {
         </Typography>
 
         {orders.map((order) => {
-          // Sort items by warehouse pick sequence
+          // Sort items by full 3-level warehouse pick sequence:
+          // category sort_order → subcategory sort_order (9999 if none) → product sort_order
           const sortedItems = [...(order.items || [])].sort((a, b) => {
             const catDiff = (a.category_sort_order ?? 0) - (b.category_sort_order ?? 0);
             if (catDiff !== 0) return catDiff;
+            const subDiff = (a.subcategory_sort_order ?? 9999) - (b.subcategory_sort_order ?? 9999);
+            if (subDiff !== 0) return subDiff;
             return (a.product_sort_order ?? 0) - (b.product_sort_order ?? 0);
           });
 
