@@ -41,6 +41,7 @@ from apps.voucher.models import (
     Voucher,
     VoucherSetting,
 )
+from apps.orders.models import Order
 
 # --- Import the factories and helper functions from our test utilities file ---
 from apps.orders.tests.factories import (
@@ -306,6 +307,11 @@ def test_voucher_cannot_be_reused(account_fixture):
     assert not first_voucher.active, (
         "Voucher should be inactive after the first order"
     )
+
+    # Complete order1 before placing order2 — business rule: only one active
+    # order at a time. Mark as completed so the duplicate-order guard allows
+    # a new order.
+    Order.objects.filter(pk=order1.pk).update(status="completed")
 
     # --- ACT (Order 2) ---
     # Create and confirm a second order

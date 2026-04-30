@@ -13,7 +13,7 @@
 > - Adding a test without updating this file is **incomplete work**.
 > - This file is read by the `write-tests` agent before every test-writing session.
 
-**Last audited**: 2026-04-29
+**Last audited**: 2026-04-29 (BEH-005a/b/c covered — duplicate order guard implemented)
 **Backend**: `pytest` (see `pytest.ini`) — run with `pytest --tb=short -v`
 **Frontend**: `vitest` (see `frontend/vitest.config.js`) — run with `npm test -- --run`
 **CI**: `.github/workflows/ci.yml` (backend), `.github/workflows/frontend-ci.yml` (frontend)
@@ -98,7 +98,10 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 | BEH-002 | Order total is correctly summed from line items | `[x]` | `apps/orders/tests/test_order_validation.py::TestOrderValidation::test_order_total_calculation` |
 | BEH-003 | Order is rejected when total exceeds available balance | `[x]` | `apps/orders/tests/test_order_validation.py::TestOrderValidation::test_order_exceeds_balance` |
 | BEH-004 | Order status transitions: `pending → submitted → fulfilled` are enforced | `[ ]` | — |
-| BEH-005 | Duplicate order for same window is blocked | `[ ]` | — |
+| BEH-005a | Second order attempt while a pending order exists is rejected | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_second_pending_order_for_same_participant_is_rejected` |
+| BEH-005b | Second order attempt while a confirmed order exists is rejected | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_second_order_while_confirmed_order_exists_is_rejected` |
+| BEH-005c | Cancelled order does NOT block a new order (over-block guard) | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_new_order_allowed_after_previous_order_is_cancelled` |
+| BEH-005d | Race condition — two simultaneous POSTs for same participant → only one succeeds (requires DB-level unique constraint) | `[ ]` | — |
 | BEH-006 | Order with zero-quantity item is rejected | `[ ]` | — |
 | BEH-007 | Order with negative-quantity item is rejected | `[ ]` | — |
 | BEH-008 | Cancelled order does not deduct balance | `[ ]` | — |
@@ -356,6 +359,7 @@ Work the 🔴 items before moving to 🟠. Do not skip.
 | BEH-069 | IDOR — participant cannot read another participant's orders | None |
 | BEH-070 | IDOR — participant cannot read another participant's balance | None |
 | BEH-086 | Regression for `make_aware` fix — naive datetime → 200 not 500 | `ProgramWindowOverrideFactory` |
+| BEH-005d | Race condition — two simultaneous POSTs → only one order created | DB-level unique constraint decision needed |
 
 ### 🟠 HIGH — Next sprint
 
