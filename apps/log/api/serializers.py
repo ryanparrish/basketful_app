@@ -9,6 +9,7 @@ from apps.log.models import (
     VoucherLog,
     OrderValidationLog,
     UserLoginLog,
+    GraceAllowanceLog,
 )
 
 
@@ -50,9 +51,10 @@ class EmailLogSerializer(serializers.ModelSerializer):
         model = EmailLog
         fields = [
             'id', 'user', 'user_email', 'email_type', 'email_type_name',
-            'subject', 'status', 'error_message', 'sent_at', 'message_id'
+            'subject', 'status', 'error_message', 'sent_at', 'message_id',
+            'delivery_status', 'delivery_checked_at',
         ]
-        read_only_fields = ['id', 'sent_at']
+        read_only_fields = ['id', 'sent_at', 'delivery_checked_at']
 
 
 class VoucherLogSerializer(serializers.ModelSerializer):
@@ -106,3 +108,25 @@ class UserLoginLogSerializer(serializers.ModelSerializer):
             'participant', 'participant_name'
         ]
         read_only_fields = ['id', 'timestamp']
+
+
+class GraceAllowanceLogSerializer(serializers.ModelSerializer):
+    """Serializer for GraceAllowanceLog model."""
+    participant_name = serializers.CharField(
+        source='participant.name', read_only=True
+    )
+    participant_customer_number = serializers.CharField(
+        source='participant.customer_number', read_only=True
+    )
+    order_number = serializers.CharField(
+        source='order.order_number', read_only=True
+    )
+
+    class Meta:
+        model = GraceAllowanceLog
+        fields = [
+            'id', 'participant', 'participant_name', 'participant_customer_number',
+            'order', 'order_number',
+            'amount_over', 'grace_message', 'proceeded', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

@@ -10,6 +10,7 @@ from apps.log.api.views import (
     VoucherLogViewSet,
     OrderValidationLogViewSet,
     UserLoginLogViewSet,
+    GraceAllowanceLogViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ router.register(
     basename='order-validation-log'
 )
 router.register(r'login-logs', UserLoginLogViewSet, basename='login-log')
+router.register(r'grace-allowance-logs', GraceAllowanceLogViewSet, basename='grace-allowance-log')
 
 urlpatterns = [
     path('', include(router.urls)),

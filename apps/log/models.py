@@ -164,8 +164,28 @@ class EmailLog(models.Model):
         blank=True,
         help_text="Error details if the email failed to send"
     )
+    DELIVERY_STATUS_CHOICES = [
+        ("unknown", "Unknown"),
+        ("delivered", "Delivered"),
+        ("bounced", "Bounced"),
+        ("complained", "Complained"),
+        ("unsubscribed", "Unsubscribed"),
+        ("failed", "Failed"),
+    ]
+
     sent_at = models.DateTimeField(auto_now_add=True)
     message_id = models.CharField(max_length=255, blank=True, null=True)
+    delivery_status = models.CharField(
+        max_length=20,
+        choices=DELIVERY_STATUS_CHOICES,
+        default="unknown",
+        help_text="Mailgun delivery status fetched via Events API"
+    )
+    delivery_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When we last polled Mailgun for delivery status"
+    )
 
     class Meta:
         app_label = 'log'

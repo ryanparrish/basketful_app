@@ -136,7 +136,11 @@ class ProgramViewSet(viewsets.ModelViewSet):
             )
 
         from django.utils.dateparse import parse_datetime
+        from django.utils.timezone import make_aware, is_naive
         expires_dt = parse_datetime(expires_at)
+        if expires_dt and is_naive(expires_dt):
+            # datetime-local inputs send naive datetimes (no tz offset); treat as local time
+            expires_dt = make_aware(expires_dt)
         if not expires_dt or expires_dt <= timezone.now():
             return Response(
                 {'detail': 'expires_at must be a valid datetime in the future.'},

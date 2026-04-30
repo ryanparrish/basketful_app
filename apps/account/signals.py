@@ -14,6 +14,47 @@ logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Participant)
+def sync_user_email_on_change(instance: Participant, created, **kwargs):
+    """
+    Keep User.email in sync with Participant.email whenever it changes.
+
+    Participants authenticate and receive emails via their linked Django User
+    account.  Without this sync, changing the email in React Admin (or the
+    Django admin) updates only the Participant row, leaving User.email stale
+    — so system emails still go to the old address and login with the new
+    address fails.
+
+    Skips newly-created participants (User doesn't exist yet at this point;
+    initialize_participant handles first-time user creation).
+    Also skips participants with no linked user.
+    """
+    if created:
+        return
+    if not instance.user_id:
+        return
+
+    # Only do the extra UPDATE when email actually differs — avoids a
+    # gratuitous write on every unrelated save.
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None and 'email' not in update_fields:
+        return
+
+    from django.contrib.auth.models import User as DjangoUser
+    try:
+        user = instance.user
+    except DjangoUser.DoesNotExist:
+        return
+
+    if user.email != instance.email:
+        user.email = instance.email
+        user.save(update_fields=['email'])
+        logger.debug(
+            "Synced User.email for participant %s (user %s) → %s",
+            instance.pk, user.pk, instance.email,
+        )
+
+
+@receiver(post_save, sender=Participant)
 def update_base_balance_on_change(instance, created, **kwargs):
     """
     Update AccountBalance.base_balance whenever relevant fields change.

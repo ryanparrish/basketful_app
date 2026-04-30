@@ -56,7 +56,7 @@ def get_email_type(email_type_name):
     return EmailType.objects.filter(name=email_type_name, is_active=True).first()
 
 
-def create_email_log(user, email_type, subject, status="sent", error_message=""):
+def create_email_log(user, email_type, subject, status="sent", error_message="", message_id=None):
     """Create a log entry for a sent email."""
     from apps.log.models import EmailLog
     logger.info(
@@ -68,7 +68,8 @@ def create_email_log(user, email_type, subject, status="sent", error_message="")
         email_type=email_type,
         subject=subject,
         status=status,
-        error_message=error_message
+        error_message=error_message,
+        message_id=message_id or "",
     )
 
 
@@ -84,7 +85,10 @@ def has_email_been_sent(user, email_type):
 
 def send_email_message(subject, html_content, text_content, to_email,
                        from_email=None, reply_to=None):
-    """Send the actual email to the recipient."""
+    """Send the actual email to the recipient.
+
+    Returns the Mailgun message_id string, or None if unavailable.
+    """
     msg = EmailMultiAlternatives(
         subject,
         text_content,
@@ -94,7 +98,9 @@ def send_email_message(subject, html_content, text_content, to_email,
     )
     msg.attach_alternative(html_content, "text/html")
     msg.send()
-    logger.info("[Email] Sent to=%s subject=%s", to_email, subject)
+    message_id = getattr(getattr(msg, "anymail_status", None), "message_id", None)
+    logger.info("[Email] Sent to=%s subject=%s message_id=%s", to_email, subject, message_id)
+    return message_id
 
 
 # ---------------------------
@@ -154,7 +160,7 @@ def send_email_by_type(user_id, email_type_name, force=False, extra_context=None
         text_content = email_type.render_text(context)
         
         # Send email
-        send_email_message(
+        message_id = send_email_message(
             subject=subject,
             html_content=html_content,
             text_content=text_content,
@@ -163,8 +169,8 @@ def send_email_by_type(user_id, email_type_name, force=False, extra_context=None
             reply_to=reply_to
         )
         
-        # Log success
-        create_email_log(user, email_type, subject, status="sent")
+        # Log success — persist Mailgun message_id for delivery tracking
+        create_email_log(user, email_type, subject, status="sent", message_id=message_id)
         return True
         
     except Exception as e:

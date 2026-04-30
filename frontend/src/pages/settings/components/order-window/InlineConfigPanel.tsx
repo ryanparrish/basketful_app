@@ -10,7 +10,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { API_URL } from '../../../../utils/apiUrl';
 import { getCsrfToken } from '../../utils';
 import type { EffectiveConfig } from '../../types';
 
@@ -32,7 +31,7 @@ export const InlineConfigPanel = ({
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/`, {
+      const res = await fetch(`/api/v1/programs/${programId}/order-window/`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
@@ -57,7 +56,7 @@ export const InlineConfigPanel = ({
   const revert = async () => {
     setSaving(true);
     try {
-      await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/`, {
+      await fetch(`/api/v1/programs/${programId}/order-window/`, {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'X-CSRFToken': getCsrfToken() },

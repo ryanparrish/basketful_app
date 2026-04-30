@@ -331,6 +331,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.lifeskills.tasks.program_pause.cleanup_expired_pause_flags',
         'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM
     },
+    'sync-mailgun-delivery-status': {
+        'task': 'apps.log.tasks.logs.sync_mailgun_delivery_status',
+        'schedule': crontab(minute=0, hour='*/1'),  # Every hour
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']

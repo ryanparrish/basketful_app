@@ -189,22 +189,23 @@ class TestOrderIsCombinedField:
     
     def test_is_combined_filter(self):
         """Test identifying orders by is_combined status."""
-        participant = ParticipantFactory()
-        
-        # Create combined and uncombined orders
+        participant_a = ParticipantFactory()
+        participant_b = ParticipantFactory()
+
+        # Create combined and uncombined orders — separate participants to satisfy one-active-order rule
         combined_order = Order.objects.create(
-            account=participant.accountbalance,
+            account=participant_a.accountbalance,
             status='confirmed',
             order_number='TEST-COMBINED',
         )
         uncombined_order = Order.objects.create(
-            account=participant.accountbalance,
+            account=participant_b.accountbalance,
             status='confirmed',
             order_number='TEST-UNCOMBINED',
         )
         
         # Mark one as combined by adding to CombinedOrder
-        combined = CombinedOrder.objects.create(program=participant.program)
+        combined = CombinedOrder.objects.create(program=participant_a.program)
         combined.orders.add(combined_order)
         
         # Refresh to see relationships
@@ -563,17 +564,18 @@ class TestGetEligibleOrders:
         """Already combined orders should not be eligible."""
         program, packer1, packer2 = program_with_packers
         
-        # Create orders
-        participant = ParticipantFactory(program=program)
-        
+        # Create orders — separate participants to satisfy one-active-order rule
+        participant_a = ParticipantFactory(program=program)
+        participant_b = ParticipantFactory(program=program)
+
         combined_order = Order.objects.create(
-            account=participant.accountbalance,
+            account=participant_a.accountbalance,
             status='confirmed',
             order_number='ALREADY-COMBINED',
         )
-        
+
         uncombined_order = Order.objects.create(
-            account=participant.accountbalance,
+            account=participant_b.accountbalance,
             status='confirmed',
             order_number='NOT-COMBINED',
         )
@@ -596,19 +598,21 @@ class TestGetEligibleOrders:
         """Only orders within date range should be eligible."""
         program, packer1, packer2 = program_with_packers
         
-        participant = ParticipantFactory(program=program)
-        
+        # Separate participants to satisfy one-active-order rule
+        participant_in = ParticipantFactory(program=program)
+        participant_out = ParticipantFactory(program=program)
+
         # Create order in range
         in_range = Order.objects.create(
-            account=participant.accountbalance,
+            account=participant_in.accountbalance,
             status='confirmed',
             order_number='IN-RANGE',
         )
-        
+
         # Create order out of range (manually set date)
         out_of_range = Order.objects.create(
-            account=participant.accountbalance,
-            status='confirmed', 
+            account=participant_out.accountbalance,
+            status='confirmed',
             order_number='OUT-OF-RANGE',
         )
         # Update to old date

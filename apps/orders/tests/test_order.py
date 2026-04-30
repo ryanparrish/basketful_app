@@ -502,10 +502,13 @@ def test_order_number_uniqueness():
     participant2 = create_participant(email="unique2@example.com")
     create_voucher(participant2, multiplier=1, base_balance=Decimal("100"))
     
-    # Create multiple orders
+    participant3 = create_participant(email="unique3@example.com")
+    create_voucher(participant3, multiplier=1, base_balance=Decimal("100"))
+
+    # Create multiple orders — one per participant to respect the one-active-order rule
     order1 = create_order(participant1)
     order2 = create_order(participant2)
-    order3 = create_order(participant1)
+    order3 = create_order(participant3)
     
     # All order numbers should be unique
     order_numbers = [order1.order_number, order2.order_number, order3.order_number]
@@ -550,8 +553,11 @@ def test_order_number_format():
     participant = create_participant(email="format@example.com")
     create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
     
-    # Create multiple orders to check format consistency
-    orders = [create_order(participant) for _ in range(5)]
+    # Create multiple orders — one per participant to respect the one-active-order rule
+    participants = [create_participant(email=f"format{i}@example.com") for i in range(4)]
+    for p in participants:
+        create_voucher(p, multiplier=1, base_balance=Decimal("100"))
+    orders = [create_order(participant)] + [create_order(p) for p in participants]
     
     for order in orders:
         # Order number should exist

@@ -89,6 +89,16 @@ import LoginPage from './pages/Login';
 // Branding
 import { BrandingSettingsEdit, BrandingSettingsIcon } from './resources/brandingSettings';
 
+// Log Resources
+import {
+  EmailTypeList, EmailTypeShow, EmailTypeEdit, EmailTypeCreate,
+  EmailLogList, EmailLogShow,
+  UserLoginLogList, UserLoginLogShow,
+  GraceAllowanceLogList, GraceAllowanceLogShow,
+  OrderValidationLogList, OrderValidationLogShow,
+  VoucherLogList, VoucherLogShow,
+} from './resources/logs';
+
 // Icons
 import PeopleIcon from '@mui/icons-material/People';
 import SchoolIcon from '@mui/icons-material/School';
@@ -107,6 +117,12 @@ import BackpackIcon from '@mui/icons-material/Backpack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import SportsIcon from '@mui/icons-material/Sports';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
+import ArticleIcon from '@mui/icons-material/Article';
+import EmailIcon from '@mui/icons-material/Email';
+import LoginIcon from '@mui/icons-material/Login';
+import SavingsIcon from '@mui/icons-material/Savings';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 
 const CustomMenu = () => (
   <Menu>
@@ -130,6 +146,12 @@ const CustomMenu = () => (
     <Menu.Item to="/coach-dashboard" primaryText="Coach Dashboard" leftIcon={<DashboardCustomizeIcon />} />
     <Menu.Item to="/branding-settings/current/edit" primaryText="Branding" leftIcon={<BrandingSettingsIcon />} />
     <Menu.Item to="/settings" primaryText="Settings" leftIcon={<SettingsIcon />} />
+    <Menu.Item to="/email-types" primaryText="Email Types" leftIcon={<EmailIcon />} />
+    <Menu.Item to="/email-logs" primaryText="Email Logs" leftIcon={<ArticleIcon />} />
+    <Menu.Item to="/login-logs" primaryText="Login Logs" leftIcon={<LoginIcon />} />
+    <Menu.Item to="/grace-allowance-logs" primaryText="Grace Allowance Logs" leftIcon={<SavingsIcon />} />
+    <Menu.Item to="/order-validation-logs" primaryText="Validation Logs" leftIcon={<FactCheckIcon />} />
+    <Menu.Item to="/voucher-logs" primaryText="Voucher Logs" leftIcon={<ConfirmationNumberIcon />} />
   </Menu>
 );
 
@@ -316,6 +338,52 @@ const App = () => (
       edit={BrandingSettingsEdit}
       icon={BrandingSettingsIcon}
       options={{ label: 'Branding' }}
+    />
+
+    {/* Log Resources */}
+    <Resource
+      name="email-types"
+      list={EmailTypeList}
+      show={EmailTypeShow}
+      edit={EmailTypeEdit}
+      create={EmailTypeCreate}
+      icon={EmailIcon}
+      options={{ label: 'Email Types' }}
+    />
+    <Resource
+      name="email-logs"
+      list={EmailLogList}
+      show={EmailLogShow}
+      icon={ArticleIcon}
+      options={{ label: 'Email Logs' }}
+    />
+    <Resource
+      name="login-logs"
+      list={UserLoginLogList}
+      show={UserLoginLogShow}
+      icon={LoginIcon}
+      options={{ label: 'Login Logs' }}
+    />
+    <Resource
+      name="grace-allowance-logs"
+      list={GraceAllowanceLogList}
+      show={GraceAllowanceLogShow}
+      icon={SavingsIcon}
+      options={{ label: 'Grace Allowance Logs' }}
+    />
+    <Resource
+      name="order-validation-logs"
+      list={OrderValidationLogList}
+      show={OrderValidationLogShow}
+      icon={FactCheckIcon}
+      options={{ label: 'Order Validation Logs' }}
+    />
+    <Resource
+      name="voucher-logs"
+      list={VoucherLogList}
+      show={VoucherLogShow}
+      icon={ConfirmationNumberIcon}
+      options={{ label: 'Voucher Logs' }}
     />
 
     {/* Custom Routes */}

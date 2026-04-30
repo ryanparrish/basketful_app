@@ -15,6 +15,7 @@ from apps.log.models import (
     VoucherLog,
     OrderValidationLog,
     UserLoginLog,
+    GraceAllowanceLog,
 )
 from apps.log.api.serializers import (
     EmailTypeSerializer,
@@ -23,6 +24,7 @@ from apps.log.api.serializers import (
     VoucherLogSerializer,
     OrderValidationLogSerializer,
     UserLoginLogSerializer,
+    GraceAllowanceLogSerializer,
 )
 
 
@@ -133,3 +135,20 @@ class UserLoginLogViewSet(viewsets.ReadOnlyModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = UserLoginLogSerializer(logs, many=True)
         return Response(serializer.data)
+
+
+class GraceAllowanceLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for GraceAllowanceLog model (read-only)."""
+    queryset = GraceAllowanceLog.objects.all().select_related(
+        'participant', 'order'
+    )
+    serializer_class = GraceAllowanceLogSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [
+        DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
+    ]
+    filterset_fields = ['participant', 'order', 'proceeded']
+    search_fields = ['participant__name', 'participant__customer_number']
+    ordering_fields = ['created_at', 'amount_over']
+    ordering = ['-created_at']

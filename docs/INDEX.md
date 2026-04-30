@@ -33,6 +33,7 @@ This directory contains comprehensive documentation for the Basketful food pantr
 
 ### Infrastructure
 - **[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md)** - Email templates and Mailgun integration
+- **[MAILGUN_DELIVERY_INTELLIGENCE.md](MAILGUN_DELIVERY_INTELLIGENCE.md)** - Future: webhook event tracking, reachability scoring, participant inbox (Wild roadmap)
 - **[LOGGING_SYSTEM.md](LOGGING_SYSTEM.md)** - Audit logging and tracking
 - **[SIGNALS_AUTOMATION.md](SIGNALS_AUTOMATION.md)** - Django signals automation
 
