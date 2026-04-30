@@ -74,7 +74,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install mutmut pytest-django
+          pip install "mutmut<3" pytest-django
 
       - name: Verify test environment
         env: &mutation_env
@@ -102,7 +102,10 @@ jobs:
         run: |
           echo "Generating coverage data for ${{ matrix.target }}..."
           COV_MODULE=$(echo "${{ matrix.target }}" | sed 's/\.py$//' | tr '/' '.')
-          pytest "${{ matrix.test_scope }}" --cov="$COV_MODULE" --cov-report= -q
+          pytest "${{ matrix.test_scope }}" --cov="$COV_MODULE" --cov-report=term-missing -q
+          echo ""
+          echo "Lines covered in ${{ matrix.target }}:"
+          python -m coverage report --include="${{ matrix.target }}" | tail -5
           echo "Coverage data generated (.coverage file created)"
 
       - name: Run mutation tests
@@ -227,7 +230,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install mutmut pytest-django
+          pip install "mutmut<3" pytest-django
 
       - name: Generate coverage data
         env:
