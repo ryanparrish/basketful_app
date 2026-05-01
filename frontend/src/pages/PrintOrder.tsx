@@ -12,9 +12,14 @@ import apiClient from '../lib/api/apiClient.ts';
 interface OrderItem {
   product_name: string;
   product_category: string;
+  product_subcategory?: string | null;
   quantity: number;
   price: number | string;
   total: number | string;
+  // Sort order fields from OrderItemSerializer — used to match packing list order
+  category_sort_order?: number;
+  subcategory_sort_order?: number;
+  product_sort_order?: number;
 }
 
 interface Order {
@@ -146,7 +151,8 @@ export const PrintOrder = () => {
           </Box>
         </Box>
 
-        {/* Items table */}
+        {/* Items table — sorted by category → subcategory → product sort_order
+             to match the packing list display order */}
         <table>
           <thead>
             <tr>
@@ -158,7 +164,15 @@ export const PrintOrder = () => {
             </tr>
           </thead>
           <tbody>
-            {(order.items || []).map((item, i) => (
+            {[...(order.items || [])]
+              .sort((a, b) => {
+                const catDiff = (a.category_sort_order ?? 0) - (b.category_sort_order ?? 0);
+                if (catDiff !== 0) return catDiff;
+                const subDiff = (a.subcategory_sort_order ?? 9999) - (b.subcategory_sort_order ?? 9999);
+                if (subDiff !== 0) return subDiff;
+                return (a.product_sort_order ?? 0) - (b.product_sort_order ?? 0);
+              })
+              .map((item, i) => (
               <tr key={i}>
                 <td>{item.product_name}</td>
                 <td>{item.product_category}</td>
