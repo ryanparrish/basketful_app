@@ -22,6 +22,7 @@ import {
   TopToolbar,
   SearchInput,
   useRecordContext,
+  useListContext,
   ArrayField,
   FunctionField,
   Button,
@@ -30,6 +31,9 @@ import {
   useRefresh,
   Confirm,
 } from 'react-admin';
+import { OrderCommandPalette } from '../components/OrderCommandPalette.tsx';
+import { ProgramMultiSelectFilter } from '../components/ProgramMultiSelectFilter.tsx';
+import { Box } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PrintIcon from '@mui/icons-material/Print';
@@ -87,30 +91,51 @@ const StatusField = () => {
   );
 };
 
+const OrderListInner = () => {
+  const { selectedIds } = useListContext();
+  return (
+    <>
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <ProgramMultiSelectFilter />
+      </Box>
+      <Datagrid rowClick="show" bulkActionButtons={<></>}>
+        <TextField source="order_number" label="Order #" />
+        <TextField source="participant_name" label="Participant" />
+        <TextField source="participant_customer_number" label="Customer #" />
+        <StatusField />
+        <FunctionField
+          source="total_price"
+          label="Total"
+          render={(record: { total_price: number }) =>
+            record ? `$${Number(record.total_price).toFixed(2)}` : ''
+          }
+        />
+        <NumberField source="item_count" label="Items" />
+        <BooleanField source="paid" />
+        <DateField source="order_date" showTime />
+        <EditButton />
+        <ShowButton />
+      </Datagrid>
+      {selectedIds.length > 0 && <OrderCommandPalette />}
+    </>
+  );
+};
+
 export const OrderList = () => (
   <List
     filters={orderFilters}
     actions={<ListActions />}
     sort={{ field: 'order_date', order: 'DESC' }}
   >
-    <Datagrid rowClick="show">
-      <TextField source="order_number" label="Order #" />
-      <TextField source="participant_name" label="Participant" />
-      <TextField source="participant_customer_number" label="Customer #" />
-      <StatusField />
-      <FunctionField
-        source="total_price"
-        label="Total"
-        render={(record: { total_price: number }) =>
-          record ? `$${Number(record.total_price).toFixed(2)}` : ''
-        }
-      />
-      <NumberField source="item_count" label="Items" />
-      <BooleanField source="paid" />
-      <DateField source="order_date" showTime />
-      <EditButton />
-      <ShowButton />
-    </Datagrid>
+    <OrderListInner />
   </List>
 );
 

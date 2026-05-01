@@ -43,6 +43,7 @@ from apps.orders.api.serializers import (
     PackingSplitRuleSerializer,
     PackingListSerializer,
 )
+from apps.orders.api.filters import OrderFilter
 from apps.orders.api.throttles import OrderSubmissionThrottle
 from core.models import ProgramSettings
 
@@ -59,7 +60,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     filter_backends = [
         DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
     ]
-    filterset_fields = ['status', 'paid', 'account', 'user']
+    filterset_class = OrderFilter
     search_fields = [
         'order_number',
         'account__participant__name',
@@ -202,6 +203,97 @@ class OrderViewSet(viewsets.ModelViewSet):
                 'orders': OrderListSerializer(orders[:10], many=True).data
             })
         return Response(result)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsStaffUser],
+        url_path='bulk_update_status',
+    )
+    def bulk_update_status(self, request):
+        """Bulk-update the status of multiple orders (staff only).
+
+        Request body::
+
+            {
+                "order_ids": [1, 2, 3],
+                "new_status": "confirmed"
+            }
+
+        Allowed transitions (mirrors client-side ALLOWED_TRANSITIONS const)::
+
+            pending   → confirmed | cancelled
+            confirmed → packing   | cancelled
+            packing   → completed | cancelled
+            completed → confirmed  (back-transition allowed)
+            cancelled → (terminal)
+
+        Returns the count of updated orders and a list of IDs that were
+        skipped (because their current status does not permit the transition).
+        """
+        from django.db import transaction as db_transaction
+
+        ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+            'pending': {'confirmed', 'cancelled'},
+            'confirmed': {'packing', 'cancelled'},
+            'packing': {'completed', 'cancelled'},
+            'completed': {'confirmed'},  # can be walked back to confirmed
+            'cancelled': set(),          # terminal — protected
+        }
+
+        order_ids = request.data.get('order_ids')
+        new_status = request.data.get('new_status')
+
+        if not order_ids or not isinstance(order_ids, list):
+            return Response(
+                {'error': 'order_ids must be a non-empty list.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not new_status or new_status not in {
+            'pending', 'confirmed', 'packing', 'completed', 'cancelled'
+        }:
+            return Response(
+                {'error': f'new_status "{new_status}" is not a valid order status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated_ids: list[int] = []
+        skipped_ids: list[int] = []
+
+        with db_transaction.atomic():
+            orders = list(
+                Order.objects
+                .select_for_update()
+                .filter(id__in=order_ids)
+                .only('id', 'status')
+            )
+            found_ids = {o.id for o in orders}
+            missing_ids = [oid for oid in order_ids if oid not in found_ids]
+            skipped_ids.extend(missing_ids)
+
+            for order in orders:
+                allowed = ALLOWED_TRANSITIONS.get(order.status, set())
+                if new_status not in allowed:
+                    skipped_ids.append(order.id)
+                else:
+                    updated_ids.append(order.id)
+
+            if updated_ids:
+                # Use queryset.update() to bypass the model's save() method,
+                # which has side-effects (voucher consumption, stock decrement)
+                # that are only appropriate during the normal order-creation flow —
+                # not for admin bulk status corrections.
+                Order.objects.filter(id__in=updated_ids).update(
+                    status=new_status,
+                    updated_at=timezone.now(),
+                )
+
+        return Response({
+            'updated_count': len(updated_ids),
+            'skipped_count': len(skipped_ids),
+            'updated_ids': updated_ids,
+            'skipped_ids': skipped_ids,
+        })
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def validate_cart(self, request):

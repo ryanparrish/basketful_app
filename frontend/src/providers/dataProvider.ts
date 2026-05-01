@@ -72,23 +72,35 @@ export const dataProvider: DataProvider = {
       ordering: order === 'DESC' ? `-${field}` : field,
     };
 
-    // Add filters
+    // Build base query params (non-array values)
     if (params.filter) {
       Object.keys(params.filter).forEach((key) => {
         const value = params.filter[key];
         if (value !== undefined && value !== null && value !== '') {
-          // Handle search filter specially
           if (key === 'q' || key === 'search') {
             query.search = value;
-          } else {
+          } else if (!Array.isArray(value)) {
+            // Scalar — store in the flat query object for URLSearchParams
             query[key] = String(value);
           }
+          // Arrays are handled below via repeated params
         }
       });
     }
 
-    const queryString = new URLSearchParams(query).toString();
-    const url = `/${resource}/?${queryString}`;
+    // Build the query string, appending array filters as repeated keys
+    // e.g. { account__participant__program: [1, 3] }
+    // → account__participant__program=1&account__participant__program=3
+    const params_ = new URLSearchParams(query);
+    if (params.filter) {
+      Object.keys(params.filter).forEach((key) => {
+        const value = params.filter[key];
+        if (Array.isArray(value) && value.length > 0) {
+          value.forEach((v) => params_.append(key, String(v)));
+        }
+      });
+    }
+    const url = `/${resource}/?${params_.toString()}`;
 
     const response = await apiClient.get(url);
     const json = response.data;
