@@ -395,7 +395,16 @@ def generate_packing_list_pdf(packing_list) -> BytesIO:
         checkbox_size = font_size - 2
         p.setFont("Helvetica", font_size)
         
-        order_items = list(order.items.all())
+        order_items = list(order.items.select_related(
+            'product__category', 'product__subcategory'
+        ).order_by(
+            'product__category__sort_order',
+            'product__category__name',
+            'product__subcategory__sort_order',
+            'product__subcategory__name',
+            'product__sort_order',
+            'product__name',
+        ))
         
         for item in order_items:
             # Check for page overflow (only happens at size 10 for large orders)

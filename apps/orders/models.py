@@ -580,9 +580,14 @@ class CombinedOrder(models.Model):
 
     def summarized_items_by_category(self):
         
+        # Use (sort_order, name) as key so we can sort later
         summary = defaultdict(lambda: defaultdict(int))
+        category_meta = {}  # category_name -> sort_order
+        product_meta = {}   # (category_name, product_name) -> sort_order
         orders_qs = self.orders.all().prefetch_related(
-            "account__participant__program", "items__product__category"
+            "account__participant__program",
+            "items__product__category",
+            "items__product__subcategory",
         )
         for order in orders_qs:
             participant = getattr(order.account, "participant", None)
@@ -591,8 +596,18 @@ class CombinedOrder(models.Model):
             for item in order.items.all():
                 product = item.product
                 category_name = product.category.name if product.category else "Uncategorized"
+                cat_sort = product.category.sort_order if product.category else 9999
+                category_meta[category_name] = cat_sort
+                prod_sort = product.sort_order if product else 9999
+                product_meta[(category_name, product.name)] = prod_sort
                 summary[category_name][product.name] += item.quantity
-        return summary
+        # Return as an ordered dict sorted by category sort_order, then product sort_order
+        sorted_summary = {}
+        for cat_name in sorted(summary.keys(), key=lambda c: (category_meta.get(c, 9999), c)):
+            sorted_summary[cat_name] = dict(
+                sorted(summary[cat_name].items(), key=lambda kv: (product_meta.get((cat_name, kv[0]), 9999), kv[0]))
+            )
+        return sorted_summary
 
     class Meta:
         constraints = [
