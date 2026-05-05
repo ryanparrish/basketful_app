@@ -3,16 +3,14 @@ Duplicate order guard tests.
 
 Covers: BEH-005a, BEH-005b, BEH-005c
 
-Business rule: A participant may only have one active (pending or confirmed)
-order at a time. Placing a second order while an active one exists must be
-rejected with a ValidationError.
+Business rule: A participant may only have one confirmed or packing order at a
+time. Pending orders are pre-validation drafts and do not count toward this
+limit, so multiple pending orders are allowed. Placing a second *confirmed*
+order while a confirmed/packing one already exists must be rejected with a
+ValidationError.
 
 A cancelled order does NOT count — the participant must be free to reorder
 after a cancellation.
-
-These tests are intentionally written BEFORE the guard is implemented.
-They should FAIL on first run, then pass once the guard is added to
-Order.clean() (or the API view).
 """
 import pytest
 from django.core.exceptions import ValidationError
@@ -39,25 +37,26 @@ class TestDuplicateOrderGuard:
         return VoucherSettingFactory(active=True)
 
     # ------------------------------------------------------------------
-    # BEH-005a: second order while a PENDING order exists → rejected
+    # BEH-005a: second PENDING order for same participant → allowed
+    # Pending orders are pre-validation drafts; the guard only fires on
+    # confirmed/packing orders.
     # ------------------------------------------------------------------
 
-    def test_second_pending_order_for_same_participant_is_rejected(self):
+    def test_second_pending_order_for_same_participant_is_allowed(self):
         # Arrange
         participant = ParticipantFactory()
         account = AccountBalance.objects.get(participant=participant)
         OrderFactory(account=account, status="pending")
 
-        # Act + Assert
+        # Act — must NOT raise
         duplicate = OrderFactory.build(account=account, status="pending")
-        with pytest.raises(ValidationError, match="already.*active.*order|active order|pending order|duplicate"):
-            duplicate.full_clean()
+        duplicate.full_clean()  # should not raise ValidationError
 
     # ------------------------------------------------------------------
-    # BEH-005b: second order while a CONFIRMED order exists → rejected
+    # BEH-005b: second CONFIRMED order while a confirmed order exists → rejected
     # ------------------------------------------------------------------
 
-    def test_second_order_while_confirmed_order_exists_is_rejected(self):
+    def test_second_confirmed_order_while_confirmed_order_exists_is_rejected(self):
         # Arrange
         participant = ParticipantFactory()
         account = AccountBalance.objects.get(participant=participant)
@@ -65,8 +64,8 @@ class TestDuplicateOrderGuard:
         existing = OrderFactory(account=account, status="pending")
         Order.objects.filter(pk=existing.pk).update(status="confirmed")
 
-        # Act + Assert
-        duplicate = OrderFactory.build(account=account, status="pending")
+        # Act + Assert — trying to confirm a second order must be rejected
+        duplicate = OrderFactory.build(account=account, status="confirmed")
         with pytest.raises(ValidationError, match="already.*active.*order|active order|confirmed order|duplicate"):
             duplicate.full_clean()
 

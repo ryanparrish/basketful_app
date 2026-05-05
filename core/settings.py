@@ -31,6 +31,7 @@ if os.path.exists(env_path):
 
 SECRET_KEY = env('SECRET_KEY')
 DOMAIN_NAME = env('DOMAIN_NAME', default='localhost')
+PARTICIPANT_FRONTEND_URL = env('PARTICIPANT_FRONTEND_URL', default='https://app.basketful.org')
 HASHIDS_SALT = env('HASHIDS_SALT')  # No default — must be set in all environments
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
@@ -374,6 +375,7 @@ REST_FRAMEWORK = {
         'user': '100/minute',
         'login': '5/minute',
         'order_submission': '3/minute',  # Order submission rate limiting
+        'bulk_create': '20/hour',         # Per-user bulk participant creation
     },
     'DEFAULT_PAGINATION_CLASS': 'apps.api.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 25,

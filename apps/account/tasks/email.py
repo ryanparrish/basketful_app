@@ -2,6 +2,7 @@
 """Asynchronous tasks for sending emails."""
 # Standard library imports
 import logging
+from datetime import timedelta
 
 # Django imports
 from django.contrib.auth import get_user_model
@@ -9,6 +10,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.utils import timezone
 from django.conf import settings
 from celery import shared_task
 
@@ -189,8 +191,48 @@ def send_email_by_type(user_id, email_type_name, force=False, extra_context=None
 
 @shared_task
 def send_new_user_onboarding_email(user_id, force=False):
-    """Send onboarding email to a new user."""
-    return send_email_by_type(user_id, "onboarding", force=force)
+    """Send onboarding email to a new user.
+
+    Injects participant_customer_number and participant_frontend_url into the
+    email context so the template can show the correct login credential.
+
+    Includes a 24-hour deduplication guard: if an onboarding email was already
+    sent to this user within the last 24 hours, the task exits silently. This
+    prevents duplicate sends from retries, grace-period race conditions, or a
+    staff member accidentally submitting the same batch twice.
+    """
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        logger.error("[Onboarding] User not found: %s", user_id)
+        return False
+
+    # 24-hour deduplication guard
+    from apps.log.models import EmailLog
+    recently_sent = EmailLog.objects.filter(
+        user=user,
+        email_type__name='onboarding',
+        sent_at__gte=timezone.now() - timedelta(hours=24),
+        status='sent',
+    ).exists()
+    if recently_sent and not force:
+        logger.info(
+            "[Onboarding] Skipping duplicate — already sent to user_id=%s within 24h",
+            user_id,
+        )
+        return False
+
+    # Build extra context: participant customer number + frontend URL
+    extra_context: dict = {
+        'participant_frontend_url': getattr(settings, 'PARTICIPANT_FRONTEND_URL', 'https://app.basketful.org'),
+    }
+    try:
+        participant = user.participant
+        extra_context['participant_customer_number'] = participant.customer_number or ''
+    except Exception:
+        extra_context['participant_customer_number'] = ''
+
+    return send_email_by_type(user_id, 'onboarding', force=force, extra_context=extra_context)
 
 
 @shared_task

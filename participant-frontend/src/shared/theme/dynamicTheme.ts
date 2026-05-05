@@ -1,16 +1,18 @@
 /**
  * Dynamic Theme Configuration
- * Fetches theme from backend with 4-hour caching
+ * Fetches theme from backend with 4-hour caching.
+ * Brand colors are defined in tokens.ts — this file wires them into MUI.
  */
 import { createTheme, type Theme, type ThemeOptions } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { getThemeConfig } from '../api/endpoints';
 import type { ThemeConfig } from '../types/api';
+import { tokens } from './tokens';
 
-// Default theme values (used before backend theme loads)
+// Default theme values — Basketful brand colors used when backend hasn't loaded yet
 const defaultTheme: ThemeConfig = {
-  primary_color: '#1976d2',
-  secondary_color: '#dc004e',
+  primary_color: tokens.brand.greenPrimary,
+  secondary_color: tokens.cta.orange,
   logo: null,
   app_name: 'Basketful',
   favicon: null,
@@ -22,42 +24,36 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
   const themeOptions: ThemeOptions = {
     palette: {
       primary: {
-        main: config?.primary_color || defaultTheme.primary_color,
+        // Always use brand green — design system enforces this regardless of backend config
+        main:  tokens.brand.greenPrimary,
+        dark:  tokens.brand.greenDark,
+        light: tokens.surface.hover,
+        contrastText: '#ffffff',
       },
       secondary: {
-        main: config?.secondary_color || defaultTheme.secondary_color,
+        // Always use brand orange for CTA — one button per screen
+        main:  tokens.cta.orange,
+        light: tokens.cta.orangeTint,
+        contrastText: '#FFF7EE',
       },
       background: {
-        default: '#f5f5f5',
-        paper: '#ffffff',
+        default: tokens.surface.page,
+        paper:   tokens.surface.card,
       },
+      text: {
+        primary:   tokens.text.body,
+        secondary: tokens.text.muted,
+      },
+      divider: tokens.border.default,
     },
     typography: {
       fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-      h1: {
-        fontSize: '2rem',
-        fontWeight: 500,
-      },
-      h2: {
-        fontSize: '1.75rem',
-        fontWeight: 500,
-      },
-      h3: {
-        fontSize: '1.5rem',
-        fontWeight: 500,
-      },
-      h4: {
-        fontSize: '1.25rem',
-        fontWeight: 500,
-      },
-      h5: {
-        fontSize: '1.1rem',
-        fontWeight: 500,
-      },
-      h6: {
-        fontSize: '1rem',
-        fontWeight: 500,
-      },
+      h1: { fontSize: '2rem',   fontWeight: 500, color: tokens.text.heading },
+      h2: { fontSize: '1.75rem', fontWeight: 500, color: tokens.text.heading },
+      h3: { fontSize: '1.5rem',  fontWeight: 500, color: tokens.text.heading },
+      h4: { fontSize: '1.25rem', fontWeight: 500, color: tokens.text.heading },
+      h5: { fontSize: '1.1rem',  fontWeight: 500, color: tokens.text.heading },
+      h6: { fontSize: '1rem',    fontWeight: 500, color: tokens.text.heading },
     },
     breakpoints: {
       values: {
@@ -72,9 +68,18 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
       MuiButton: {
         styleOverrides: {
           root: {
-            minHeight: 44, // Touch target minimum
+            minHeight: 44,
             textTransform: 'none',
             borderRadius: 8,
+          },
+          containedSecondary: {
+            // Orange CTA — one per screen only (Checkout button)
+            backgroundColor: tokens.cta.orange,
+            color: '#FFF7EE',
+            '&:hover': {
+              backgroundColor: tokens.cta.orangeTint,
+              color: tokens.brand.greenDark,
+            },
           },
         },
       },
@@ -90,6 +95,18 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
         styleOverrides: {
           root: {
             minHeight: 48,
+            borderRadius: 6,
+            '&.Mui-selected': {
+              backgroundColor: tokens.surface.hover,
+              color: tokens.brand.greenDark,
+              fontWeight: 600,
+              '&:hover': {
+                backgroundColor: tokens.surface.hover,
+              },
+            },
+            '&:hover': {
+              backgroundColor: tokens.surface.hover,
+            },
           },
         },
       },
@@ -104,6 +121,7 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
         styleOverrides: {
           root: {
             borderRadius: 12,
+            border: `1px solid ${tokens.border.default}`,
           },
         },
       },
@@ -112,7 +130,44 @@ export const createDynamicTheme = (config: ThemeConfig): Theme => {
           root: {
             '& .MuiInputBase-root': {
               minHeight: 48,
+              backgroundColor: tokens.surface.card,
             },
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: tokens.border.default,
+            },
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: tokens.brand.greenPrimary,
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: tokens.border.focus,
+            },
+          },
+        },
+      },
+      MuiDivider: {
+        styleOverrides: {
+          root: {
+            borderColor: tokens.border.default,
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 20,
+          },
+        },
+      },
+      MuiAppBar: {
+        styleOverrides: {
+          colorPrimary: {
+            backgroundColor: tokens.brand.greenPrimary,
           },
         },
       },

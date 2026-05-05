@@ -192,9 +192,23 @@ class ParticipantCreateSerializer(serializers.ModelSerializer):
         model = Participant
         fields = [
             'id', 'name', 'email', 'adults', 'children', 'diaper_count',
-            'program', 'assigned_coach', 'create_user', 'allergy', 'active'
+            'program', 'assigned_coach', 'create_user', 'allergy', 'active',
+            'preferred_language',
         ]
         read_only_fields = ['id']
+
+
+class BulkParticipantCreateSerializer(serializers.Serializer):
+    """Serializer for bulk participant creation — wraps a list of participant dicts."""
+
+    participants = ParticipantCreateSerializer(many=True)
+
+    def validate_participants(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one participant is required.")
+        if len(value) > 100:
+            raise serializers.ValidationError("Maximum 100 participants per batch.")
+        return value
 
 
 class GoFreshSettingsSerializer(serializers.ModelSerializer):

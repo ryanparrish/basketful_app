@@ -13,7 +13,7 @@
 > - Adding a test without updating this file is **incomplete work**.
 > - This file is read by the `write-tests` agent before every test-writing session.
 
-**Last audited**: 2026-04-29 (BEH-005a/b/c covered — duplicate order guard implemented)
+**Last audited**: 2026-05-01 (BEH-069, BEH-210–212 covered — participant frontend test infrastructure added)
 **Backend**: `pytest` (see `pytest.ini`) — run with `pytest --tb=short -v`
 **Frontend**: `vitest` (see `frontend/vitest.config.js`) — run with `npm test -- --run`
 **CI**: `.github/workflows/ci.yml` (backend), `.github/workflows/frontend-ci.yml` (frontend)
@@ -180,7 +180,7 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 | BEH-066 | Rate limiter blocks >5 failed login attempts from same IP | `[ ]` | — |
 | BEH-067 | All protected API endpoints reject Bearer-header auth (cookie-only in prod) | `[ ]` | — |
 | BEH-068 | Staff-only endpoints return 403 for participant-role users | `[ ]` | — |
-| BEH-069 | Participant A cannot read Participant B's orders | `[ ]` | — |
+| BEH-069 | Participant A cannot read Participant B's orders | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-069` |
 | BEH-070 | Participant A cannot read Participant B's balance | `[ ]` | — |
 
 ---
@@ -346,6 +346,16 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 ---
 
+### BEH-210–212 Frontend — Participant Order History
+
+| ID | Behaviour | Status | Test |
+|----|-----------|--------|------|
+| BEH-210 | `OrderHistory` renders one `OrderCard` per order returned by the API | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-210` |
+| BEH-211 | `OrderHistory` shows empty-state UI when API returns zero orders | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-211` |
+| BEH-212 | `OrderHistory` shows error alert when the API call fails | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-212` |
+
+---
+
 ## Priority Queue
 
 Work the 🔴 items before moving to 🟠. Do not skip.
@@ -356,7 +366,6 @@ Work the 🔴 items before moving to 🟠. Do not skip.
 |----|-------------|--------------|
 | BEH-044 | Regression test for email sync signal added this session | Add `with_user` trait to `ParticipantFactory` |
 | BEH-013 | Zero-balance participant blocked from ordering — core access control | None |
-| BEH-069 | IDOR — participant cannot read another participant's orders | None |
 | BEH-070 | IDOR — participant cannot read another participant's balance | None |
 | BEH-086 | Regression for `make_aware` fix — naive datetime → 200 not 500 | `ProgramWindowOverrideFactory` |
 | BEH-005d | Race condition — two simultaneous POSTs → only one order created | DB-level unique constraint decision needed |

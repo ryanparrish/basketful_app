@@ -32,13 +32,25 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
         user = None
         
         # Check if identifier looks like customer number (C-XXX-D format)
-        if identifier.startswith('C-') and len(identifier) >= 7:
-            # Customer number login
+        if identifier.startswith('C-') or (identifier.upper().startswith('C') and len(identifier) >= 5):
+            # Customer number login — normalize first, then validate
             from apps.account.models import Participant
-            
+            from apps.account.utils.warehouse_id import (
+                normalize_customer_number,
+                validate_customer_number,
+            )
+
+            normalized = normalize_customer_number(identifier)
+            is_valid, reason = validate_customer_number(normalized)
+            if not is_valid:
+                raise AuthenticationFailed({
+                    'detail': f'Invalid login number format. {reason}',
+                    'code': 'invalid_customer_number_format'
+                })
+
             try:
                 participant = Participant.objects.select_related('user').get(
-                    customer_number=identifier.upper()
+                    customer_number=normalized
                 )
                 
                 if not participant.user:

@@ -1,0 +1,84 @@
+flowchart TD
+    WWW(["🌐 Public Internet"])
+
+    subgraph CF["Cloudflare (Proxy)"]
+        direction TB
+        CF_DNS["DNS / Anycast"]
+        CF_WAF["WAF + DDoS Protection"]
+        CF_DNS --> CF_WAF
+    end
+
+    subgraph LINODE["Linode Cloud"]
+        direction TB
+
+        subgraph NB_BOX["NodeBalancer (Public IP)"]
+            NB_TLS["TLS Termination\nFull Strict — valid cert required\nPort 443 → HTTP :80"]
+        end
+
+        subgraph VLAN["Private VLAN (192.168.x.x) — no public route"]
+            direction TB
+
+            subgraph PROXY["Nginx Reverse Proxy\n(installed on VM host · not Docker)"]
+                direction TB
+                NGINX_HTTP["Port 80 only\n(TLS already terminated upstream)"]
+                NGINX_DJANGO["/ → localhost:8080 (Gunicorn)\nX-Forwarded-Proto: https ← hardcoded\n⚠️ $scheme would be 'http' and cause loop"]
+                NGINX_ADMIN["/new/admin/ → localhost:8081\nX-Forwarded-Proto: $scheme"]
+                NGINX_CART["/new/cart/ → localhost:8082\nX-Forwarded-Proto: $scheme"]
+            end
+
+            subgraph FRONTENDS["Frontend Containers (Docker)"]
+                ADMIN_CTR["Admin Frontend\nnginx:alpine · Port 8081\n/new/admin/ SPA"]
+                CART_CTR["Participant Frontend\nnginx:alpine · Port 8082\n/new/cart/ SPA"]
+            end
+
+            subgraph DJANGO["Django Stack (Docker Compose)"]
+                direction TB
+                GUNICORN["Gunicorn\ncore.wsgi · Port 8000 · 4 workers\nSECURE_SSL_REDIRECT=True\nSECURE_PROXY_SSL_HEADER checks\nX-Forwarded-Proto: https"]
+                CELERY["Celery Worker\n(background tasks)"]
+                CELERY_BEAT["Celery Beat\n(scheduled tasks)"]
+            end
+
+            REDIS[("Redis 7\nBroker + Result Backend")]
+
+            subgraph DB_LAYER["Database"]
+                POSTGRES[("PostgreSQL 15\nbasketful DB")]
+            end
+        end
+    end
+
+    %% External flow
+    WWW -->|"HTTPS :443"| CF
+    CF_WAF -->|"HTTPS :443\n(Cloudflare verifies NB cert — Full Strict)"| NB_TLS
+    NB_TLS -->|"HTTP :80 (private VLAN only)\nX-Forwarded-For: client IP"| NGINX_HTTP
+
+    %% Nginx routing
+    NGINX_HTTP --> NGINX_DJANGO
+    NGINX_HTTP --> NGINX_ADMIN
+    NGINX_HTTP --> NGINX_CART
+    NGINX_DJANGO -->|"HTTP · localhost:8080\nX-Forwarded-Proto: https"| GUNICORN
+    NGINX_ADMIN -->|"HTTP · localhost:8081"| ADMIN_CTR
+    NGINX_CART -->|"HTTP · localhost:8082"| CART_CTR
+
+    %% Django internals
+    GUNICORN <-->|"ORM queries"| POSTGRES
+    GUNICORN <-->|"task dispatch"| REDIS
+    CELERY <-->|"task consume"| REDIS
+    CELERY <-->|"ORM"| POSTGRES
+    CELERY_BEAT -->|"schedule"| REDIS
+
+    %% Styling
+    classDef cloud fill:#f5a623,stroke:#c47d0e,color:#000
+    classDef edge fill:#4a90d9,stroke:#2c6fad,color:#fff
+    classDef lb fill:#7b5ea7,stroke:#5a4280,color:#fff
+    classDef nginx fill:#009639,stroke:#006b28,color:#fff
+    classDef django fill:#0c4b33,stroke:#092e1f,color:#fff
+    classDef db fill:#336791,stroke:#1e4d6b,color:#fff
+    classDef cache fill:#dc382c,stroke:#a02820,color:#fff
+
+    class WWW cloud
+    class CF_DNS,CF_WAF edge
+    class NB_TLS lb
+    class NGINX_HTTP,NGINX_DJANGO,NGINX_ADMIN,NGINX_CART nginx
+    class ADMIN_CTR,CART_CTR,GUNICORN,CELERY,CELERY_BEAT django
+    class POSTGRES db
+    class REDIS cache

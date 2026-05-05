@@ -16,6 +16,7 @@ Example: C-BKM-7
 
 import random
 from typing import Tuple
+import re
 
 
 # Spoken-safe character set: NATO-clear consonants only
@@ -158,3 +159,30 @@ def validate_customer_number(customer_number: str) -> Tuple[bool, str]:
         return False, f"Check digit mismatch: expected {expected_check}, got {actual_check}"
     
     return True, ""
+
+
+# Unicode dash variants → canonical ASCII hyphen
+_DASH_CHARS = {
+    '\u2013',  # en-dash –
+    '\u2014',  # em-dash —
+    '\u2012',  # figure-dash ‒
+    '\u2212',  # minus sign −
+    '\u00AD',  # soft hyphen (invisible)
+}
+
+
+def normalize_customer_number(raw: str) -> str:
+    """
+    Normalise a user-typed customer number to canonical C-XXX-D format.
+    Handles en-dash, em-dash, spaces-as-separators, no separator, lowercase.
+    Returns the normalised string — does NOT validate. Call validate_customer_number() after.
+    """
+    s = raw.strip().upper()
+    for dash in _DASH_CHARS:
+        s = s.replace(dash, '-')
+    s = s.replace(' ', '')
+    # Handle no-separator form: CBKM7 → C-BKM-7
+    no_sep = re.match(r'^C([BCDFGHJKMNPRTVWXY]{3})(\d)$', s)
+    if no_sep:
+        s = f"C-{no_sep.group(1)}-{no_sep.group(2)}"
+    return s

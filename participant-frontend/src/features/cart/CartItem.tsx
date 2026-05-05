@@ -21,6 +21,7 @@ import {
 import type { CartItemData } from '../../providers/CartProvider';
 import { useCartContext } from '../../providers/CartProvider';
 import { useValidation } from '../../providers/ValidationContext';
+import { tokens } from '../../shared/theme/tokens';
 
 interface CartItemProps {
   item: CartItemData;
@@ -52,10 +53,9 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
   return (
     <Box
       sx={{
-        py: 2,
-        px: 1,
-        borderBottom: 1,
-        borderColor: 'divider',
+        py: 1.5,
+        px: 2,
+        borderBottom: `1px solid ${tokens.border.default}`,
         bgcolor: hasError ? 'error.light' : hasWarning ? 'warning.light' : 'transparent',
         '&:last-child': {
           borderBottom: 0,
@@ -97,7 +97,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
             <Typography variant="body2" color="text.secondary">
               ${Number(item.price || 0).toFixed(2)} × {item.quantity || 1}
             </Typography>
-            <Typography variant="body1" fontWeight={600} color="primary">
+            <Typography variant="body1" fontWeight={600} sx={{ color: tokens.brand.greenPrimary }}>
               ${itemTotal.toFixed(2)}
             </Typography>
           </Box>

@@ -103,8 +103,17 @@ def initialize_participant(instance: Participant, created, **kwargs):
         setup_account_and_vouchers(instance)
     # Trigger onboarding email if a user was created via participant flow
     if instance.user and create_user_flag:
-        logger.debug(
-            "Triggering onboarding email for participant-linked user %s",
-            instance.user.id,
-        )
-        send_new_user_onboarding_email.delay(user_id=instance.user.id)
+        # When bulk_create sets _skip_onboarding_signal=True it handles the
+        # email itself (with an optional grace-period countdown).
+        if getattr(instance, '_skip_onboarding_signal', False):
+            logger.debug(
+                "Skipping onboarding email signal for participant %s "
+                "(bulk_create will dispatch with grace period)",
+                instance.pk,
+            )
+        else:
+            logger.debug(
+                "Triggering onboarding email for participant-linked user %s",
+                instance.user.id,
+            )
+            send_new_user_onboarding_email.delay(user_id=instance.user.id)

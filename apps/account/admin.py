@@ -12,7 +12,7 @@ from django.apps import apps
 # Local app imports
 from .models import Participant
 from .forms import CustomUserCreationForm, ParticipantAdminForm
-from .models import UserProfile, AccountBalance, GoFreshSettings, HygieneSettings
+from .models import UserProfile, AccountBalance, GoFreshSettings, HygieneSettings, BulkCreateBatch
 from .utils.user_utils import _generate_admin_username, create_participant_user
 from .utils.balance_utils import calculate_base_balance
 from .tasks.email import send_password_reset_email, send_new_user_onboarding_email
@@ -492,4 +492,23 @@ class HygieneSettingsAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(BulkCreateBatch)
+class BulkCreateBatchAdmin(admin.ModelAdmin):
+    """Read-only audit log for bulk participant creation events."""
+    list_display = ['id', 'created_by', 'created_at', 'participant_count', 'email_grace_seconds', 'cancelled']
+    list_filter = ['cancelled', 'created_at']
+    readonly_fields = [
+        'id', 'created_by', 'created_at', 'participants',
+        'celery_task_ids', 'email_grace_seconds', 'cancelled',
+    ]
+    search_fields = ['created_by__username']
 
+    def participant_count(self, obj):
+        return len(obj.participants) if obj.participants else 0
+    participant_count.short_description = 'Created'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

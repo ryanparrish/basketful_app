@@ -23,6 +23,7 @@ import { CartItem } from '../features/cart/CartItem';
 import { ValidationFeedback } from '../features/cart/ValidationFeedback';
 import type { CartItemData } from '../providers/CartProvider';
 import { DESKTOP_CART_WIDTH } from '../shared/constants/layout';
+import { tokens } from '../shared/theme/tokens';
 
 export const DesktopCartPanel: React.FC = () => {
   const navigate = useNavigate();
@@ -48,8 +49,7 @@ export const DesktopCartPanel: React.FC = () => {
         right: 0,
         width: DESKTOP_CART_WIDTH,
         height: 'calc(100vh - 64px)',
-        borderLeft: 1,
-        borderColor: 'divider',
+        borderLeft: `1px solid ${tokens.border.default}`,
         display: 'flex',
         flexDirection: 'column',
         bgcolor: 'background.paper',
@@ -62,14 +62,17 @@ export const DesktopCartPanel: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          p: 2,
-          borderBottom: 1,
-          borderColor: 'divider',
+          px: 2,
+          py: 1.5,
+          borderBottom: `1px solid ${tokens.border.default}`,
+          bgcolor: tokens.surface.page,
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
-          <CartIcon color="primary" />
-          <Typography variant="h6">Cart ({totalItems})</Typography>
+          <CartIcon sx={{ color: tokens.brand.greenPrimary }} />
+          <Typography variant="h6" sx={{ color: tokens.text.heading }}>
+            Cart ({totalItems})
+          </Typography>
         </Stack>
         {!isEmpty && (
           <IconButton
@@ -84,7 +87,7 @@ export const DesktopCartPanel: React.FC = () => {
       </Box>
 
       {/* Cart Content */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {isEmpty ? (
           <Box
             sx={{
@@ -96,7 +99,7 @@ export const DesktopCartPanel: React.FC = () => {
               p: 3,
             }}
           >
-            <CartIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+            <CartIcon sx={{ fontSize: 48, color: tokens.text.muted, mb: 2 }} />
             <Typography variant="body1" color="text.secondary" align="center">
               Your cart is empty
             </Typography>
@@ -112,7 +115,7 @@ export const DesktopCartPanel: React.FC = () => {
             </Box>
 
             {/* Cart Items */}
-            <Box sx={{ px: 1 }}>
+            <Box>
               {items.map((item: CartItemData) => (
                 <CartItem key={item.id} item={item} />
               ))}
@@ -123,23 +126,27 @@ export const DesktopCartPanel: React.FC = () => {
 
       {/* Footer with Totals */}
       {!isEmpty && (
-        <Box sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
+        <Box sx={{ borderTop: `1px solid ${tokens.border.default}`, p: 2 }}>
           {balances && (
             <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 Budget Remaining:
               </Typography>
-              <Typography variant="body2" fontWeight={500}>
-                ${Number(balances.remaining_budget).toFixed(2)}
+              <Typography
+                variant="body2"
+                fontWeight={500}
+                color={cartTotal > balances.available_balance ? 'error.main' : 'text.primary'}
+              >
+                ${Math.max(0, balances.available_balance - cartTotal).toFixed(2)}
               </Typography>
             </Stack>
           )}
 
           <Divider sx={{ my: 1 }} />
 
-          <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
-            <Typography variant="h6">Total:</Typography>
-            <Typography variant="h6" color="primary" fontWeight={600}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ color: tokens.text.heading }}>Total:</Typography>
+            <Typography variant="h6" fontWeight={600} sx={{ color: tokens.brand.greenPrimary }}>
               ${cartTotal.toFixed(2)}
             </Typography>
           </Stack>
@@ -147,6 +154,7 @@ export const DesktopCartPanel: React.FC = () => {
           <Button
             fullWidth
             variant="contained"
+            color="secondary"
             size="large"
             onClick={handleCheckout}
             disabled={!canCheckout}

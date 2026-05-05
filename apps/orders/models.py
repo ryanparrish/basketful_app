@@ -183,7 +183,7 @@ class Order(models.Model):
     def clean(self):
         """
         Validate order constraints:
-        - Duplicate active order guard (BEH-005)
+        - Duplicate active order guard (BEH-005): only one confirmed/packing order
         - Hygiene balance
         - Category limits
         - Voucher totals
@@ -191,9 +191,10 @@ class Order(models.Model):
         super().clean()
 
         # --- Duplicate active order guard ---
-        # A participant may only have one active order (pending or confirmed)
-        # at a time. Cancelled and completed orders do not count.
-        ACTIVE_STATUSES = {"pending", "confirmed", "packing"}
+        # A participant may only have one confirmed/packing order at a time.
+        # Pending orders are pre-validation drafts and do not count toward this
+        # limit. Cancelled and completed orders also do not count.
+        ACTIVE_STATUSES = {"confirmed", "packing"}
         if self.status in ACTIVE_STATUSES:
             existing_qs = Order.objects.filter(
                 account=self.account,

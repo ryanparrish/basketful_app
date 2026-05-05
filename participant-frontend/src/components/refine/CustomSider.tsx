@@ -1,6 +1,7 @@
 /**
  * Custom Sider Component for Refine
- * Shows categories + cart summary on desktop
+ * Collapsible left navigation with categories.
+ * The cart lives in DesktopCartPanel (right side) — not here.
  */
 import React, { useState } from 'react';
 import {
@@ -13,43 +14,40 @@ import {
   ListItemText,
   Typography,
   Divider,
-  Badge,
-  Collapse,
   Skeleton,
+  Tooltip,
+  IconButton,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import {
-  ShoppingCart as ShoppingCartIcon,
-  ExpandLess,
-  ExpandMore,
   Category as CategoryIcon,
   Receipt as ReceiptIcon,
   AccountCircle as AccountIcon,
   Storefront as StorefrontIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useGo, useResourceParams } from '@refinedev/core';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { useCartContext } from '../../providers/CartProvider';
 import { getCategories, getProducts } from '../../shared/api/endpoints';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
-import { CartDrawer } from '../../features/cart';
 
-const SIDER_WIDTH = 260;
+const SIDER_WIDTH = 240;
+const SIDER_COLLAPSED_WIDTH = 64;
 
 export const CustomSider: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const go = useGo();
   const { resource } = useResourceParams();
-  const { totalItems, cartTotal } = useCartContext();
   const { remainingBudget, isOverBudget } = useCartValidation();
   const [searchParams] = useSearchParams();
   const selectedCategory = searchParams.get('category');
-  
-  const [categoriesOpen, setCategoriesOpen] = useState(true);
-  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
 
   // Fetch categories for the sidebar
   const { data: categories = [], isLoading: categoriesLoading } = useQuery({
@@ -89,163 +87,177 @@ export const CustomSider: React.FC = () => {
 
   return (
     <>
-      {/* Spacer to push content right */}
+      {/* Spacer to push content right — width animates with sidebar */}
       <Box
         sx={{
-          width: SIDER_WIDTH,
+          width: siderWidth,
           flexShrink: 0,
+          transition: theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
           display: { xs: 'none', md: 'block' },
         }}
       />
+
       {/* Fixed Drawer */}
       <Box
         component="nav"
         sx={{
           position: 'fixed',
-          zIndex: (theme) => theme.zIndex.drawer,
-          width: SIDER_WIDTH,
+          top: 64, // sits below AppBar, which is 64px tall
+          zIndex: (theme) => theme.zIndex.appBar - 1,
+          width: siderWidth,
           display: { xs: 'none', md: 'flex' },
+          transition: theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
         }}
       >
         <Drawer
           variant="permanent"
           sx={{
-            width: SIDER_WIDTH,
+            width: siderWidth,
             flexShrink: 0,
             '& .MuiDrawer-paper': {
-              width: SIDER_WIDTH,
+              width: siderWidth,
               boxSizing: 'border-box',
-              top: 0,
-              height: '100vh',
+              top: 64,
+              height: 'calc(100vh - 64px)',
               borderRight: 1,
               borderColor: 'divider',
+              overflowX: 'hidden',
+              transition: theme.transitions.create('width', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
             },
           }}
           open
         >
-          {/* Budget Banner at top of sidebar (matches header height) */}
+          {/* Budget Banner + collapse toggle */}
           <Box
             sx={{
-              height: 64,
               display: 'flex',
               alignItems: 'center',
-              px: 2,
-              bgcolor: isOverBudget ? 'error.light' : 'primary.main',
-              color: isOverBudget ? 'error.contrastText' : 'primary.contrastText',
+              justifyContent: 'space-between',
+              px: collapsed ? 1 : 2,
+              py: 1.5,
+              bgcolor: isOverBudget ? 'error.dark' : 'primary.dark',
+              color: 'primary.contrastText',
+              flexShrink: 0,
             }}
           >
-            <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              Budget: ${Number(remainingBudget ?? 0).toFixed(2)}
-            </Typography>
+            {!collapsed && (
+              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                Budget: ${Number(remainingBudget ?? 0).toFixed(2)}
+              </Typography>
+            )}
+            <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
+              <IconButton
+                size="small"
+                onClick={() => setCollapsed(c => !c)}
+                sx={{ color: 'inherit', ml: collapsed ? 'auto' : 0 }}
+              >
+                {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* Navigation */}
-          <List>
-          {menuItems.map((item) => (
-            <ListItem key={item.key} disablePadding>
-              <ListItemButton
-                selected={resource?.name === item.key}
-                onClick={() => go({ to: item.path })}
-                sx={{
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.light',
-                    color: 'primary.main',
-                    '&:hover': {
-                      bgcolor: 'primary.light',
-                    },
-                  },
-                }}
-              >
-                <ListItemIcon sx={{ color: 'inherit' }}>
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
-
-        <Divider />
-
-        {/* Categories Section */}
-        <ListItem disablePadding>
-          <ListItemButton onClick={() => setCategoriesOpen(!categoriesOpen)}>
-            <ListItemIcon>
-              <CategoryIcon />
-            </ListItemIcon>
-            <ListItemText primary="Categories" />
-            {categoriesOpen ? <ExpandLess /> : <ExpandMore />}
-          </ListItemButton>
-        </ListItem>
-
-        <Collapse in={categoriesOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {categoriesLoading ? (
-              // Skeleton loading state
-              Array.from({ length: 5 }).map((_, index) => (
-                <ListItem key={index} sx={{ pl: 4 }}>
-                  <Skeleton width="100%" />
+          <List sx={{ pt: 1 }}>
+            {menuItems.map((item) => {
+              const isSelected = resource?.name === item.key;
+              return (
+                <ListItem key={item.key} disablePadding>
+                  <Tooltip title={collapsed ? item.label : ''} placement="right">
+                    <ListItemButton
+                      selected={isSelected}
+                      onClick={() => go({ to: item.path })}
+                      sx={{
+                        minHeight: 48,
+                        justifyContent: collapsed ? 'center' : 'initial',
+                        px: collapsed ? 1.5 : 2,
+                        '&.Mui-selected': {
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
+                          '&:hover': { bgcolor: 'primary.dark' },
+                        },
+                      }}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 0,
+                          mr: collapsed ? 0 : 2,
+                          color: isSelected ? 'primary.contrastText' : 'inherit',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+                      {!collapsed && <ListItemText primary={item.label} />}
+                    </ListItemButton>
+                  </Tooltip>
                 </ListItem>
-              ))
-            ) : (
-              <>
-                {/* All Products option */}
-                <ListItemButton
-                  sx={{ pl: 4 }}
-                  selected={resource?.name === 'products' && !selectedCategory}
-                  onClick={() => go({ to: '/products' })}
-                >
-                  <ListItemText 
-                    primary="All Products"
-                    secondary={`${products.length} items`}
-                  />
-                </ListItemButton>
-                {categories.map((category) => (
-                  <ListItemButton
-                    key={category.id}
-                    sx={{ pl: 4 }}
-                    selected={selectedCategory === String(category.id)}
-                    onClick={() => go({ to: '/products', query: { category: String(category.id) } })}
-                  >
-                    <ListItemText 
-                      primary={category.name}
-                      secondary={`${productCounts[category.id] ?? 0} items`}
-                    />
-                  </ListItemButton>
-                ))}
-              </>
-            )}
+              );
+            })}
           </List>
-        </Collapse>
 
-        {/* Cart Summary at bottom */}
-        <Box sx={{ mt: 'auto', p: 2, borderTop: 1, borderColor: 'divider' }}>
-          <ListItemButton
-            onClick={() => setCartDrawerOpen(true)}
-            sx={{
-              borderRadius: 1,
-              bgcolor: 'background.paper',
-              border: 1,
-              borderColor: 'divider',
-            }}
-          >
-            <ListItemIcon>
-              <Badge badgeContent={totalItems} color="primary">
-                <ShoppingCartIcon />
-              </Badge>
-            </ListItemIcon>
-            <ListItemText
-              primary="Cart"
-              secondary={`$${cartTotal.toFixed(2)}`}
-              primaryTypographyProps={{ fontWeight: 600 }}
-            />
-          </ListItemButton>
-        </Box>
+          {!collapsed && (
+            <>
+              <Divider />
+
+              {/* Categories Section */}
+              <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CategoryIcon color="primary" fontSize="small" />
+                <Typography variant="subtitle2" color="primary" fontWeight={600} sx={{ letterSpacing: '0.05em' }}>
+                  CATEGORIES
+                </Typography>
+              </Box>
+
+              <Box sx={{ overflow: 'auto', flex: 1 }}>
+                <List component="div" disablePadding>
+                  {categoriesLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <ListItem key={index} sx={{ pl: 3 }}>
+                        <Skeleton width="100%" />
+                      </ListItem>
+                    ))
+                  ) : (
+                    <>
+                      <ListItemButton
+                        sx={{ pl: 3 }}
+                        selected={resource?.name === 'products' && !selectedCategory}
+                        onClick={() => go({ to: '/products' })}
+                      >
+                        <ListItemText
+                          primary="All Products"
+                          secondary={`${products.length} items`}
+                        />
+                      </ListItemButton>
+                      {categories.map((category) => (
+                        <ListItemButton
+                          key={category.id}
+                          sx={{ pl: 3 }}
+                          selected={selectedCategory === String(category.id)}
+                          onClick={() => go({ to: '/products', query: { category: String(category.id) } })}
+                        >
+                          <ListItemText
+                            primary={category.name}
+                            secondary={`${productCounts[category.id] ?? 0} items`}
+                          />
+                        </ListItemButton>
+                      ))}
+                    </>
+                  )}
+                </List>
+              </Box>
+            </>
+          )}
         </Drawer>
       </Box>
-
-      {/* Cart Drawer */}
-      <CartDrawer open={cartDrawerOpen} onClose={() => setCartDrawerOpen(false)} />
     </>
   );
 };

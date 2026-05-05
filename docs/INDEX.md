@@ -26,6 +26,7 @@ This directory contains comprehensive documentation for the Basketful food pantr
 ### Features
 - **[GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md)** - Household-based fresh food budgets
 - **[BULK_VOUCHER_CREATION.md](BULK_VOUCHER_CREATION.md)** - Batch voucher creation
+- **[BULK_PARTICIPANT_CREATE_WELCOME_CARDS.md](BULK_PARTICIPANT_CREATE_WELCOME_CARDS.md)** - Bulk participant intake + printable welcome cards (implementation plan)
 - **[ORDER_WINDOW_FEATURE.md](ORDER_WINDOW_FEATURE.md)** - Time-based ordering restrictions
 - **[COMBINED_ORDER_FEATURE.md](COMBINED_ORDER_FEATURE.md)** - Combining multiple orders
 - **[CUSTOMER_NUMBER_SYSTEM.md](CUSTOMER_NUMBER_SYSTEM.md)** - Warehouse-friendly IDs

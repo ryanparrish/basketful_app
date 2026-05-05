@@ -190,3 +190,26 @@ export interface ParticipantProfile {
   name: string;
   email: string;
 }
+
+export interface ParticipantProgram {
+  id: number;
+  name: string;
+  meeting_day: string;
+  meeting_time: string;
+  meeting_address: string;
+}
+
+export interface ParticipantCoach {
+  id: number;
+  name: string;
+  email: string;
+  phone_number: string;
+  image: string | null;
+}
+
+export interface ParticipantMeProfile {
+  name: string;
+  customer_number: string;
+  program: ParticipantProgram | null;
+  coach: ParticipantCoach | null;
+}

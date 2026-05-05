@@ -59,6 +59,7 @@ import {
   ButtonGroup,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import RestoreIcon from '@mui/icons-material/Restore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -77,13 +78,24 @@ const participantFilters = [
   </ReferenceInput>,
 ];
 
-const ListActions = () => (
-  <TopToolbar>
-    <FilterButton />
-    <CreateButton />
-    <ExportButton />
-  </TopToolbar>
-);
+const ListActions = () => {
+  const navigate = useNavigate();
+  return (
+    <TopToolbar>
+      <FilterButton />
+      <Button
+        startIcon={<GroupAddIcon />}
+        onClick={() => navigate('/participants/bulk-create')}
+        size="small"
+        variant="outlined"
+      >
+        Bulk Create
+      </Button>
+      <CreateButton />
+      <ExportButton />
+    </TopToolbar>
+  );
+};
 
 // ── Balance expand panel ──────────────────────────────────────────────────────
 
@@ -603,6 +615,26 @@ const ParticipantShowActions = () => {
   return (
     <TopToolbar>
       <EditButton />
+      <Button
+        startIcon={<PrintIcon />}
+        onClick={() => {
+          const p = {
+            id: record.id,
+            name: record.name,
+            customer_number: record.customer_number,
+            email: record.email,
+            preferred_language: record.preferred_language ?? 'en',
+            program_name: record.program_name ?? '',
+          };
+          sessionStorage.setItem('single_participant_card', JSON.stringify([p]));
+          navigate('/participants/welcome-cards/single', { state: { participants: [p] } });
+        }}
+        size="small"
+        disabled={!record.customer_number}
+        title={!record.customer_number ? 'No customer number assigned' : 'Print Welcome Card'}
+      >
+        Print Welcome Card
+      </Button>
       {record.active ? (
         <Button
           color="warning"

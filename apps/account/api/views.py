@@ -1,15 +1,19 @@
 """
 ViewSets for the Account app API.
 """
+import uuid
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.hashers import make_password
 from django.utils.crypto import get_random_string
+from django.shortcuts import get_object_or_404
 
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsSingletonAdmin
 from apps.account.models import (
@@ -18,6 +22,7 @@ from apps.account.models import (
     AccountBalance,
     GoFreshSettings,
     HygieneSettings,
+    BulkCreateBatch,
 )
 from apps.account.utils.balance_utils import calculate_base_balance
 from apps.account.utils.user_utils import create_participant_user
@@ -31,11 +36,15 @@ from .serializers import (
     PermissionSerializer,
     ParticipantSerializer,
     ParticipantCreateSerializer,
+    BulkParticipantCreateSerializer,
     AccountBalanceSerializer,
     GoFreshSettingsSerializer,
     HygieneSettingsSerializer,
     BalanceSummarySerializer,
 )
+
+EMAIL_EAGER_THRESHOLD = 5   # <= this many participants -> send immediately
+EMAIL_GRACE_SECONDS = 300   # 5-minute hold for larger batches
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -164,6 +173,42 @@ class ParticipantViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
     
+    @action(detail=False, methods=['get'], url_path='me/profile', permission_classes=[IsAuthenticated])
+    def me_profile(self, request):
+        """Get profile info including program and coach for the current participant."""
+        try:
+            participant = request.user.participant
+        except Participant.DoesNotExist:
+            return Response(
+                {'error': 'No participant profile found for this user'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        data: dict = {
+            'name': participant.name,
+            'customer_number': participant.customer_number,
+            'program': None,
+            'coach': None,
+        }
+        if participant.program:
+            p = participant.program
+            data['program'] = {
+                'id': p.id,
+                'name': p.name,
+                'meeting_day': p.MeetingDay,
+                'meeting_time': str(p.meeting_time),
+                'meeting_address': p.meeting_address,
+            }
+        if participant.assigned_coach:
+            c = participant.assigned_coach
+            data['coach'] = {
+                'id': c.id,
+                'name': c.name,
+                'email': c.email,
+                'phone_number': c.phone_number,
+                'image': request.build_absolute_uri(c.image.url) if c.image else None,
+            }
+        return Response(data)
+
     @action(detail=True, methods=['get'])
     def balances(self, request, pk=None):
         """Get balance summary for a participant."""
@@ -369,6 +414,156 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             archived_at=None
         )
         return Response({'message': f'Restored {updated} participant(s).'})
+
+    @action(detail=False, methods=['post'], url_path='bulk-validate')
+    def bulk_validate(self, request):
+        """Validate a batch of participant rows without saving."""
+        serializer = BulkParticipantCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rows = serializer.validated_data['participants']
+        if not rows:
+            return Response(
+                {'detail': 'At least one row is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        errors = []
+        for i, row in enumerate(rows):
+            s = ParticipantCreateSerializer(data={**row, 'create_user': True})
+            if not s.is_valid():
+                errors.append({'index': i, 'errors': s.errors})
+        return Response({'errors': errors, 'valid_count': len(rows) - len(errors)})
+
+    @action(detail=False, methods=['post'], url_path='bulk-create')
+    def bulk_create(self, request):
+        """
+        Create multiple participants at once with login accounts.
+
+        Returns a per-row result array mirroring the input 1-to-1.
+        Batches > EMAIL_EAGER_THRESHOLD participants use a 5-minute email grace period.
+        """
+        self.throttle_scope = 'bulk_create'
+        serializer = BulkParticipantCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        rows = serializer.validated_data['participants']
+        if not rows:
+            return Response(
+                {'detail': 'At least one participant row is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result_rows = []
+        deferred_task_ids = []
+        use_grace = len(rows) > EMAIL_EAGER_THRESHOLD
+
+        for index, row_data in enumerate(rows):
+            try:
+                with transaction.atomic():  # per-row savepoint
+                    row_data['create_user'] = True
+                    row_data['_skip_onboarding_signal'] = use_grace
+
+                    row_serializer = ParticipantCreateSerializer(data=row_data)
+                    if not row_serializer.is_valid():
+                        result_rows.append({
+                            'index': index,
+                            'status': 'failed',
+                            'participant': None,
+                            'errors': row_serializer.errors,
+                        })
+                        continue
+
+                    participant = row_serializer.save()
+
+                    if use_grace and participant.user_id:
+                        task = send_new_user_onboarding_email.apply_async(
+                            kwargs={'user_id': participant.user.id},
+                            countdown=EMAIL_GRACE_SECONDS,
+                        )
+                        deferred_task_ids.append(task.id)
+
+                    result_rows.append({
+                        'index': index,
+                        'status': 'created',
+                        'participant': {
+                            'id': participant.id,
+                            'name': participant.name,
+                            'email': participant.email,
+                            'customer_number': participant.customer_number,
+                            'preferred_language': participant.preferred_language,
+                            'program_name': participant.program.name if participant.program else '',
+                        },
+                        'errors': None,
+                    })
+            except Exception as exc:
+                result_rows.append({
+                    'index': index,
+                    'status': 'failed',
+                    'participant': None,
+                    'errors': {'non_field': [str(exc)]},
+                })
+
+        created_rows = [r for r in result_rows if r['status'] == 'created']
+
+        if not created_rows:
+            return Response(
+                {
+                    'detail': 'No participants could be created.',
+                    'rows': result_rows,
+                    'summary': {'created': 0, 'failed': len(result_rows)},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        batch = BulkCreateBatch.objects.create(
+            created_by=request.user,
+            participants=[r['participant'] for r in created_rows],
+            celery_task_ids=deferred_task_ids,
+            email_grace_seconds=EMAIL_GRACE_SECONDS if use_grace else 0,
+        )
+
+        return Response(
+            {
+                'batch_id': str(batch.id),
+                'email_grace_seconds': EMAIL_GRACE_SECONDS if use_grace else 0,
+                'summary': {
+                    'created': len(created_rows),
+                    'failed': len(result_rows) - len(created_rows),
+                },
+                'rows': result_rows,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['get'],
+            url_path=r'bulk-create-batches/(?P<batch_id>[^/.]+)')
+    def get_bulk_batch(self, request, batch_id=None):
+        """Retrieve a batch by ID for print-page recovery after tab refresh."""
+        batch = get_object_or_404(BulkCreateBatch, id=batch_id)
+        return Response({
+            'batch_id': str(batch.id),
+            'created': batch.participants,
+            'cancelled': batch.cancelled,
+            'email_grace_seconds': batch.email_grace_seconds,
+            'created_at': batch.created_at.isoformat(),
+        })
+
+    @action(detail=False, methods=['post'],
+            url_path=r'bulk-create-batches/(?P<batch_id>[^/.]+)/cancel')
+    def cancel_bulk_batch(self, request, batch_id=None):
+        """Revoke queued onboarding emails for a grace-period batch."""
+        from celery.result import AsyncResult
+        batch = get_object_or_404(
+            BulkCreateBatch, id=batch_id, created_by=request.user
+        )
+        if batch.cancelled:
+            return Response({'detail': 'Batch already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+        revoked = 0
+        for task_id in batch.celery_task_ids:
+            AsyncResult(task_id).revoke(terminate=False)
+            revoked += 1
+        batch.cancelled = True
+        batch.save(update_fields=['cancelled'])
+        return Response({'revoked': revoked})
 
 
 class AccountBalanceViewSet(viewsets.ModelViewSet):

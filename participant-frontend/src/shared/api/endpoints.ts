@@ -18,6 +18,7 @@ import type {
   CreateOrderRequest,
   CreateOrderResponse,
   ParticipantProfile,
+  ParticipantMeProfile,
   Balances,
 } from '../types/api';
 
@@ -27,8 +28,8 @@ export const getThemeConfig = async (): Promise<ThemeConfig> => {
   // Handle both array and single object response
   const data = Array.isArray(response.data) ? response.data[0] : response.data;
   return data || {
-    primary_color: '#1976d2',
-    secondary_color: '#dc004e',
+    primary_color: '#2F8A46',
+    secondary_color: '#E8841A',
     logo: null,
     app_name: 'Basketful',
     favicon: null,
@@ -91,7 +92,7 @@ export const validateCart = async (data: ValidationRequest): Promise<ValidationR
 // Orders
 export const getOrders = async (): Promise<OrderListItem[]> => {
   const response = await apiClient.get<PaginatedResponse<OrderListItem>>('/orders/', {
-    params: { page_size: 50 },
+    params: { page_size: 50, me: 'true' },
   });
   return response.data.results || response.data;
 };
@@ -168,6 +169,11 @@ export const checkAuth = async (): Promise<{ is_authenticated: boolean; user?: {
 };
 
 // Balances (updated)
+export const getProfile = async (): Promise<ParticipantMeProfile> => {
+  const response = await apiClient.get('/participants/me/profile/');
+  return response.data;
+};
+
 export const getBalances = async (): Promise<Balances> => {
   const response = await apiClient.get('/participants/me/balances/');
   const data = response.data;

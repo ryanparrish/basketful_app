@@ -72,6 +72,17 @@ class Participant(BaseModel):
         help_text="Timestamp when participant was archived"
     )
 
+    LANGUAGE_CHOICES = [
+        ('en', 'English'),
+        ('es', 'Español'),
+    ]
+    preferred_language = models.CharField(
+        max_length=5,
+        choices=LANGUAGE_CHOICES,
+        default='en',
+        help_text="Preferred language for communications and welcome card"
+    )
+
     def balances(self):
         """
         Return all balances related to this participant as a dict.
@@ -309,5 +320,45 @@ class HygieneSettings(models.Model):
 
     def __str__(self) -> str:
         return f"Hygiene Settings (Ratio: {self.hygiene_ratio}, Enabled: {self.enabled})"
+
+
+import uuid  # noqa: E402  (below class definitions to avoid circular import at module level)
+
+
+class BulkCreateBatch(models.Model):
+    """
+    Records a single bulk participant creation event.
+
+    Serves two purposes:
+    1. Recovery — the print page can re-fetch participant data if
+       location.state is lost (tab refresh, crash).
+    2. Cancellation — stores Celery task IDs so queued onboarding emails
+       can be revoked during the grace period.
+
+    NOTE (Retention): `participants` JSON contains PII (names + emails).
+    Consider purging after 90 days or replacing with a count-only summary
+    after staff confirm cards were printed.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='bulk_create_batches'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Snapshot of created participant dicts for print-page recovery
+    participants = models.JSONField()
+    # Celery task IDs for cancellation during grace period
+    celery_task_ids = models.JSONField(default=list)
+    email_grace_seconds = models.IntegerField(default=0)
+    cancelled = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Bulk Create Batch'
+        verbose_name_plural = 'Bulk Create Batches'
+
+    def __str__(self) -> str:
+        by = self.created_by.username if self.created_by else 'unknown'
+        count = len(self.participants) if self.participants else 0
+        return f'Batch {self.id} by {by} ({count} participants)'
 
 

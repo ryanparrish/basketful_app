@@ -53,11 +53,12 @@ export const useCartValidation = () => {
     );
   }, [validation.errors]);
 
-  // Get remaining budget (if balances available)
+  // Get remaining budget computed client-side so it updates instantly as cart changes.
+  // available_balance is the participant's static account balance; subtract cartTotal for live display.
   const remainingBudget = useMemo(() => {
     if (!validation.balances) return null;
-    return validation.balances.remaining_budget;
-  }, [validation.balances]);
+    return Math.max(0, validation.balances.available_balance - cartTotal);
+  }, [validation.balances, cartTotal]);
 
   // Check if cart is over budget
   const isOverBudget = useMemo(() => {

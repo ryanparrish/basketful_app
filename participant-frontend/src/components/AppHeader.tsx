@@ -43,7 +43,7 @@ export const AppHeader: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+  // useMediaQuery retained for future responsive needs
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -148,20 +148,7 @@ export const AppHeader: React.FC = () => {
             </Button>
           </Stack>
 
-          {/* Cart button - visible on desktop and tablets */}
-          {isDesktop && (
-            <IconButton
-              color="inherit"
-              onClick={() => setCartOpen(true)}
-              sx={{ ml: 1 }}
-            >
-              <Badge badgeContent={totalItems} color="error" max={99}>
-                <ShoppingCart />
-              </Badge>
-            </IconButton>
-          )}
-
-          {/* Cart button - visible on medium screens (tablets), hidden on mobile and large desktop */}
+          {/* Cart button - visible on medium screens (tablets only; desktop has the persistent cart panel) */}
           <Box sx={{ display: { xs: 'none', md: 'flex', lg: 'none' }, mr: 2 }}>
             <IconButton color="inherit" onClick={() => setCartOpen(true)}>
               <Badge badgeContent={totalItems} color="error">

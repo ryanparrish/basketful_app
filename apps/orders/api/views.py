@@ -80,8 +80,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Filter orders based on user permissions."""
         qs = super().get_queryset()
         user = self.request.user
-        if not user.is_staff:
-            # Non-staff users can only see their own orders
+        # ?me=true forces participant-scoped results even for staff users.
+        # Used by the participant frontend so a staff account cannot see all orders.
+        if self.request.query_params.get('me') == 'true':
+            qs = qs.filter(user=user)
+        elif not user.is_staff:
+            # Non-staff users always see only their own orders
             qs = qs.filter(user=user)
         return qs
 
@@ -295,7 +299,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'skipped_ids': skipped_ids,
         })
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-cart')
     def validate_cart(self, request):
         """
         Validate cart items against business rules without creating an order.
@@ -340,8 +344,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         }
         """
         from apps.account.models import Participant, AccountBalance
-        from apps.pantry.models import Product, ProductLimit
-        from apps.orders.utils.validators import CategoryLimitValidator
+        from apps.pantry.models import Product, ProductLimit, CategoryLimitValidator
         from django.db import transaction as _tx
 
         class _ValidationDone(Exception):
@@ -353,36 +356,36 @@ class OrderViewSet(viewsets.ModelViewSet):
         participant_id = request.data.get('participant_id')
         items_data = request.data.get('items', [])
 
-        if not participant_id:
-            return Response(
-                {'error': 'participant_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Get participant and account
+        # Get participant and account.
+        # participant_id is optional for authenticated participants — if not supplied,
+        # derive from the authenticated user (same pattern as me_balances).
         try:
-            participant = Participant.objects.select_related(
-                'accountbalance'
-            ).get(id=participant_id)
+            if participant_id:
+                # Staff may validate for any participant by ID.
+                participant = Participant.objects.select_related(
+                    'accountbalance'
+                ).get(id=participant_id)
+                # Non-staff may not validate for other participants.
+                if not request.user.is_staff and participant.user_id != request.user.id:
+                    return Response(
+                        {'error': 'You do not have permission to validate a cart for this participant.'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            else:
+                participant = Participant.objects.select_related(
+                    'accountbalance'
+                ).get(user=request.user)
             account = participant.accountbalance
         except Participant.DoesNotExist:
             return Response(
-                {'error': f'Participant {participant_id} not found'},
+                {'error': 'No participant profile found for this user.'},
                 status=status.HTTP_404_NOT_FOUND
             )
         except AccountBalance.DoesNotExist:
             return Response(
-                {'error': f'AccountBalance not found for participant {participant_id}'},
+                {'error': 'AccountBalance not found for this participant.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        # Enforce ownership: non-staff users may only validate for their own participant
-        if not request.user.is_staff:
-            if participant.user_id != request.user.id:
-                return Response(
-                    {'error': 'You do not have permission to validate a cart for this participant.'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
 
         # Get program settings for grace allowance
         program_settings = ProgramSettings.get_settings()
@@ -522,8 +525,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     Q(subcategory__category__id__in=category_counts.keys())
                 ).select_related('category', 'subcategory')
 
-                household_size = participant.adults + participant.children + participant.infants
-
                 for limit in product_limits:
                     category = limit.category or limit.subcategory.category
                     used = category_counts.get(category.id, 0)
@@ -533,9 +534,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     elif limit.limit_scope == 'per_child':
                         max_allowed = limit.limit * participant.children
                     elif limit.limit_scope == 'per_infant':
-                        max_allowed = limit.limit * participant.infants
+                        max_allowed = limit.limit * participant.diaper_count
                     elif limit.limit_scope == 'per_household':
-                        max_allowed = limit.limit * household_size
+                        max_allowed = limit.limit * participant.household_size()
                     else:  # per_order
                         max_allowed = limit.limit
 

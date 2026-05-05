@@ -74,8 +74,7 @@ export const CustomHeader: React.FC = () => {
         elevation={1}
         sx={{ 
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          left: { xs: 0, md: 260 }, // Leave space for sidebar on desktop
-          width: { xs: '100%', md: 'calc(100% - 260px)' },
+          width: '100%',
         }}
       >
         <Toolbar>
@@ -115,7 +114,7 @@ export const CustomHeader: React.FC = () => {
           {!isMobile && (
             <IconButton
               color="inherit"
-              onClick={() => setCartDrawerOpen(true)}
+              onClick={() => setCartDrawerOpen(prev => !prev)}
               sx={{ mr: 1 }}
             >
               <Badge badgeContent={totalItems} color="secondary">

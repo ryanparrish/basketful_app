@@ -15,7 +15,7 @@ import { ProductGrid } from './ProductGrid';
 import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
 import { DesktopLayoutContext } from '../../App';
-import { CONTAINER_PADDING, useFullWidth } from '../../shared/constants/layout';
+import { CONTAINER_PADDING, DESKTOP_CART_WIDTH, useFullWidth } from '../../shared/constants/layout';
 
 export const ProductsPage: React.FC = () => {
   const theme = useTheme();

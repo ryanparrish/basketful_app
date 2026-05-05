@@ -69,11 +69,10 @@ const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   </CartProvider>
 );
 
-// Custom layout that wraps Refine's ThemedLayout
-const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// Inner layout — needs cart context, so must be inside AppProviders
+const LayoutWithCart: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <AppProviders>
-      {/* Fixed header outside ThemedLayout to avoid double spacing */}
+    <>
       <CustomHeader />
       <ThemedLayout
         Sider={() => <CustomSider />}
@@ -88,6 +87,15 @@ const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       >
         {children}
       </ThemedLayout>
+    </>
+  );
+};
+
+// Custom layout that wraps Refine's ThemedLayout
+const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <AppProviders>
+      <LayoutWithCart>{children}</LayoutWithCart>
     </AppProviders>
   );
 };

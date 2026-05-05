@@ -18,6 +18,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tinymce/tinymce-react": "^6.3.0",
     "@types/react-google-recaptcha": "^2.1.9",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.14.0",
     "ra-data-simple-rest": "^5.4.0",
     "react": "^18.3.1",
@@ -26,7 +27,8 @@
     "react-google-recaptcha": "^3.1.0",
     "react-router-dom": "^6.28.0",
     "react-use-cart": "^1.14.0",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -84,7 +84,10 @@ import CreateCombinedOrder from './pages/CreateCombinedOrder';
 import PrintPackingList from './pages/PrintPackingList';
 import PrintOrder from './pages/PrintOrder';
 import PrintCustomerList from './pages/PrintCustomerList';
+import BulkParticipantCreate from './pages/BulkParticipantCreate';
+import PrintWelcomeCards from './pages/PrintWelcomeCards';
 import LoginPage from './pages/Login';
+import StaffOrderPage from './pages/StaffOrderPage';
 
 // Branding
 import { BrandingSettingsEdit, BrandingSettingsIcon } from './resources/brandingSettings';
@@ -117,6 +120,7 @@ import BackpackIcon from '@mui/icons-material/Backpack';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import SportsIcon from '@mui/icons-material/Sports';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import ArticleIcon from '@mui/icons-material/Article';
 import EmailIcon from '@mui/icons-material/Email';
 import LoginIcon from '@mui/icons-material/Login';
@@ -127,6 +131,7 @@ import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 const CustomMenu = () => (
   <Menu>
     <Menu.DashboardItem />
+    <Menu.Item to="/place-order" primaryText="Place Order for Participant" leftIcon={<AddShoppingCartIcon />} />
     <Menu.ResourceItem name="participants" />
     <Menu.ResourceItem name="programs" />
     <Menu.ResourceItem name="orders" />
@@ -388,6 +393,7 @@ const App = () => (
 
     {/* Custom Routes */}
     <CustomRoutes>
+      <Route path="/place-order" element={<StaffOrderPage />} />
       <Route path="/vouchers/bulk-create" element={<BulkVoucherCreate />} />
       <Route path="/vouchers/bulk-status-update" element={<BulkVoucherStatusUpdate />} />
       <Route path="/settings" element={<Settings />} />
@@ -395,6 +401,9 @@ const App = () => (
       <Route path="/packing-lists/:id/print" element={<PrintPackingList />} />
       <Route path="/orders/:id/print" element={<PrintOrder />} />
       <Route path="/participants/print-customer-list" element={<PrintCustomerList />} />
+      <Route path="/participants/bulk-create" element={<BulkParticipantCreate />} />
+      <Route path="/participants/welcome-cards/:batchId" element={<PrintWelcomeCards />} />
+      <Route path="/participants/welcome-cards" element={<PrintWelcomeCards />} />
       <Route path="/coach-dashboard" element={<CoachDashboard />} />
     </CustomRoutes>
   </Admin>
