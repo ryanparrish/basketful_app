@@ -572,6 +572,7 @@ const ParticipantShowActions = () => {
   const record = useRecordContext();
   const notify = useNotify();
   const refresh = useRefresh();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [action, setAction] = useState<'archive' | 'unarchive'>('archive');

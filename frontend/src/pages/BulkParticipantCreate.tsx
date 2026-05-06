@@ -157,9 +157,6 @@ const BulkParticipantCreate = () => {
     });
   };
 
-  const errorsForIndex = (index: number) =>
-    validationErrors.find(e => e.index === index)?.errors ?? {};
-
   const serializeRows = () =>
     rows
       .filter(r => r.name.trim() || r.email.trim())

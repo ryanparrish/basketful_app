@@ -98,13 +98,20 @@ const LoginPage = () => {
       setRecaptchaToken(null);
 
       // Handle specific error codes
+      const status = error?.response?.status;
       const errorCode = error?.response?.data?.code;
       let errorMessage = 'Invalid username or password';
 
-      if (errorCode === 'recaptcha_failed') {
+      if (status === 429) {
+        errorMessage = 'Too many login attempts. Please wait a few minutes before trying again.';
+      } else if (errorCode === 'recaptcha_failed') {
         errorMessage = 'reCAPTCHA verification failed. Please try again.';
-      } else if (error?.message) {
-        errorMessage = error.message;
+      } else if (status === 401 || status === 400) {
+        errorMessage = 'Invalid username or password. Please check your credentials and try again.';
+      } else if (status >= 500) {
+        errorMessage = 'The server encountered an error. Please try again later.';
+      } else if (!status) {
+        errorMessage = 'Unable to reach the server. Please check your connection and try again.';
       }
 
       notify(errorMessage, { type: 'error' });
