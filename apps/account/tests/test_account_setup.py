@@ -278,6 +278,8 @@ class TestUserOnboardingSignals:
         Tests that creating a participant with a new user also triggers the
         onboarding email task.
         """
+        from django.test import TestCase as DjangoTestCase
+
         # --- ARRANGE ---
         # --- Patch both the user creation and email sending functions ---
         mock_create_user = mocker.patch(
@@ -298,8 +300,10 @@ class TestUserOnboardingSignals:
         participant = ParticipantFactory.build()
         # Set the create_user flag
         participant.create_user = True
-        # Save to trigger the signal with create_user=True
-        participant.save()
+        # captureOnCommitCallbacks flushes on_commit hooks even inside a test
+        # transaction (which never really commits).
+        with DjangoTestCase.captureOnCommitCallbacks(execute=True):
+            participant.save()
 
         # --- ASSERT ---
         # --- Verify that the email task's `.delay()` method was called ---
