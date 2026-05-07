@@ -65,10 +65,14 @@ const HtmlPreviewField = () => {
   if (!content) return <Typography variant="body2" color="text.secondary">—</Typography>;
   if (record.html_content) {
     return (
-      <Box
-        sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 1, maxHeight: 400, overflow: 'auto' }}
-        dangerouslySetInnerHTML={{ __html: record.html_content }}
-      />
+      <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
+        <iframe
+          srcDoc={record.html_content}
+          style={{ width: '100%', height: 500, border: 'none', display: 'block' }}
+          sandbox="allow-same-origin"
+          title="Email HTML Preview"
+        />
+      </Box>
     );
   }
   return (
@@ -135,7 +139,7 @@ export const EmailTypeEdit = () => (
         source="html_content"
         label="HTML Content"
         height={500}
-        helperText="Overrides template file. Supports Django template syntax."
+        helperText="Full HTML document. Overrides template file. Supports Django template syntax."
       />
       <TextInput
         source="text_content"
@@ -167,6 +171,7 @@ export const EmailTypeCreate = () => (
         source="html_content"
         label="HTML Content"
         height={500}
+        helperText="Full HTML document. Supports Django template syntax."
       />
       <TextInput
         source="text_content"

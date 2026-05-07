@@ -1,20 +1,23 @@
 /**
- * TinyMCEInput — WYSIWYG HTML editor bridged into React Admin's form system.
+ * MonacoHtmlInput — Full HTML code editor bridged into React Admin's form system.
  *
- * Reuses the TinyMCE bundle already served by django-tinymce at /static/tinymce/
- * — no CDN key, no extra assets to deploy. The component is a drop-in replacement
- * for <TextInput multiline> anywhere html_content (or any HTML string field) is edited.
+ * Uses Monaco Editor (VS Code's engine) to edit complete HTML email templates,
+ * including <!DOCTYPE>, <head>, <style>, and Django template syntax.
+ * Zero content stripping — what you paste is what gets saved.
+ *
+ * The old TinyMCEInput is replaced by this component. The export name
+ * TinyMCEInput is kept as an alias so no other import sites need updating.
  */
-import { Editor } from '@tinymce/tinymce-react';
+import MonacoEditor from '@monaco-editor/react';
 import { useInput, type InputProps } from 'react-admin';
 import { FormControl, FormHelperText, FormLabel, Box } from '@mui/material';
 
 export interface TinyMCEInputProps extends InputProps {
-  /** Editor height in pixels. Defaults to 450. */
+  /** Editor height in pixels. Defaults to 500. */
   height?: number;
 }
 
-export const TinyMCEInput = ({ height = 450, label, ...props }: TinyMCEInputProps) => {
+export const TinyMCEInput = ({ height = 500, label, ...props }: TinyMCEInputProps) => {
   const { field, fieldState, isRequired } = useInput(props);
 
   return (
@@ -30,30 +33,27 @@ export const TinyMCEInput = ({ height = 450, label, ...props }: TinyMCEInputProp
           borderColor: fieldState.error ? 'error.main' : 'grey.400',
           borderRadius: 1,
           overflow: 'hidden',
-          '&:focus-within': { borderColor: 'primary.main', borderWidth: 2 },
+          '&:focus-within': { borderColor: 'primary.main' },
         }}
       >
-        <Editor
-          tinymceScriptSrc="/static/tinymce/tinymce.min.js"
+        <MonacoEditor
+          height={height}
+          language="html"
+          theme="vs-dark"
           value={field.value ?? ''}
-          onEditorChange={(content: string) => field.onChange(content)}
-          onBlur={field.onBlur}
-          init={{
-            height,
-            menubar: false,
-            branding: false,
-            resize: false,
-            plugins: ['link', 'lists', 'code', 'table', 'image', 'preview'],
-            toolbar:
-              'bold italic underline | forecolor | ' +
-              'bullist numlist | link | table | ' +
-              'code preview',
-            content_style:
-              'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
-            // Prevent inline styles that break email clients
-            valid_styles: {
-              '*': 'color,font-weight,font-style,text-decoration,text-align',
-            },
+          onChange={(value) => field.onChange(value ?? '')}
+          onMount={(editor) => {
+            // Propagate blur so react-hook-form marks the field as touched
+            editor.onDidBlurEditorWidget(() => field.onBlur());
+          }}
+          options={{
+            minimap: { enabled: false },
+            wordWrap: 'on',
+            fontSize: 13,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
           }}
         />
       </Box>
