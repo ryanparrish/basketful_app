@@ -895,21 +895,38 @@ export const ParticipantEdit = () => (
   </Edit>
 );
 
-export const ParticipantCreate = () => (
-  <Create>
-    <SimpleForm>
-      <TextInput source="name" required />
-      <TextInput source="email" type="email" />
-      <TextInput source="phone_number" label="Phone Number" />
-      <ReferenceInput source="program" reference="programs" required>
-        <SelectInput optionText="name" />
-      </ReferenceInput>
-      <BooleanInput source="active" defaultValue={true} />
-      <BooleanInput source="create_user" label="Create user account (allows login)" defaultValue={true} />
-      <NumberInput source="adults" min={0} defaultValue={1} />
-      <NumberInput source="children" min={0} defaultValue={0} />
-      <NumberInput source="infants" min={0} defaultValue={0} />
-      <TextInput source="dietary_restrictions" multiline rows={3} />
-    </SimpleForm>
-  </Create>
-);
+export const ParticipantCreate = () => {
+  const notify = useNotify();
+
+  return (
+    <Create
+      mutationOptions={{
+        onSuccess: (data: any) => {
+          const username = data?.user_username;
+          const customerNumber = data?.customer_number;
+          const msg = username
+            ? `Participant created. Login username: ${username}${
+                customerNumber ? ` · Customer #: ${customerNumber}` : ''
+              }`
+            : 'Participant created successfully.';
+          notify(msg, { type: 'success', autoHideDuration: 8000 });
+        },
+      }}
+    >
+      <SimpleForm>
+        <TextInput source="name" required />
+        <TextInput source="email" type="email" />
+        <TextInput source="phone_number" label="Phone Number" />
+        <ReferenceInput source="program" reference="programs" required>
+          <SelectInput optionText="name" />
+        </ReferenceInput>
+        <BooleanInput source="active" defaultValue={true} />
+        <BooleanInput source="create_user" label="Create user account (allows login)" defaultValue={true} />
+        <NumberInput source="adults" min={0} defaultValue={1} />
+        <NumberInput source="children" min={0} defaultValue={0} />
+        <NumberInput source="infants" min={0} defaultValue={0} />
+        <TextInput source="dietary_restrictions" multiline rows={3} />
+      </SimpleForm>
+    </Create>
+  );
+};

@@ -188,14 +188,16 @@ class ParticipantSerializer(serializers.ModelSerializer):
 class ParticipantCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating participants."""
 
+    user_username = serializers.CharField(source='user.username', read_only=True)
+
     class Meta:
         model = Participant
         fields = [
             'id', 'name', 'email', 'adults', 'children', 'diaper_count',
             'program', 'assigned_coach', 'create_user', 'allergy', 'active',
-            'preferred_language',
+            'preferred_language', 'customer_number', 'user_username',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'customer_number', 'user_username']
 
 
 class BulkParticipantCreateSerializer(serializers.Serializer):
