@@ -282,7 +282,7 @@ class Order(models.Model):
             try:
                 voucher.validate_vouchers(self.items.all())
             except ValidationError as e:
-                errors.append(f"Voucher {voucher.code}: {e}")
+                errors.append(f"Voucher #{voucher.pk}: {e}")
 
         # --- Log errors and raise ---
         if errors:
