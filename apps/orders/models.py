@@ -280,7 +280,7 @@ class Order(models.Model):
         for order_voucher in self.applied_vouchers.select_related("voucher").all():
             voucher = order_voucher.voucher
             try:
-                voucher.validate_vouchers(self.items.all(), self.account)
+                voucher.validate_vouchers(self.items.all())
             except ValidationError as e:
                 errors.append(f"Voucher {voucher.code}: {e}")
 
