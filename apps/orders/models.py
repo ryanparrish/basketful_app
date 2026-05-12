@@ -486,10 +486,15 @@ class Order(models.Model):
         # available_balance is 0 after consumption.
         self._old_status = old_status
 
+        # Validate BEFORE the atomic block.  If full_clean() raises, the DB
+        # transaction is left clean so the middleware can log the error and
+        # return a 400.  Calling full_clean() inside atomic() marks the
+        # connection NEEDS_ROLLBACK on failure, which breaks any subsequent
+        # DB write (e.g. OrderValidationLog in GlobalErrorMiddleware) → 500.
+        if 'update_fields' not in kwargs:
+            self.full_clean()
+
         with transaction.atomic():
-            # Skip validation if only updating specific fields
-            if 'update_fields' not in kwargs:
-                self.full_clean()
             super().save(*args, **kwargs)
             
             # Consume vouchers and decrement stock if order is being confirmed

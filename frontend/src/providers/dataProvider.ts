@@ -13,7 +13,7 @@ import apiClient from '../lib/api/apiClient.ts';
  * FormData so Django's ImageField / FileField can parse the upload.
  * All other scalar/array/object values are JSON-stringified into the form.
  */
-function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Record<string, unknown> {
+export function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Record<string, unknown> {
   // Strip React Admin ImageInput empty/cleared values (e.g. { src: '', rawFile: undefined })
   // to avoid sending unparseable image descriptors as JSON to Django's ImageField.
   // Also strip empty strings so DRF field defaults (e.g. weight_lbs=0) can apply.
@@ -32,6 +32,15 @@ function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Record<st
     }
     // Skip empty strings so DRF field defaults kick in instead of rejecting ""
     if (value === '') continue;
+    // Skip existing file/image URL strings for upload fields. DRF's ImageField/FileField
+    // expects an actual file upload, not a URL string. Omitting the field in PATCH leaves
+    // the existing file untouched on the server.
+    if (
+      typeof value === 'string' &&
+      (key === 'image' || key.endsWith('_image') || key.endsWith('_file'))
+    ) {
+      continue;
+    }
     cleaned[key] = value;
   }
 
@@ -210,7 +219,13 @@ export const dataProvider: DataProvider = {
   update: async (resource, params) => {
     const url = `/${resource}/${params.id}/`;
     const body = toFormDataIfNeeded(params.data);
-    const response = await apiClient.patch(url, body);
+    let response;
+    try {
+      response = await apiClient.patch(url, body);
+    } catch (err: any) {
+      console.error(`[dataProvider] PATCH ${url} failed:`, err?.response?.data ?? err);
+      throw err;
+    }
     return { data: response.data };
   },
 
