@@ -211,12 +211,20 @@ class Order(models.Model):
         if self.status != "confirmed":
             return
 
-        errors = []
-
         # Check if order has been saved (has items)
         if not self.pk:
             # Order hasn't been saved yet, skip validation that requires items
             return
+
+        # Skip balance re-validation for orders already in a post-confirmation
+        # state.  Vouchers were consumed at first confirmation; repeating the
+        # check against the now-zero available_balance would always raise a
+        # false positive and cause a 500 on any PATCH to a confirmed order.
+        _old_status = getattr(self, '_old_status', None)
+        if _old_status in ('confirmed', 'packing', 'completed', 'cancelled'):
+            return
+
+        errors = []
 
         # --- Available balance (food items) ---
         food_items = [
@@ -471,7 +479,13 @@ class Order(models.Model):
                 old_status = old_instance.status
             except Order.DoesNotExist:
                 pass
-        
+
+        # Expose old_status to full_clean() → clean() so that balance validation
+        # is skipped for orders that are already confirmed.  Vouchers are consumed
+        # at first confirmation; re-validating would always fail because
+        # available_balance is 0 after consumption.
+        self._old_status = old_status
+
         with transaction.atomic():
             # Skip validation if only updating specific fields
             if 'update_fields' not in kwargs:

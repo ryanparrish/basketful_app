@@ -321,6 +321,12 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'socket_timeout': 30,
     'socket_connect_timeout': 30,
     'retry_on_timeout': True,
+    # ETA tasks (e.g. deactivate_expired_pause_vouchers) can be scheduled
+    # many hours in the future. Redis's default visibility_timeout is 3600s;
+    # any ETA task held longer than that gets re-delivered with the same task
+    # ID, causing duplicate execution and infinite re-delivery loops.
+    # 21600s (6 hours) covers the longest realistic order-window gap.
+    'visibility_timeout': 21600,
 }
 
 CELERY_BEAT_SCHEDULE = {

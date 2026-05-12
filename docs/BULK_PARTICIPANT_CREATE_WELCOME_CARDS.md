@@ -353,7 +353,7 @@ class BulkParticipantCreateSerializer(serializers.Serializer):
 
 The inner `ParticipantCreateSerializer` already covers all validation.
 `create_user` defaults to `True` in the view (not the serializer) so the wizard
-always creates login accounts — no checkbox confusion.
+eualways creates login accounts — no checkbox confusion.
 
 ### 5b. `apps/account/api/views.py` — new `bulk_create` action
 

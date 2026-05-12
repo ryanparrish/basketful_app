@@ -257,21 +257,51 @@ class TestOrderSaveWithUpdateFields:
         order.refresh_from_db()
         assert order.success_viewed
     
-    def test_save_without_update_fields_runs_validation(self, user_with_order):
-        """Test that regular save() runs full validation."""
+    def test_save_without_update_fields_does_not_revalidate_confirmed_order(self, user_with_order):
+        """
+        Re-saving an already-confirmed order must NOT re-run balance validation.
+
+        When an order is first confirmed, vouchers are consumed and
+        available_balance drops to 0.  Any subsequent plain save() (e.g. a
+        PATCH from the admin frontend) must not re-check balances — doing so
+        would always raise a false-positive ValidationError and return 500.
+        """
         order = user_with_order['order']
         account = user_with_order['account']
-        
-        # Set account balance to 0
+
+        # Simulate post-confirmation state: vouchers consumed → balance = 0
         account.base_balance = Decimal("0")
         account.save()
-        
-        # Regular save should trigger validation and raise error
+
+        # Plain save() on an already-confirmed order must succeed silently.
         order.success_viewed = True
-        
+        order.save()  # Should NOT raise
+
+        order.refresh_from_db()
+        assert order.success_viewed
+
+    def test_confirming_pending_order_with_insufficient_balance_raises(self, user_with_order):
+        """
+        Transitioning a pending order to confirmed with zero balance must
+        still raise ValidationError — the balance guard must fire on first
+        confirmation even though it is skipped on subsequent saves.
+        """
+        order = user_with_order['order']
+        account = user_with_order['account']
+
+        # Reset order to pending so the transition to confirmed is fresh
+        order.status = 'pending'
+        order.save(update_fields=['status'])
+
+        # Zero the balance so validation will fail
+        account.base_balance = Decimal("0")
+        account.save()
+
+        # Attempting to confirm should raise due to food balance exceeded
+        order.status = 'confirmed'
         with pytest.raises(ValidationError) as exc_info:
             order.save()
-        
+
         assert 'Food balance exceeded' in str(exc_info.value)
 
 
