@@ -1,9 +1,15 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import CartWorkflow from '../components/CartWorkflow';
 
-test('renders CartWorkflow', () => {
-  render(<CartWorkflow />);
-  const headingElement = screen.getByRole('heading', { name: /Cart Workflow/i });
-  expect(headingElement).to.exist;
+// CartWorkflow is a redirect-only component — it renders null and immediately
+// navigates to /place-order. The test verifies it mounts without errors.
+test('renders CartWorkflow without crashing', () => {
+  const { container } = render(
+    <MemoryRouter>
+      <CartWorkflow />
+    </MemoryRouter>
+  );
+  expect(container.firstChild).toBeNull();
 });

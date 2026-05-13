@@ -27,6 +27,7 @@ describe('Dashboard page', () => {
         </QueryClientProvider>
       </MemoryRouter>
     );
-    expect(screen.getByText(/Dashboard/i)).toBeDefined();
+    // Title is mocked; assert on stat cards that the component actually renders.
+    expect(screen.getByText(/Total Participants/i)).toBeDefined();
   });
 });
