@@ -99,12 +99,14 @@ const STEPS = ['Select Participant', 'Build Cart', 'Review Order', 'Done'];
 // DRF caps page_size at 100; this follows `next` until exhausted.
 async function fetchAllProducts(): Promise<Product[]> {
   const all: Product[] = [];
-  let url: string | null = '/products/';
+  let nextUrl: string = '/products/';
   let params: Record<string, unknown> | undefined = { active: true, page_size: 100 };
-  while (url) {
-    const { data } = await apiClient.get(url, { params });
-    all.push(...(data.results ?? []));
-    url = data.next ?? null;
+  while (true) {
+    const response = await apiClient.get<{ results: Product[]; next: string | null }>(nextUrl, { params });
+    const page: { results: Product[]; next: string | null } = response.data;
+    all.push(...page.results);
+    if (!page.next) break;
+    nextUrl = page.next;
     params = undefined; // full URL from `next` already contains query params
   }
   return all;
