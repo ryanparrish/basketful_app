@@ -46,6 +46,10 @@ jobs:
         working-directory: ${{ matrix.workdir }}
         run: npm ci
 
+      - name: Run tests
+        working-directory: ${{ matrix.workdir }}
+        run: npx vitest run
+
       - name: Build
         working-directory: ${{ matrix.workdir }}
         env:

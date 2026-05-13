@@ -13,7 +13,7 @@
 > - Adding a test without updating this file is **incomplete work**.
 > - This file is read by the `write-tests` agent before every test-writing session.
 
-**Last audited**: 2026-05-01 (BEH-069, BEH-210–212 covered — participant frontend test infrastructure added)
+**Last audited**: 2026-05-12 (BEH-204, BEH-205, BEH-206 added; dataProvider image-stripping tests added; CI gate for frontend tests added)
 **Backend**: `pytest` (see `pytest.ini`) — run with `pytest --tb=short -v`
 **Frontend**: `vitest` (see `frontend/vitest.config.js`) — run with `npm test -- --run`
 **CI**: `.github/workflows/ci.yml` (backend), `.github/workflows/frontend-ci.yml` (frontend)
@@ -39,7 +39,8 @@
    - [BEH-160–166 Logging](#beh-160166-logging)
    - [BEH-170–181 Admin API](#beh-170181-admin-api)
    - [BEH-190–195 Frontend — ManualOverridePanel](#beh-190195-frontend--manualoverridepanel)
-   - [BEH-200–203 Frontend — Participant Edit](#beh-200203-frontend--participant-edit)
+   - [BEH-200–206 Frontend — Participant Edit](#beh-200206-frontend--participant-edit)
+   - [BEH-207–214 Frontend — dataProvider / API contract](#beh-207214-frontend--dataprovider--api-contract)
 4. [CI Gates](#ci-gates)
 5. [Priority Queue](#priority-queue)
 
@@ -320,7 +321,7 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 ---
 
-### BEH-200–203 Frontend — Participant Edit
+### BEH-200–206 Frontend — Participant Edit
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
@@ -328,6 +329,9 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 | BEH-201 | Editing participant email saves and shows new email in form | `[ ]` | — |
 | BEH-202 | Submitting duplicate email shows server-side validation error | `[ ]` | — |
 | BEH-203 | Cancelled edit does not persist changes | `[ ]` | — |
+| BEH-204 | "Infants" input in Edit and Create forms is bound to `source="diaper_count"`, not `source="infants"` — changes persist to DB (regression: silent field-name mismatch) | `[x]` | `frontend/src/resources/__tests__/participants.test.tsx::BEH-204` |
+| BEH-205 | `PATCH /api/v1/participants/{id}/` with `{"diaper_count": N}` persists to the database | `[x]` | `apps/account/tests/test_participant_api.py::TestParticipantDiaperCountAPI::test_patch_diaper_count_persists_to_database` |
+| BEH-206 | `PATCH /api/v1/participants/{id}/` with `{"infants": N}` does NOT change `diaper_count` (DRF ignores unknown keys; canary against future field aliasing) | `[x]` | `apps/account/tests/test_participant_api.py::TestParticipantDiaperCountAPI::test_patch_unknown_infants_key_does_not_change_diaper_count` |
 
 ---
 
@@ -338,9 +342,9 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 | Backend pytest passes | ✅ enforced | `.github/workflows/ci.yml` |
 | Backend coverage ≥ 80% | ⚠️ reported, NOT blocking (`fail_ci_if_error: false`) | `codecov.yml` |
 | Admin frontend build passes | ✅ enforced | `.github/workflows/frontend-ci.yml` |
-| Admin frontend tests pass | ❌ **MISSING — no `npm test` step in frontend-ci.yml** | — |
+| Admin frontend tests pass | ✅ enforced | `.github/workflows/frontend-ci.yml` — `npx vitest run` step |
 | Participant frontend build passes | ✅ enforced | `.github/workflows/frontend-ci.yml` |
-| Participant frontend tests pass | ❌ **MISSING** | — |
+| Participant frontend tests pass | ✅ enforced | `.github/workflows/frontend-ci.yml` — `npx vitest run` step |
 
 **Open CI gap**: Add `npm test -- --run` step to `.github/workflows/frontend-ci.yml` for both matrix entries.
 
@@ -353,6 +357,16 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 | BEH-210 | `OrderHistory` renders one `OrderCard` per order returned by the API | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-210` |
 | BEH-211 | `OrderHistory` shows empty-state UI when API returns zero orders | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-211` |
 | BEH-212 | `OrderHistory` shows error alert when the API call fails | `[x]` | `participant-frontend/src/features/orders/__tests__/OrderHistory.test.tsx::BEH-212` |
+
+---
+
+### BEH-207–214 Frontend — dataProvider / API contract
+
+| ID | Behaviour | Status | Test |
+|----|-----------|--------|------|
+| BEH-207 | `toFormDataIfNeeded` strips an existing image URL string so DRF `ImageField` does not reject it with 400 | `[x]` | `frontend/src/providers/dataProvider.test.ts::toFormDataIfNeeded::strips an existing image URL string` |
+| BEH-208 | `toFormDataIfNeeded` passes a new `rawFile` upload through as `FormData` | `[x]` | `frontend/src/providers/dataProvider.test.ts::toFormDataIfNeeded::still passes through a new file upload` |
+| BEH-209 | `toFormDataIfNeeded` preserves `null` image (explicit clear intent) | `[x]` | `frontend/src/providers/dataProvider.test.ts::toFormDataIfNeeded::passes through null image` |
 
 ---
 

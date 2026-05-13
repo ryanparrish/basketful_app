@@ -95,6 +95,21 @@ interface Violation {
 
 const STEPS = ['Select Participant', 'Build Cart', 'Review Order', 'Done'];
 
+// Fetches all pages from the paginated products endpoint.
+// DRF caps page_size at 100; this follows `next` until exhausted.
+async function fetchAllProducts(): Promise<Product[]> {
+  const all: Product[] = [];
+  let url: string | null = '/products/';
+  let params: Record<string, unknown> | undefined = { active: true, page_size: 100 };
+  while (url) {
+    const { data } = await apiClient.get(url, { params });
+    all.push(...(data.results ?? []));
+    url = data.next ?? null;
+    params = undefined; // full URL from `next` already contains query params
+  }
+  return all;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const StaffOrderPage: React.FC = () => {
@@ -173,13 +188,11 @@ const StaffOrderPage: React.FC = () => {
       setBalanceLoading(false);
     }
 
-    // Load product catalog
+    // Load full product catalog (follows pagination — DRF max_page_size is 100)
     setProductsLoading(true);
     try {
-      const { data } = await apiClient.get('/products/', {
-        params: { active: true, page_size: 500 },
-      });
-      setProducts(data.results ?? data);
+      const allProducts = await fetchAllProducts();
+      setProducts(allProducts);
     } catch {
       notify('Could not load products.', { type: 'error' });
     } finally {

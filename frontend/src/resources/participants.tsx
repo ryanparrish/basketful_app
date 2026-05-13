@@ -751,7 +751,7 @@ export const ParticipantShow = () => (
                 <NumberField source="children" />
               </Labeled>
               <Labeled label="Infants">
-                <NumberField source="infants" />
+                <NumberField source="diaper_count" />
               </Labeled>
             </Box>
           </Box>
@@ -889,7 +889,7 @@ export const ParticipantEdit = () => (
       <BooleanInput source="active" />
       <NumberInput source="adults" min={0} />
       <NumberInput source="children" min={0} />
-      <NumberInput source="infants" min={0} />
+      <NumberInput source="diaper_count" label="Infants" min={0} />
       <TextInput source="dietary_restrictions" multiline rows={3} />
     </SimpleForm>
   </Edit>
@@ -924,7 +924,7 @@ export const ParticipantCreate = () => {
         <BooleanInput source="create_user" label="Create user account (allows login)" defaultValue={true} />
         <NumberInput source="adults" min={0} defaultValue={1} />
         <NumberInput source="children" min={0} defaultValue={0} />
-        <NumberInput source="infants" min={0} defaultValue={0} />
+        <NumberInput source="diaper_count" label="Infants" min={0} defaultValue={0} />
         <TextInput source="dietary_restrictions" multiline rows={3} />
       </SimpleForm>
     </Create>
