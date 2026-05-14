@@ -60,11 +60,12 @@ export const useCartValidation = () => {
     return Math.max(0, validation.balances.available_balance - cartTotal);
   }, [validation.balances, cartTotal]);
 
-  // Check if cart is over budget
+  // Check if cart is over budget — compare directly against available_balance,
+  // not the already-subtracted remainder (which would fire at half the balance).
   const isOverBudget = useMemo(() => {
-    if (remainingBudget === null) return false;
-    return cartTotal > remainingBudget;
-  }, [cartTotal, remainingBudget]);
+    if (!validation.balances) return false;
+    return cartTotal > validation.balances.available_balance;
+  }, [cartTotal, validation.balances]);
 
   // Get products with errors
   const productsWithErrors = useMemo(() => {

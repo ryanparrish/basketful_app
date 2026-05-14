@@ -85,24 +85,22 @@ export interface ValidationRequest {
 export interface ValidationError {
   type: string;
   message: string;
+  severity?: 'error' | 'warning';
   product_id?: number;
+  amount_over?: number;
+  grace_allowed?: boolean;
 }
 
 export interface Balances {
   available_balance: number;
   hygiene_balance: number;
   go_fresh_balance: number;
-  total_voucher_amount: number;
-  remaining_budget: number;
-  total_budget: number;
-  used_budget: number;
+  full_balance: number;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-  balances: Balances;
+  violations: ValidationError[];
 }
 
 // Orders

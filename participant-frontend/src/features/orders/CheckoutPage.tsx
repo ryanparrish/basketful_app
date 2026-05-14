@@ -225,16 +225,10 @@ export const CheckoutPage: React.FC = () => {
               <Typography>{items.length}</Typography>
             </Stack>
             {balances && (
-              <>
-                <Stack direction="row" justifyContent="space-between">
-                  <Typography color="text.secondary">Current Budget:</Typography>
-                  <Typography>${Number(balances.total_budget).toFixed(2)}</Typography>
-                </Stack>
-                <Stack direction="row" justifyContent="space-between">
-                  <Typography color="text.secondary">Already Used:</Typography>
-                  <Typography>${Number(balances.used_budget).toFixed(2)}</Typography>
-                </Stack>
-              </>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography color="text.secondary">Available Budget:</Typography>
+                <Typography>${Number(balances.available_balance).toFixed(2)}</Typography>
+              </Stack>
             )}
             <Divider sx={{ my: 1 }} />
             <Stack direction="row" justifyContent="space-between">
@@ -247,10 +241,10 @@ export const CheckoutPage: React.FC = () => {
               <Stack direction="row" justifyContent="space-between">
                 <Typography color="text.secondary">Remaining After Order:</Typography>
                 <Typography
-                  color={balances.remaining_budget - cartTotal < 0 ? 'error.main' : 'success.main'}
+                  color={balances.available_balance - cartTotal < 0 ? 'error.main' : 'success.main'}
                   fontWeight={500}
                 >
-                  ${(balances.remaining_budget - cartTotal).toFixed(2)}
+                  ${(balances.available_balance - cartTotal).toFixed(2)}
                 </Typography>
               </Stack>
             )}

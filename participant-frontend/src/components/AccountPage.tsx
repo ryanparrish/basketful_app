@@ -36,13 +36,13 @@ import { GRID_COLUMNS, PAGE_PADDING, useFullWidth } from '../shared/constants/la
 import type { Balances } from '../shared/types/api';
 
 const BALANCE_CARDS: {
-  key: keyof Balances | 'total_budget';
+  key: keyof Balances;
   label: string;
   subtitle: string;
   bg: string;
 }[] = [
   {
-    key: 'total_budget',
+    key: 'full_balance',
     label: 'Full Balance',
     subtitle: 'Your total available spending power',
     bg: '#00BCD4',

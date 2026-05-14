@@ -188,9 +188,6 @@ export const getBalances = async (): Promise<Balances> => {
     available_balance: availableBalance,
     hygiene_balance: hygieneBalance,
     go_fresh_balance: goFreshBalance,
-    total_voucher_amount: 0, // Not provided by backend yet
-    remaining_budget: availableBalance,
-    total_budget: fullBalance,
-    used_budget: fullBalance - availableBalance,
+    full_balance: fullBalance,
   };
 };

@@ -342,6 +342,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.log.tasks.logs.sync_mailgun_delivery_status',
         'schedule': crontab(minute=0, hour='*/1'),  # Every hour
     },
+    'notify-order-window-opened': {
+        'task': 'apps.account.tasks.order_window.notify_participants_order_window_opened',
+        'schedule': crontab(minute='*/10'),  # Every 10 minutes
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']

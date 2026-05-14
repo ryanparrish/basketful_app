@@ -119,8 +119,8 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
         ...prev,
         isValid: response.valid,
         isValidating: false,
-        errors: response.errors || [],
-        warnings: response.warnings || [],
+        errors: (response.violations || []).filter(v => v.severity !== 'warning'),
+        warnings: (response.violations || []).filter(v => v.severity === 'warning'),
         lastValidated: new Date(),
       }));
 

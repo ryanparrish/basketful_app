@@ -148,7 +148,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
                   Budget Remaining:
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
-                  ${Number(balances.remaining_budget).toFixed(2)}
+                  ${Math.max(0, balances.available_balance - cartTotal).toFixed(2)}
                 </Typography>
               </Stack>
             </Box>

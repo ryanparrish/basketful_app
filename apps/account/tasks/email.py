@@ -239,3 +239,44 @@ def send_new_user_onboarding_email(user_id, force=False):
 def send_password_reset_email(user_id, force=False):
     """Send password reset email to a user."""
     return send_email_by_type(user_id, "password_reset", force=force)
+
+
+@shared_task
+def send_order_window_opened_notification(user_id, program_name, closes_at_str, force=False):
+    """Send an order-window-opened notification to a single participant.
+
+    Args:
+        user_id:       Django User PK.
+        program_name:  Human-readable name of the program whose window opened.
+        closes_at_str: ISO-8601 formatted string of when the window closes (UTC).
+                       Shown in the email so the participant knows the deadline.
+        force:         If True, bypass the per-cycle deduplication guard.
+    """
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        logger.error("[OrderWindow] User not found: %s", user_id)
+        return False
+
+    extra_context = {
+        'program_name': program_name,
+        'closes_at': closes_at_str,
+        'participant_frontend_url': getattr(
+            settings, 'PARTICIPANT_FRONTEND_URL', 'https://app.basketful.org'
+        ),
+    }
+    try:
+        participant = user.participant
+        extra_context['participant_name'] = participant.name or user.get_username()
+        extra_context['participant_customer_number'] = participant.customer_number or ''
+    except Exception:
+        extra_context['participant_name'] = user.get_username()
+        extra_context['participant_customer_number'] = ''
+
+    # Dedup for recurring order-window emails is owned by the task layer
+    # (EmailLog.sent_at__gte=opens_at in order_window.py).  Bypass the
+    # lifetime has_email_been_sent gate — it is only correct for one-shot
+    # emails (onboarding, password reset).
+    return send_email_by_type(
+        user_id, 'order_window_opened', force=True, extra_context=extra_context
+    )
