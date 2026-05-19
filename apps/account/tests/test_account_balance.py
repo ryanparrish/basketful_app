@@ -12,7 +12,7 @@ Tests cover:
 """
 
 import pytest
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from django.utils import timezone
 from datetime import timedelta
 from django.core.exceptions import ObjectDoesNotExist
@@ -468,12 +468,11 @@ class TestHygieneBalanceCalculation:
     """Test calculate_hygiene_balance utility function."""
 
     def test_hygiene_balance_calculation(self, account_balance, vouchers, voucher_setting):
-        """Test hygiene balance uses HygieneSettings ratio."""
+        """Test hygiene balance uses HygieneSettings ratio, rounded up to nearest dollar."""
         available = calculate_available_balance(account_balance, limit=2)
         hygiene = calculate_hygiene_balance(account_balance)
 
-        # With default 1/3 ratio, hygiene should be 1/3 of available
-        expected = available / Decimal('3')
+        expected = (available / Decimal('3')).quantize(Decimal('1'), rounding=ROUND_CEILING)
         assert hygiene == expected
 
     def test_hygiene_balance_none_account(self):
@@ -518,8 +517,8 @@ class TestAccountBalanceProperties:
         assert isinstance(result, Decimal)
         assert result >= Decimal('0')
 
-        # With default 1/3 ratio, should be 1/3 of available balance
-        expected = account_balance.available_balance / Decimal('3')
+        # With default 1/3 ratio, rounded up to nearest dollar
+        expected = (account_balance.available_balance / Decimal('3')).quantize(Decimal('1'), rounding=ROUND_CEILING)
         assert result == expected
 
     def test_balance_properties_consistency(self, account_balance, vouchers, voucher_setting):
@@ -528,8 +527,8 @@ class TestAccountBalanceProperties:
         available = account_balance.available_balance
         hygiene = account_balance.hygiene_balance
 
-        # With default 1/3 ratio, hygiene should be 1/3 of available
-        assert hygiene == available / Decimal('3')
+        # With default 1/3 ratio, rounded up to nearest dollar
+        assert hygiene == (available / Decimal('3')).quantize(Decimal('1'), rounding=ROUND_CEILING)
 
         # Available should be <= full (since it's limited)
         assert available <= full or full == Decimal('0')
