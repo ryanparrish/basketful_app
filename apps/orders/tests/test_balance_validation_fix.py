@@ -237,3 +237,180 @@ class TestBalanceValidationFix:
         assert "Hygiene" in error_msg or "hygiene" in error_msg
         assert "50.00" in error_msg
         assert "25.00" in error_msg
+
+
+@pytest.mark.django_db
+class TestCombinedBalanceValidation:
+    """
+    Regression tests for the combined food+hygiene balance check.
+
+    Bug: validate_order_items checked food and hygiene totals separately
+    against their individual limits, but never checked that their *combined*
+    total stayed within the voucher pool.  An order with food=$132.50 and
+    hygiene=$24.50 would pass both individual checks (food ≤ $135, hygiene
+    ≤ $45) but fail later in _consume_vouchers() because the combined total
+    $157 exceeded the $135 voucher balance.  This left a zombie PENDING order
+    in the database and produced the "rejected → pending → accepted" pattern
+    visible in the failure analytics dashboard.
+
+    Fix: order_validation.py now checks food_total + hygiene_total ≤
+    available_balance before any DB write, so the error is surfaced
+    pre-creation and no orphan record is created.
+    """
+
+    def _setup_account(self, base_balance: Decimal):
+        """
+        Create a participant with exactly 2 applied grocery vouchers.
+
+        available_balance = base_balance * 2
+        hygiene_balance   = available_balance / 3
+        """
+        VoucherSettingFactory.create()
+        user = UserFactory()
+        participant = ParticipantFactory(user=user)
+        account = participant.accountbalance
+        account.base_balance = base_balance
+        account.save()
+        VoucherFactory(account=account, state='applied', voucher_type='grocery', multiplier=1)
+        VoucherFactory(account=account, state='applied', voucher_type='grocery', multiplier=1)
+        return participant, account
+
+    def test_combined_food_and_hygiene_exceeds_voucher_balance_rejected_before_creation(self):
+        """
+        Regression test: food + hygiene individually pass their limits but
+        combined total exceeds available_balance → ValidationError raised
+        BEFORE any Order record is written to the database.
+
+        Mirrors the exact values from the production failure:
+          base_balance = $67.50  →  available_balance = $135.00, hygiene_balance = $45.00
+          food items   = $111.00  (< $135 individually ✓)
+          hygiene      = $25.00   (< $45 individually  ✓)
+          combined     = $136.00  (> $135              ✗  ← this was not caught before fix)
+        """
+        participant, account = self._setup_account(Decimal("67.50"))
+
+        assert account.available_balance == Decimal("135.00"), (
+            f"Expected $135.00, got {account.available_balance}"
+        )
+        assert account.hygiene_balance == Decimal("45.00"), (
+            f"Expected $45.00, got {account.hygiene_balance}"
+        )
+
+        food_category = CategoryFactory(name="Food")
+        hygiene_category = CategoryFactory(name="Hygiene")
+
+        food_product = ProductFactory(category=food_category, price=Decimal("111.00"))
+        hygiene_product = ProductFactory(category=hygiene_category, price=Decimal("25.00"))
+
+        items = [
+            OrderItemData(product=food_product, quantity=1),
+            OrderItemData(product=hygiene_product, quantity=1),
+        ]
+
+        validator = OrderValidation()
+        with pytest.raises(ValidationError) as exc_info:
+            validator.validate_order_items(
+                items=items,
+                participant=participant,
+                account_balance=account,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "136.00" in error_msg
+        assert "135.00" in error_msg
+
+        # No order must have been created
+        assert Order.objects.filter(account=account).count() == 0, (
+            "No Order should exist when combined balance check fails"
+        )
+
+    def test_combined_food_and_hygiene_at_exact_balance_passes(self):
+        """
+        Boundary: food + hygiene exactly equals available_balance → should pass.
+        """
+        participant, account = self._setup_account(Decimal("67.50"))
+        # available_balance = $135.00
+
+        food_category = CategoryFactory(name="Food")
+        hygiene_category = CategoryFactory(name="Hygiene")
+
+        # $110 food + $25 hygiene = $135.00 exactly
+        food_product = ProductFactory(category=food_category, price=Decimal("110.00"))
+        hygiene_product = ProductFactory(category=hygiene_category, price=Decimal("25.00"))
+
+        items = [
+            OrderItemData(product=food_product, quantity=1),
+            OrderItemData(product=hygiene_product, quantity=1),
+        ]
+
+        validator = OrderValidation()
+        # Must not raise
+        validator.validate_order_items(
+            items=items,
+            participant=participant,
+            account_balance=account,
+        )
+
+    def test_combined_food_and_hygiene_within_balance_passes(self):
+        """
+        Happy path: food and hygiene both well within their limits → passes.
+        """
+        participant, account = self._setup_account(Decimal("67.50"))
+
+        food_category = CategoryFactory(name="Food")
+        hygiene_category = CategoryFactory(name="Hygiene")
+
+        food_product = ProductFactory(category=food_category, price=Decimal("80.00"))
+        hygiene_product = ProductFactory(category=hygiene_category, price=Decimal("20.00"))
+
+        items = [
+            OrderItemData(product=food_product, quantity=1),
+            OrderItemData(product=hygiene_product, quantity=1),
+        ]
+
+        validator = OrderValidation()
+        validator.validate_order_items(
+            items=items,
+            participant=participant,
+            account_balance=account,
+        )
+
+    def test_create_order_rejects_combined_excess_without_creating_db_record(self):
+        """
+        Integration test: OrderOrchestration.create_order() must raise
+        ValidationError and leave zero Order rows when the combined
+        food+hygiene total would exceed available_balance.
+        """
+        from apps.orders.utils.order_utils import OrderOrchestration
+
+        participant, account = self._setup_account(Decimal("67.50"))
+        # available_balance = $135.00
+
+        food_category = CategoryFactory(name="Food")
+        hygiene_category = CategoryFactory(name="Hygiene")
+
+        food_product = ProductFactory(
+            category=food_category, price=Decimal("111.00"), quantity_in_stock=50
+        )
+        hygiene_product = ProductFactory(
+            category=hygiene_category, price=Decimal("25.00"), quantity_in_stock=50
+        )
+
+        items = [
+            OrderItemData(product=food_product, quantity=1),
+            OrderItemData(product=hygiene_product, quantity=1),
+        ]
+
+        user = participant.user
+        orchestrator = OrderOrchestration()
+
+        with pytest.raises(ValidationError):
+            orchestrator.create_order(
+                account=account,
+                order_items_data=items,
+                user=user,
+            )
+
+        assert Order.objects.filter(account=account).count() == 0, (
+            "create_order must not persist a pending order when combined balance check fails"
+        )

@@ -211,36 +211,38 @@ class OrderOrchestration:
                 voucher_multiplier = 1
                 
                 try:
-                    from apps.voucher.models import Voucher
-                    pause_voucher = Voucher.objects.filter(
-                        account=account,
-                        active=True,
-                        program_pause_flag=True,
-                    ).order_by("-multiplier").first()
-                    
-                    if pause_voucher:
-                        program_pause_active = True
-                        voucher_multiplier = pause_voucher.multiplier
-                        try:
-                            program_pause_name = (
-                                pause_voucher.account.participant.program.name
-                            )
-                        except Exception:
-                            program_pause_name = "Active Program Pause"
+                    with transaction.atomic():
+                        from apps.voucher.models import Voucher
+                        pause_voucher = Voucher.objects.filter(
+                            account=account,
+                            active=True,
+                            program_pause_flag=True,
+                        ).order_by("-multiplier").first()
+                        
+                        if pause_voucher:
+                            program_pause_active = True
+                            voucher_multiplier = pause_voucher.multiplier
+                            try:
+                                program_pause_name = (
+                                    pause_voucher.account.participant.program.name
+                                )
+                            except Exception:
+                                program_pause_name = "Active Program Pause"
                 except Exception as pause_err:
-                    logger.error(f"Error getting program pause info: {pause_err}")
+                    logger.error("Error getting program pause info: %s", pause_err)
                 
                 # Count active vouchers
                 active_voucher_count = 0
                 try:
-                    from apps.voucher.models import Voucher
-                    active_voucher_count = Voucher.objects.filter(
-                        account=account,
-                        active=True,
-                        state='applied'
-                    ).count()
+                    with transaction.atomic():
+                        from apps.voucher.models import Voucher
+                        active_voucher_count = Voucher.objects.filter(
+                            account=account,
+                            active=True,
+                            state='applied'
+                        ).count()
                 except Exception as voucher_err:
-                    logger.error(f"Error counting vouchers: {voucher_err}")
+                    logger.error("Error counting vouchers: %s", voucher_err)
                 
                 # Create failed attempt record.
                 # The idempotency_key field is unique — if the same failing cart
@@ -254,33 +256,35 @@ class OrderOrchestration:
                 base_key = idempotency_key[:55] if len(idempotency_key) > 55 else idempotency_key
                 unique_fail_key = f"{base_key}:{random_suffix}"
                 try:
-                    FailedOrderAttempt.objects.create(
-                        participant=participant,
-                        user=user,
-                        idempotency_key=unique_fail_key,
-                        cart_snapshot=cart_snapshot,
-                        cart_hash=cart_hash,
-                        total_attempted=total_attempted,
-                        food_total=food_total,
-                        hygiene_total=hygiene_total,
-                        full_balance=account.full_balance,
-                        available_balance=account.available_balance,
-                        hygiene_balance=account.hygiene_balance,
-                        program_pause_active=program_pause_active,
-                        program_pause_name=program_pause_name,
-                        voucher_multiplier=voucher_multiplier,
-                        active_voucher_count=active_voucher_count,
-                        validation_errors=error_messages,
-                        error_summary=error_summary,
-                        ip_address=ip_address,
-                        user_agent=user_agent,
-                    )
+                    with transaction.atomic():
+                        FailedOrderAttempt.objects.create(
+                            participant=participant,
+                            user=user,
+                            idempotency_key=unique_fail_key,
+                            cart_snapshot=cart_snapshot,
+                            cart_hash=cart_hash,
+                            total_attempted=total_attempted,
+                            food_total=food_total,
+                            hygiene_total=hygiene_total,
+                            full_balance=account.full_balance,
+                            available_balance=account.available_balance,
+                            hygiene_balance=account.hygiene_balance,
+                            program_pause_active=program_pause_active,
+                            program_pause_name=program_pause_name,
+                            voucher_multiplier=voucher_multiplier,
+                            active_voucher_count=active_voucher_count,
+                            validation_errors=error_messages,
+                            error_summary=error_summary,
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                        )
                     logger.info(
-                        f"Logged failed order attempt for participant {participant.id if participant else 'unknown'}: "
-                        f"{error_summary}"
+                        "Logged failed order attempt for participant %s: %s",
+                        participant.id if participant else 'unknown',
+                        error_summary,
                     )
                 except Exception as log_err:
-                    logger.error(f"Failed to log order attempt: {log_err}")
+                    logger.error("Failed to log order attempt: %s", log_err)
                 
                 # Increment failure count (triggers exponential backoff)
                 if user:

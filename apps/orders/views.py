@@ -100,6 +100,7 @@ def submit_order(request):
     }
 
     order_utils = OrderOrchestration()
+    order = None
 
     try:
         # create_order now handles all validation, idempotency, and error logging
@@ -109,11 +110,19 @@ def submit_order(request):
             user=request.user,
             request_meta=request_meta
         )
-        
+
         # Confirm the order (just sets status to confirmed)
         order.confirm()
 
     except ValidationError as e:
+        # If the order was already persisted as pending before confirm() failed,
+        # cancel it so it doesn't linger as a zombie pending record.
+        if order is not None and order.pk:
+            try:
+                order.status = 'cancelled'
+                order.save(update_fields=['status', 'updated_at'])
+            except Exception:
+                logger.exception("Failed to cancel orphaned order %s", order.pk)
         # Error already logged by create_order as FailedOrderAttempt
         messages.error(request, str(e))
         return redirect("review_order")

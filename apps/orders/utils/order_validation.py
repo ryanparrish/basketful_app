@@ -79,13 +79,31 @@ class OrderValidation:
         ]
         food_total = sum(item.product.price * item.quantity for item in food_items)
         available_balance = getattr(account_balance, "available_balance", 0)
-        
+
         if food_total > available_balance:
             msg = (
                 f"Food items total ${food_total:.2f} exceeds available voucher "
                 f"balance ${available_balance:.2f}."
             )
             logger.warning("[Validator] %s - Food total exceeds balance", participant)
+            raise ValidationError(f"[{participant}] {msg}")
+
+        # Step 3b: Validate combined food + hygiene total against voucher balance.
+        # hygiene_balance is a sub-limit (available_balance / 3).  An order can
+        # pass each individual check yet still exceed the voucher pool — e.g.
+        # food=$132.50 ≤ $135 and hygiene=$24.50 ≤ $45, but combined=$157 > $135.
+        hygiene_items = [
+            item for item in items
+            if getattr(item.product.category, "name", "").lower() == "hygiene"
+        ]
+        hygiene_total = sum(item.product.price * item.quantity for item in hygiene_items)
+        combined_total = food_total + hygiene_total
+        if combined_total > available_balance:
+            msg = (
+                f"Food and hygiene items total ${combined_total:.2f} exceeds "
+                f"available voucher balance ${available_balance:.2f}."
+            )
+            logger.warning("[Validator] %s - Combined food+hygiene total exceeds balance", participant)
             raise ValidationError(f"[{participant}] {msg}")
 
         # Step 4: Validate Go Fresh balance (if enabled)
