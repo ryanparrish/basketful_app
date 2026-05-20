@@ -57,9 +57,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   pending: '#FFA726',
-  confirmed: '#66BB6A',
+  confirmed: '#17651b',
   packing: '#42A5F5',
-  completed: '#4CAF50',
+  completed: '#89557d',
   cancelled: '#EF5350',
 };
 
