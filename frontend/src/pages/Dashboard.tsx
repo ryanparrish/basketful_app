@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '../utils/apiUrl';
-import { getOrderStatusColor, ORDER_STATUS_MUI_COLORS, type OrderStatus } from '../lib/orderStatus.ts';
+import { getOrderStatusColor, ORDER_STATUS_MUI_COLORS } from '../lib/orderStatus.ts';
 import { Card, CardContent, CardHeader, Chip, Alert, AlertTitle } from '@mui/material';
 import {
   useGetList,
