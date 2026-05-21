@@ -31,10 +31,11 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import apiClient from '../lib/api/apiClient.ts';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type OrderStatus = 'pending' | 'confirmed' | 'packing' | 'completed' | 'cancelled';
+import {
+  type OrderStatus,
+  ORDER_STATUS_COLORS,
+  ORDER_STATUS_LABELS,
+} from '../lib/orderStatus.ts';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -47,21 +48,8 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   cancelled: [],             // terminal — protected, cannot be changed
 };
 
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: 'Pending',
-  confirmed: 'Confirmed',
-  packing: 'Packing',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-};
-
-const STATUS_COLORS: Record<OrderStatus, string> = {
-  pending: '#FFA726',
-  confirmed: '#17651b',
-  packing: '#42A5F5',
-  completed: '#89557d',
-  cancelled: '#EF5350',
-};
+const STATUS_LABELS = ORDER_STATUS_LABELS;
+const STATUS_COLORS = ORDER_STATUS_COLORS;
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 

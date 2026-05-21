@@ -32,6 +32,7 @@ import {
   Confirm,
 } from 'react-admin';
 import { OrderCommandPalette } from '../components/OrderCommandPalette.tsx';
+import { getOrderStatusColor } from '../lib/orderStatus.ts';
 import { ProgramMultiSelectFilter } from '../components/ProgramMultiSelectFilter.tsx';
 import { Box } from '@mui/material';
 import { useState } from 'react';
@@ -61,17 +62,7 @@ const ListActions = () => (
   </TopToolbar>
 );
 
-// Status color mapping
-const getStatusColor = (status: string): string => {
-  const colors: Record<string, string> = {
-    pending: '#FFA726',
-    confirmed: '#66BB6A',
-    packing: '#42A5F5',
-    completed: '#4CAF50',
-    cancelled: '#EF5350',
-  };
-  return colors[status] || '#9E9E9E';
-};
+const getStatusColor = getOrderStatusColor;
 
 const StatusField = () => {
   const record = useRecordContext();

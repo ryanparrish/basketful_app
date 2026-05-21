@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '../utils/apiUrl';
+import { getOrderStatusColor, ORDER_STATUS_MUI_COLORS, type OrderStatus } from '../lib/orderStatus.ts';
 import { Card, CardContent, CardHeader, Chip, Alert, AlertTitle } from '@mui/material';
 import {
   useGetList,
@@ -26,7 +27,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
 
 // Stats Card Component
 interface StatsCardProps {
@@ -65,8 +66,9 @@ const OrdersByStatusChart = () => {
     {}
   );
 
-  const chartData = Object.entries(statusCounts).map(([name, value]) => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
+  const chartData = Object.entries(statusCounts).map(([status, value]) => ({
+    name: status.charAt(0).toUpperCase() + status.slice(1),
+    status,
     value,
   }));
 
@@ -85,10 +87,10 @@ const OrdersByStatusChart = () => {
               outerRadius={80}
               label
             >
-              {chartData.map((_, index) => (
+              {chartData.map((entry) => (
                 <Cell
-                  key={`cell-${index}`}
-                  fill={COLORS[index % COLORS.length]}
+                  key={`cell-${entry.status}`}
+                  fill={getOrderStatusColor(entry.status)}
                 />
               ))}
             </Pie>
@@ -167,12 +169,7 @@ const RecentOrders = () => {
                 <td style={{ padding: '8px' }}>
                   <span
                     style={{
-                      backgroundColor:
-                        order.status === 'pending'
-                          ? '#FFA726'
-                          : order.status === 'confirmed'
-                          ? '#66BB6A'
-                          : '#9E9E9E',
+                      backgroundColor: getOrderStatusColor(order.status),
                       color: 'white',
                       padding: '2px 8px',
                       borderRadius: '4px',
@@ -257,12 +254,7 @@ const FailedOrderAnalytics = () => {
 
 // Product Consumption Chart
 const ALL_STATUSES = ['pending', 'confirmed', 'packing', 'completed'] as const;
-const STATUS_CHIP_COLORS: Record<string, 'warning' | 'success' | 'info' | 'primary'> = {
-  pending: 'warning',
-  confirmed: 'success',
-  packing: 'info',
-  completed: 'primary',
-};
+const STATUS_CHIP_COLORS = ORDER_STATUS_MUI_COLORS as Record<string, 'warning' | 'success' | 'info' | 'secondary' | 'error'>;
 const TREND_COLORS = ['#1976d2', '#00897b', '#f57c00', '#8e24aa', '#e53935', '#00acc1', '#43a047', '#fb8c00', '#5e35b1', '#d81b60'];
 
 type ViewMode = 'week' | 'trends' | 'mom' | 'range';
