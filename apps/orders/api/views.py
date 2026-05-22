@@ -142,10 +142,35 @@ class OrderViewSet(viewsets.ModelViewSet):
             ip = request.META.get('REMOTE_ADDR', '')
         return ip
 
+    def perform_update(self, serializer):
+        """Set bypass flags on the instance before saving.
+
+        When a staff member with can_bypass_order_transitions confirms an order
+        via PATCH (status → 'confirmed'), skip the voucher balance enforcement
+        so an admin can push the order through regardless of available balance.
+        """
+        instance = serializer.instance
+        incoming_status = serializer.validated_data.get('status')
+        if (
+            incoming_status == 'confirmed'
+            and instance.status != 'confirmed'
+            and self.request.user.has_perm('orders.can_bypass_order_transitions')
+        ):
+            instance._bypass_balance_check = True
+            instance._bypass_user = self.request.user
+        serializer.save()
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def confirm(self, request, pk=None):
-        """Confirm an order (staff only)."""
+        """Confirm an order (staff only).
+
+        Users with can_bypass_order_transitions may confirm orders that would
+        normally fail the voucher balance check.
+        """
         order = self.get_object()
+        if request.user.has_perm('orders.can_bypass_order_transitions'):
+            order._bypass_balance_check = True
+            order._bypass_user = request.user
         try:
             order.confirm()
             return Response(OrderSerializer(order).data)
@@ -283,6 +308,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             missing_ids = [oid for oid in order_ids if oid not in found_ids]
             skipped_ids.extend(missing_ids)
 
+            bypassed_orders: list[Order] = []
+
             for order in orders:
                 if (
                     can_bypass
@@ -297,6 +324,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         new_status,
                     )
                     updated_ids.append(order.id)
+                    bypassed_orders.append(order)
                 else:
                     allowed = ALLOWED_TRANSITIONS.get(order.status, set())
                     if new_status not in allowed:
@@ -313,6 +341,27 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=new_status,
                     updated_at=timezone.now(),
                 )
+
+            # Audit every bypassed transition to OrderValidationLog.
+            if bypassed_orders:
+                from apps.log.models import OrderValidationLog
+                logs = [
+                    OrderValidationLog(
+                        order=o,
+                        user=request.user,
+                        participant=None,  # account not loaded in bulk query; order FK is enough
+                        log_type=OrderValidationLog.WARNING,
+                        message=(
+                            f"Transition bypass by {request.user.username}: "
+                            f"{o.status} \u2192 {new_status}"
+                        ),
+                    )
+                    for o in bypassed_orders
+                ]
+                try:
+                    OrderValidationLog.objects.bulk_create(logs)
+                except Exception:
+                    logger.exception("Failed to write bypass audit logs for bulk_update_status")
 
         return Response({
             'updated_count': len(updated_ids),

@@ -422,25 +422,56 @@ class Order(models.Model):
         # Calculate total available voucher balance (respects pause multiplier)
         total_voucher_balance = sum(_effective_amount(v) for v in active_vouchers)
 
-        # Validate order doesn't exceed voucher balance
+        # Validate order doesn't exceed voucher balance.
+        # Staff with can_bypass_order_transitions may override this check —
+        # they set _bypass_balance_check=True (and optionally _bypass_user)
+        # on the instance before calling save().
         if order_total > total_voucher_balance:
             participant = getattr(self.account, 'participant', None)
-            logger.error(
-                f"Order {self.id}: Order total ${order_total} exceeds available "
-                f"voucher balance ${total_voucher_balance}"
-            )
-            raise ValidationError(
-                f"Order total ${order_total:.2f} exceeds available voucher balance "
-                f"${total_voucher_balance:.2f} for {participant}"
-            )
-
-        # Determine how many vouchers to consume
-        if order_total <= single_voucher_amount:
-            # Order total is less than or equal to one voucher: consume 1
-            vouchers_to_consume = active_vouchers[:1]
+            if getattr(self, '_bypass_balance_check', False):
+                bypass_user = getattr(self, '_bypass_user', None)
+                logger.warning(
+                    "BYPASS: order=%s user=%s total=$%s exceeds voucher balance=$%s — "
+                    "proceeding under can_bypass_order_transitions permission",
+                    self.id,
+                    getattr(bypass_user, 'username', 'unknown'),
+                    order_total,
+                    total_voucher_balance,
+                )
+                try:
+                    from apps.log.models import OrderValidationLog
+                    OrderValidationLog.objects.create(
+                        order=self,
+                        user=bypass_user,
+                        participant=participant,
+                        log_type=OrderValidationLog.WARNING,
+                        message=(
+                            f"Balance check bypassed by {getattr(bypass_user, 'username', 'unknown')}: "
+                            f"order total ${order_total:.2f} > voucher balance "
+                            f"${total_voucher_balance:.2f}"
+                        ),
+                    )
+                except Exception:
+                    pass  # Never block order processing on audit log failure
+                # Consume all available vouchers (up to what exists)
+                vouchers_to_consume = active_vouchers
+            else:
+                logger.error(
+                    "Order %s: order total $%s exceeds available voucher balance $%s",
+                    self.id, order_total, total_voucher_balance,
+                )
+                raise ValidationError(
+                    f"Order total ${order_total:.2f} exceeds available voucher balance "
+                    f"${total_voucher_balance:.2f} for {participant}"
+                )
         else:
-            # Order total is greater than one voucher: consume all available (max 2)
-            vouchers_to_consume = active_vouchers
+            # Normal flow: determine how many vouchers to consume
+            if order_total <= single_voucher_amount:
+                # Order total is within one voucher: consume 1
+                vouchers_to_consume = active_vouchers[:1]
+            else:
+                # Order total exceeds one voucher: consume all available (max 2)
+                vouchers_to_consume = active_vouchers
 
         # Mark vouchers as consumed and create OrderVoucher records
         from apps.voucher.models import OrderVoucher
