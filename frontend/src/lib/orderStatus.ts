@@ -44,3 +44,31 @@ export const STATUS_COLOR_FALLBACK = '#9E9E9E';
 export function getOrderStatusColor(status: string): string {
   return ORDER_STATUS_COLORS[status as OrderStatus] ?? STATUS_COLOR_FALLBACK;
 }
+
+/**
+ * Normal allowed transitions (mirrors the backend ALLOWED_TRANSITIONS map).
+ * Used to build the command palette for regular staff users.
+ */
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending:   ['confirmed', 'cancelled'],
+  confirmed: ['packing', 'cancelled'],
+  packing:   ['completed', 'cancelled'],
+  completed: ['confirmed'],
+  cancelled: [],
+};
+
+/**
+ * Bypass allowed transitions — for users with `orders.can_bypass_order_transitions`.
+ *
+ * Rules:
+ * - `confirmed`, `packing`, and `completed` may move freely between each other.
+ * - `cancelled` is terminal for everyone; no bypass.
+ * - `pending` follows normal rules even for bypass users.
+ */
+export const BYPASS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending:   ['confirmed', 'cancelled'],
+  confirmed: ['packing', 'completed', 'cancelled'],
+  packing:   ['confirmed', 'completed', 'cancelled'],
+  completed: ['confirmed', 'packing'],
+  cancelled: [],
+};

@@ -74,6 +74,16 @@ class FailedOrderAttempt(models.Model):
 
 class Order(models.Model):
     """A food order."""
+
+    class Meta:
+        permissions = [
+            (
+                "can_bypass_order_transitions",
+                "Can move orders between any active status (confirmed, packing, completed) "
+                "regardless of normal forward-only flow",
+            ),
+        ]
+
     user = models.ForeignKey(
         "auth.User",
         null=True,

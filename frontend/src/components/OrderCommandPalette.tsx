@@ -25,6 +25,7 @@ import {
   Button,
   CircularProgress,
   Chip,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
@@ -35,18 +36,10 @@ import {
   type OrderStatus,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
+  ALLOWED_TRANSITIONS,
+  BYPASS_TRANSITIONS,
 } from '../lib/orderStatus.ts';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Valid transitions — mirrors the backend ALLOWED_TRANSITIONS map */
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['confirmed', 'cancelled'],
-  confirmed: ['packing', 'cancelled'],
-  packing: ['completed', 'cancelled'],
-  completed: ['confirmed'],  // can be walked back to confirmed
-  cancelled: [],             // terminal — protected, cannot be changed
-};
+import { usePermissionContext } from '../contexts/PermissionContext.tsx';
 
 const STATUS_LABELS = ORDER_STATUS_LABELS;
 const STATUS_COLORS = ORDER_STATUS_COLORS;
@@ -58,7 +51,7 @@ const STATUS_COLORS = ORDER_STATUS_COLORS;
  * Uses the record cache inside useListContext to read statuses without
  * a second network round-trip.
  */
-export function useOrderSelection(): {
+export function useOrderSelection(canBypass = false): {
   selectedIds: (string | number)[];
   selectedStatuses: OrderStatus[];
   validTransitions: OrderStatus[];
@@ -76,6 +69,8 @@ export function useOrderSelection(): {
     }
   }
 
+  const transitionMap = canBypass ? BYPASS_TRANSITIONS : ALLOWED_TRANSITIONS;
+
   // Union: show a target if at least one selected order can move to it
   const displayOrder: OrderStatus[] = [
     'pending',
@@ -87,7 +82,7 @@ export function useOrderSelection(): {
 
   const union = new Set<OrderStatus>();
   for (const s of selectedStatuses) {
-    for (const t of ALLOWED_TRANSITIONS[s] ?? []) {
+    for (const t of transitionMap[s] ?? []) {
       union.add(t);
     }
   }
@@ -95,7 +90,7 @@ export function useOrderSelection(): {
 
   const eligibleCount = (target: OrderStatus) =>
     selectedStatuses.filter((s) =>
-      (ALLOWED_TRANSITIONS[s] ?? []).includes(target)
+      (transitionMap[s] ?? []).includes(target)
     ).length;
 
   return {
@@ -110,8 +105,10 @@ export function useOrderSelection(): {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const OrderCommandPalette = () => {
+  const { hasPermission } = usePermissionContext();
+  const canBypass = hasPermission('orders.can_bypass_order_transitions');
   const { selectedIds, selectedStatuses, validTransitions, eligibleCount, selectionCount } =
-    useOrderSelection();
+    useOrderSelection(canBypass);
   const notify = useNotify();
   const refresh = useRefresh();
   const unselectAll = useUnselectAll('orders');
@@ -243,6 +240,17 @@ export const OrderCommandPalette = () => {
         size="small"
         sx={{ bgcolor: '#3d3d5c', color: '#fff', fontWeight: 600 }}
       />
+      {canBypass && (
+        <Tooltip title="Transition bypass active — you can move orders between any active status">
+          <Typography
+            component="span"
+            sx={{ fontSize: '1rem', lineHeight: 1, cursor: 'default', userSelect: 'none' }}
+            aria-label="Transition bypass active"
+          >
+            ⚡
+          </Typography>
+        </Tooltip>
+      )}
 
       {!pendingStatus ? (
         // ── Step 1: choose target status ──────────────────────────────

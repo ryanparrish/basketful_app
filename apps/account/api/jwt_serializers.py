@@ -149,7 +149,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         groups = user.groups.all()
         token['groups'] = [g.name for g in groups]
         token['group_ids'] = [g.id for g in groups]
-        
+
+        # Escape-hatch permission — baked into the token so the frontend
+        # can show/hide the bypass UI without an extra round-trip.
+        token['can_bypass_order_transitions'] = user.has_perm(
+            'orders.can_bypass_order_transitions'
+        )
+
         return token
     
     def validate(self, attrs):

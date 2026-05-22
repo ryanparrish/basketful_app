@@ -245,6 +245,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             'cancelled': set(),          # terminal — protected
         }
 
+        # Statuses that a bypass user may freely move between.
+        # 'pending' and 'cancelled' deliberately excluded:
+        #   - 'pending' follows normal rules even for bypass users
+        #   - 'cancelled' is terminal for everyone, no exceptions
+        BYPASS_ACTIVE_STATUSES: set[str] = {'confirmed', 'packing', 'completed'}
+
+        can_bypass = request.user.has_perm('orders.can_bypass_order_transitions')
+
         order_ids = request.data.get('order_ids')
         new_status = request.data.get('new_status')
 
@@ -276,11 +284,25 @@ class OrderViewSet(viewsets.ModelViewSet):
             skipped_ids.extend(missing_ids)
 
             for order in orders:
-                allowed = ALLOWED_TRANSITIONS.get(order.status, set())
-                if new_status not in allowed:
-                    skipped_ids.append(order.id)
-                else:
+                if (
+                    can_bypass
+                    and order.status in BYPASS_ACTIVE_STATUSES
+                    and new_status in BYPASS_ACTIVE_STATUSES
+                ):
+                    logger.warning(
+                        "Order transition bypass: user=%s order=%s %s→%s",
+                        request.user.username,
+                        order.id,
+                        order.status,
+                        new_status,
+                    )
                     updated_ids.append(order.id)
+                else:
+                    allowed = ALLOWED_TRANSITIONS.get(order.status, set())
+                    if new_status not in allowed:
+                        skipped_ids.append(order.id)
+                    else:
+                        updated_ids.append(order.id)
 
             if updated_ids:
                 # Use queryset.update() to bypass the model's save() method,
