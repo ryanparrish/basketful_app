@@ -175,15 +175,15 @@ def test_serializer_makes_naive_pause_start_aware():
     from apps.lifeskills.api.serializers import ProgramPauseSerializer
 
     data = {
-        "pause_start": "2026-06-27T09:00:00",   # no tz offset — naive
-        "pause_end":   "2026-07-04T09:00:00",
-        "reason":      "Summer break",
+        "pause_start": "2026-06-27T09:00:00",  # no tz offset — naive
+        "pause_end": "2026-07-04T09:00:00",
+        "reason": "Summer break",
     }
     serializer = ProgramPauseSerializer(data=data)
     assert serializer.is_valid(), serializer.errors
 
     pause_start = serializer.validated_data["pause_start"]
-    pause_end   = serializer.validated_data["pause_end"]
+    pause_end = serializer.validated_data["pause_end"]
 
     assert pause_start.tzinfo is not None, (
         "pause_start must be timezone-aware after serializer validation"
@@ -202,8 +202,8 @@ def test_serializer_passes_through_already_aware_datetime():
 
     data = {
         "pause_start": "2026-06-27T09:00:00-04:00",  # EDT offset
-        "pause_end":   "2026-07-04T09:00:00-04:00",
-        "reason":      "Summer break",
+        "pause_end": "2026-07-04T09:00:00-04:00",
+        "reason": "Summer break",
     }
     serializer = ProgramPauseSerializer(data=data)
     assert serializer.is_valid(), serializer.errors
