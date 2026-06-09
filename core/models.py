@@ -1,4 +1,5 @@
 """Core application models."""
+from decimal import Decimal
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
@@ -287,8 +288,8 @@ class ProgramSettings(models.Model):
     grace_amount = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=1.00,
-        validators=[MinValueValidator(0.00), MaxValueValidator(100.00)],
+        default=Decimal('1.00'),
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('100.00'))],
         help_text="Dollar amount over budget allowed as 'grace' for financial literacy learning (default $1.00)"
     )
     grace_enabled = models.BooleanField(
@@ -334,7 +335,7 @@ class ProgramSettings(models.Model):
         obj, created = cls.objects.get_or_create(
             pk=1,
             defaults={
-                'grace_amount': 1.00,
+                'grace_amount': Decimal('1.00'),
                 'grace_enabled': True,
                 'grace_message': 'This helps you practice staying within budget'
             }

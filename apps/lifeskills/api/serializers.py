@@ -3,6 +3,7 @@ Serializers for the Lifeskills app.
 """
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.utils.timezone import is_naive, make_aware
 
 from apps.lifeskills.models import Program, LifeskillsCoach, ProgramPause
 
@@ -27,6 +28,18 @@ class ProgramPauseSerializer(serializers.ModelSerializer):
             'last_resync_at', 'last_resync_by_username',
             'created_at', 'updated_at'
         ]
+
+    def validate_pause_start(self, value):
+        """Ensure pause_start is timezone-aware; treat naive inputs as local time."""
+        if value is not None and is_naive(value):
+            value = make_aware(value)
+        return value
+
+    def validate_pause_end(self, value):
+        """Ensure pause_end is timezone-aware; treat naive inputs as local time."""
+        if value is not None and is_naive(value):
+            value = make_aware(value)
+        return value
 
 
 class LifeskillsCoachSerializer(serializers.ModelSerializer):
