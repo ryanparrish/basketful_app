@@ -383,21 +383,62 @@ class Order(models.Model):
     def _consume_vouchers(self):
         """
         Consume vouchers when order is confirmed.
-        
-        Rules:
-        - If order total <= 1 voucher amount: consume 1 voucher
-        - If order total > 1 voucher amount: consume both vouchers
-        - Participants can have max 2 active vouchers
+
+        Bypass modes (set as instance attributes before calling save()):
+          _charitable_bypass=True  — waives voucher consumption entirely.
+              The admin has decided to give the order as a gift.  Stock is
+              still decremented (Order.save() calls _decrement_stock()
+              after this method returns).  Requires _bypass_user to be set.
+              Writes a WARNING to OrderValidationLog.
+          _bypass_balance_check=True  — skips the balance >= total guard.
+              Vouchers are still consumed (up to all available).  Used when
+              the participant's balance is slightly short and the admin
+              chooses to confirm as a charitable exception while still
+              recording voucher consumption.  Requires _bypass_user.
+              Writes a WARNING to OrderValidationLog.
+
+        Normal flow (no flags set):
+          - order total ≤ 1 voucher amount → consume 1 voucher
+          - order total > 1 voucher amount → consume both vouchers (max 2)
         """
         if self.status != "confirmed":
             return
-        
+
         from apps.voucher.models import Voucher
-        
+
         order_total = self.total_price()
         if order_total == 0:
             return
-        
+
+        # Charitable bypass: admin explicitly waives voucher consumption.
+        # _decrement_stock() still runs in Order.save() after this returns.
+        if getattr(self, '_charitable_bypass', False):
+            bypass_user = getattr(self, '_bypass_user', None)
+            logger.warning(
+                "CHARITABLE BYPASS: order=%s user=%s total=$%s — "
+                "voucher consumption waived under can_bypass_order_transitions permission",
+                self.id,
+                getattr(bypass_user, 'username', 'unknown'),
+                order_total,
+            )
+            try:
+                from apps.log.models import OrderValidationLog
+                participant = getattr(self.account, 'participant', None)
+                OrderValidationLog.objects.create(
+                    order=self,
+                    user=bypass_user,
+                    participant=participant,
+                    log_type=OrderValidationLog.WARNING,
+                    message=(
+                        f"Charitable bypass by {getattr(bypass_user, 'username', 'unknown')}: "
+                        f"voucher consumption waived for order total ${order_total:.2f}. "
+                        f"Stock decremented. No vouchers consumed."
+                    ),
+                )
+            except Exception:
+                pass  # Never block order processing on audit log failure
+            return  # Exit here — _decrement_stock() runs separately in save()
+
         # Get active grocery vouchers for this account (max 2).
         # select_for_update() serialises concurrent confirms — prevents
         # two workers both reading the same vouchers as 'applied' and

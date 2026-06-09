@@ -22,6 +22,7 @@ from rest_framework.test import APIClient
 from apps.log.models import OrderValidationLog
 from apps.orders.tests.factories import (
     OrderFactory,
+    OrderItemFactory,
     ParticipantFactory,
     UserFactory,
     VoucherFactory,
@@ -237,14 +238,11 @@ class TestConfirmBypass:
 
         order = OrderFactory(account=account, status='pending')
 
-        # Simulate a superuser PATCH setting status='confirmed'
         superuser = UserFactory(is_staff=True, is_superuser=True)
         order._bypass_balance_check = True
         order._bypass_user = superuser
         order.status = 'confirmed'
         order.paid = True
-        # Should not raise even though no items exist (zero total — trivially passes anyway).
-        # Test the flag path explicitly by patching total_price to return a large value.
         from unittest.mock import patch
         with patch.object(type(order), 'total_price', return_value=Decimal('999.00')):
             order._consume_vouchers()  # must not raise
@@ -280,4 +278,74 @@ class TestConfirmBypass:
         assert log.log_type == OrderValidationLog.WARNING
         assert 'bypass' in log.message.lower()
         assert log.user_id == superuser.id
+
+    def test_charitable_bypass_skips_voucher_consumption(self):
+        """Charitable bypass skips all voucher logic and writes an audit record."""
+        VoucherSettingFactory(active=True)
+        participant = ParticipantFactory()
+        account = participant.accountbalance
+        voucher = VoucherFactory(
+            account=account,
+            state='applied',
+            voucher_type='grocery',
+            multiplier=1,
+        )
+
+        order = OrderFactory(account=account, status='pending')
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        order._charitable_bypass = True
+        order._bypass_user = superuser
+        order.status = 'confirmed'
+        order.paid = True
+
+        before_count = OrderValidationLog.objects.count()
+        from unittest.mock import patch
+        from apps.voucher.models import Voucher
+        with patch.object(type(order), 'total_price', return_value=Decimal('50.00')):
+            order._consume_vouchers()
+
+        # Voucher must NOT have been consumed
+        voucher.refresh_from_db()
+        assert voucher.state == 'applied', "Charitable bypass must not consume vouchers"
+
+        # Audit record must exist
+        assert OrderValidationLog.objects.count() == before_count + 1
+        log = OrderValidationLog.objects.latest('created_at')
+        assert log.log_type == OrderValidationLog.WARNING
+        assert 'charitable' in log.message.lower()
+        assert log.user_id == superuser.id
+
+    def test_charitable_bypass_via_confirm_action(self):
+        """POST /confirm/ with charitable=true waives vouchers for a bypass user."""
+        VoucherSettingFactory(active=True)
+        participant = ParticipantFactory()
+        account = participant.accountbalance
+        voucher = VoucherFactory(
+            account=account,
+            state='applied',
+            voucher_type='grocery',
+            multiplier=1,
+        )
+        account.base_balance = Decimal('30.00')
+        account.save(update_fields=['base_balance'])
+
+        order = OrderFactory(account=account, status='pending')
+        # Add an item so total_price() > 0; otherwise _consume_vouchers exits early.
+        OrderItemFactory(order=order)
+
+        client, _ = _make_staff_client(superuser=True)
+
+        resp = client.post(
+            f'/api/v1/orders/{order.id}/confirm/',
+            {'charitable': True},
+            format='json',
+        )
+
+        assert resp.status_code == 200
+        voucher.refresh_from_db()
+        assert voucher.state == 'applied', "Voucher must remain untouched on charitable confirm"
+
+        log = OrderValidationLog.objects.filter(order=order).latest('created_at')
+        assert log.log_type == OrderValidationLog.WARNING
+        assert 'charitable' in log.message.lower()
 

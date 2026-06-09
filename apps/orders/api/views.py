@@ -146,8 +146,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Set bypass flags on the instance before saving.
 
         When a staff member with can_bypass_order_transitions confirms an order
-        via PATCH (status → 'confirmed'), skip the voucher balance enforcement
-        so an admin can push the order through regardless of available balance.
+        via PATCH (status → 'confirmed'), two bypass modes are available:
+
+        - Default bypass (no extra flag): skips the balance check, vouchers are
+          still consumed.  Used for charitable exceptions where the participant
+          is slightly short but staff choose to proceed.
+        - Charitable bypass (request body ``charitable=true``): waives voucher
+          consumption entirely.  Stock is still decremented.  Used for fully
+          benevolent orders.  Both modes write a WARNING to OrderValidationLog.
         """
         instance = serializer.instance
         incoming_status = serializer.validated_data.get('status')
@@ -158,19 +164,31 @@ class OrderViewSet(viewsets.ModelViewSet):
         ):
             instance._bypass_balance_check = True
             instance._bypass_user = self.request.user
+            if self.request.data.get('charitable'):
+                instance._charitable_bypass = True
         serializer.save()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def confirm(self, request, pk=None):
         """Confirm an order (staff only).
 
-        Users with can_bypass_order_transitions may confirm orders that would
-        normally fail the voucher balance check.
+        Users with can_bypass_order_transitions may confirm orders using two
+        bypass modes:
+
+        - Default bypass: skips the voucher balance check; vouchers are still
+          consumed.  For charitable exceptions where the balance is short.
+        - Charitable bypass (request body ``{"charitable": true}``): waives
+          voucher consumption entirely.  Stock is still decremented.  For
+          fully benevolent orders where no vouchers should be consumed.
+
+        Both modes write a WARNING audit record to OrderValidationLog.
         """
         order = self.get_object()
         if request.user.has_perm('orders.can_bypass_order_transitions'):
             order._bypass_balance_check = True
             order._bypass_user = request.user
+            if request.data.get('charitable'):
+                order._charitable_bypass = True
         try:
             order.confirm()
             return Response(OrderSerializer(order).data)
@@ -270,10 +288,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             'cancelled': set(),          # terminal — protected
         }
 
-        # Statuses that a bypass user may freely move between.
-        # 'pending' and 'cancelled' deliberately excluded:
-        #   - 'pending' follows normal rules even for bypass users
-        #   - 'cancelled' is terminal for everyone, no exceptions
+        # Bypass applies when the user has can_bypass_order_transitions AND:
+        #   (a) both source and target are active workflow statuses — used for
+        #       in-workflow mistake corrections (e.g. packing → confirmed), OR
+        #   (b) the target is 'confirmed' regardless of source status — used to
+        #       re-confirm an order from any non-cancelled state.
+        # 'cancelled' is terminal for everyone; it is never a valid bypass source.
         BYPASS_ACTIVE_STATUSES: set[str] = {'confirmed', 'packing', 'completed'}
 
         can_bypass = request.user.has_perm('orders.can_bypass_order_transitions')
@@ -311,11 +331,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             bypassed_orders: list[Order] = []
 
             for order in orders:
-                if (
+                is_bypass = (
                     can_bypass
-                    and order.status in BYPASS_ACTIVE_STATUSES
+                    and order.status != 'cancelled'
                     and new_status in BYPASS_ACTIVE_STATUSES
-                ):
+                    and (
+                        order.status in BYPASS_ACTIVE_STATUSES  # (a) in-workflow correction
+                        or new_status == 'confirmed'             # (b) re-confirm from any state
+                    )
+                )
+                if is_bypass:
                     logger.warning(
                         "Order transition bypass: user=%s order=%s %s→%s",
                         request.user.username,
