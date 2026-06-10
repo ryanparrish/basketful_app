@@ -308,14 +308,17 @@ def deactivate_expired_pause_vouchers(self, program_pause_id):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def final_cleanup_after_pause_end(
-    self, program_pause_id=None, pause_id=None
+    self, program_pause_id=None, pause_id=None, force=False
 ):
     """
     Final cleanup task that runs after pause_end to ensure all vouchers are reset.
     Also marks the pause as archived.
-    
+
     Args:
         program_pause_id (int): ID of the ProgramPause instance
+        force (bool): Skip the pause_end > now guard. Use only from the
+                      run_pause_cleanup management command when staff need to
+                      manually trigger cleanup before the scheduled eta fires.
     """
     # Backward compatibility: support both arg names.
     if program_pause_id is None:
@@ -333,11 +336,11 @@ def final_cleanup_after_pause_end(
             program_pause_id
         )
         return
-    
+
     now = timezone.now()
-    
-    # Only run if pause has actually ended
-    if pp.pause_end and pp.pause_end > now:
+
+    # Only run if pause has actually ended (unless --force bypasses this guard)
+    if not force and pp.pause_end and pp.pause_end > now:
         logger.info(
             "[Final Cleanup] Pause hasn't ended yet (ends %s, now=%s). Skipping.",
             pp.pause_end, now
