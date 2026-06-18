@@ -12,6 +12,7 @@ import {
   BooleanInput,
   SelectInput,
   ReferenceInput,
+  AutocompleteInput,
   Show,
   SimpleShowLayout,
   FilterButton,
@@ -457,7 +458,7 @@ export const VoucherCreate = () => (
   <Create>
     <SimpleForm>
       <ReferenceInput source="account" reference="account-balances" required>
-        <SelectInput optionText="participant_name" />
+        <AutocompleteInput optionText="participant_name" />
       </ReferenceInput>
       <SelectInput
         source="voucher_type"

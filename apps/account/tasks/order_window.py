@@ -1,8 +1,11 @@
 """Periodic tasks for order-window notifications."""
 import logging
+import zoneinfo
 from datetime import timedelta
 
 from celery import shared_task
+from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -73,13 +76,26 @@ def notify_participants_order_window_opened():
             if not (window_just_opened and window_currently_open):
                 continue
 
-            # %-d / %-I suppress zero-padding but are Linux-only.  Build the
-            # human-readable string from components so it works on macOS too.
-            closes_at_local = timezone.localtime(closes_at)
+            # Claim this program+cycle atomically — prevents a concurrent beat
+            # tick from dispatching duplicate emails for the same window.
+            # cache.add() is atomic: returns True only if the key did not exist.
+            cache_key = f"ownotify:{program.id}:{int(opens_at.timestamp())}"
+            if not cache.add(cache_key, 1, timeout=3600):
+                logger.info(
+                    "[OrderWindow] Program '%s' cycle already claimed — skipping",
+                    program.name,
+                )
+                continue
+
+            # Convert to the application's configured timezone (settings.TIME_ZONE),
+            # not the server OS timezone, which may differ on some hosts.
+            tz = zoneinfo.ZoneInfo(settings.TIME_ZONE)
+            closes_at_local = timezone.localtime(closes_at, timezone=tz)
+            meridiem = "AM" if closes_at_local.hour < 12 else "PM"
             closes_at_str = (
                 f"{closes_at_local.strftime('%A, %B')} "
                 f"{closes_at_local.day} at "
-                f"{closes_at_local.hour % 12 or 12}:{closes_at_local.strftime('%M %p')}"
+                f"{closes_at_local.hour % 12 or 12}:{closes_at_local.strftime('%M')} {meridiem}"
             )
 
             # Collect user IDs that already received a notification for this cycle.
@@ -93,6 +109,7 @@ def notify_participants_order_window_opened():
             participants = (
                 program.participant_set
                 .filter(active=True, user__isnull=False)
+                .exclude(user__email='')
                 .select_related('user')
             )
 
@@ -101,12 +118,18 @@ def notify_participants_order_window_opened():
                 user = participant.user
                 if user.id in already_notified:
                     continue
-                send_order_window_opened_notification.delay(
-                    user_id=user.id,
-                    program_name=program.name,
-                    closes_at_str=closes_at_str,
-                )
-                dispatched += 1
+                try:
+                    send_order_window_opened_notification.delay(
+                        user_id=user.id,
+                        program_name=program.name,
+                        closes_at_str=closes_at_str,
+                    )
+                    dispatched += 1
+                except Exception:
+                    logger.error(
+                        "[OrderWindow] Failed to dispatch to user_id=%s (program='%s')",
+                        user.id, program.name,
+                    )
 
             if dispatched:
                 logger.info(

@@ -186,6 +186,10 @@ class EmailLog(models.Model):
         blank=True,
         help_text="When we last polled Mailgun for delivery status"
     )
+    retry_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of times a failed send has been re-dispatched by the DLQ beat task",
+    )
 
     class Meta:
         app_label = 'log'

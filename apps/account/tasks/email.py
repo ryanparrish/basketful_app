@@ -13,6 +13,7 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils import timezone
 from django.conf import settings
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 
 
 logger = logging.getLogger(__name__)
@@ -109,19 +110,24 @@ def send_email_message(subject, html_content, text_content, to_email,
 # Main Email Sending Function
 # ---------------------------
 
-@shared_task
-def send_email_by_type(user_id, email_type_name, force=False, extra_context=None):
+@shared_task(bind=True, max_retries=3)
+def send_email_by_type(self, user_id, email_type_name, force=False, extra_context=None):
     """
     Send an email based on the EmailType configuration.
-    
+
+    Retries up to 3 times with exponential backoff (60 s, 120 s, 240 s) on
+    any transient send failure.  An EmailLog failure entry is only written
+    after all retries are exhausted, so the failure log represents a
+    permanently undeliverable message rather than a transient blip.
+
     Args:
-        user_id: The ID of the user to send the email to
-        email_type_name: The slug name of the EmailType (e.g., 'onboarding')
-        force: If True, skip the duplicate check and send anyway
-        extra_context: Additional context variables to pass to the template
-    
+        user_id:        The ID of the user to send the email to.
+        email_type_name: The slug name of the EmailType (e.g., 'onboarding').
+        force:          If True, skip the duplicate check and send anyway.
+        extra_context:  Additional context variables to pass to the template.
+
     Returns:
-        bool: True if email was sent successfully, False otherwise
+        bool: True if the email was sent successfully, False otherwise.
     """
     try:
         user = User.objects.get(pk=user_id)
@@ -174,15 +180,29 @@ def send_email_by_type(user_id, email_type_name, force=False, extra_context=None
         # Log success — persist Mailgun message_id for delivery tracking
         create_email_log(user, email_type, subject, status="sent", message_id=message_id)
         return True
-        
+
     except Exception as e:
-        logger.exception("[Email] Failed to send email: %s", str(e))
-        # Log failure
-        create_email_log(
-            user, email_type, email_type.subject,
-            status="failed", error_message=str(e)
+        logger.warning(
+            "[Email] Send failed (attempt %d/3) user_id=%s email_type=%s: %s",
+            self.request.retries + 1, user_id, email_type_name, str(e),
         )
-        return False
+        try:
+            raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        except MaxRetriesExceededError:
+            logger.error(
+                "[Email] All retries exhausted user_id=%s email_type=%s: %s",
+                user_id, email_type_name, str(e),
+            )
+            try:
+                create_email_log(
+                    user, email_type, email_type.subject,
+                    status="failed", error_message=str(e),
+                )
+            except Exception:
+                logger.exception(
+                    "[Email] Failed to write failure log for user_id=%s", user_id
+                )
+            return False
 
 
 # ---------------------------
@@ -248,8 +268,10 @@ def send_order_window_opened_notification(user_id, program_name, closes_at_str, 
     Args:
         user_id:       Django User PK.
         program_name:  Human-readable name of the program whose window opened.
-        closes_at_str: ISO-8601 formatted string of when the window closes (UTC).
-                       Shown in the email so the participant knows the deadline.
+        closes_at_str: Human-readable string describing when the window closes,
+                       e.g. "Monday, June 3 at 9:00 AM", formatted in the
+                       application's configured timezone (settings.TIME_ZONE).
+                       Shown directly in the email body.
         force:         If True, bypass the per-cycle deduplication guard.
     """
     try:
@@ -280,3 +302,58 @@ def send_order_window_opened_notification(user_id, program_name, closes_at_str, 
     return send_email_by_type(
         user_id, 'order_window_opened', force=True, extra_context=extra_context
     )
+
+
+@shared_task
+def retry_failed_emails():
+    """Re-dispatch email sends that permanently failed within the last 24 hours.
+
+    Acts as a soft dead-letter queue: any EmailLog row with status='failed'
+    and retry_count < 3 that was created within the last 24 hours is
+    re-dispatched via send_email_by_type with force=True.
+
+    The 24-hour window keeps retries scoped to same-day failures where the
+    email is still timely (password resets expire, order-window notices
+    become stale).  Failures older than 24 hours are left untouched.
+
+    retry_count is incremented before dispatch so a concurrent scheduler
+    tick cannot double-queue the same row.
+    """
+    from apps.log.models import EmailLog
+
+    cutoff = timezone.now() - timedelta(hours=24)
+    candidates = EmailLog.objects.filter(
+        status="failed",
+        retry_count__lt=3,
+        sent_at__gte=cutoff,
+    ).select_related("email_type")
+
+    dispatched = 0
+    for log_entry in candidates:
+        try:
+            # Increment first — prevents a second scheduler tick from
+            # re-queuing the same row before the Celery task has started.
+            EmailLog.objects.filter(pk=log_entry.pk).update(
+                retry_count=log_entry.retry_count + 1
+            )
+            send_email_by_type.delay(
+                log_entry.user_id,
+                log_entry.email_type.name,
+                force=True,
+            )
+            dispatched += 1
+            logger.info(
+                "[EmailDLQ] Re-dispatched user_id=%s email_type=%s (attempt %d)",
+                log_entry.user_id,
+                log_entry.email_type.name,
+                log_entry.retry_count + 1,
+            )
+        except Exception:
+            logger.exception(
+                "[EmailDLQ] Failed to re-dispatch user_id=%s email_type=%s",
+                log_entry.user_id,
+                log_entry.email_type.name,
+            )
+
+    if dispatched:
+        logger.info("[EmailDLQ] Retried %d failed email(s)", dispatched)

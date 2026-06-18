@@ -437,3 +437,87 @@ def test_email_log_created_on_full_pipeline(monday_program, email_type):
         status="sent",
     ).exists()
 
+
+# ---------------------------------------------------------------------------
+# 14. Per-program enabled=False overrides global enabled=True
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_per_program_disabled_overrides_global_enabled(monday_program, email_type):
+    """Per-program enabled=False must block notifications even when global is True."""
+    from core.models import ProgramOrderWindow
+
+    _make_participant_with_user(monday_program, suffix="pgm_disabled")
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+
+    # Disable the window specifically for this program after computing opens_at.
+    ProgramOrderWindow.objects.create(program=monday_program, enabled=False)
+
+    frozen_now = opens_at + timedelta(minutes=1)
+    mock_send = _run_task_frozen_at(frozen_now)
+    mock_send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 15. Per-program enabled=True overrides global enabled=False
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_per_program_enabled_overrides_global_disabled(monday_program, email_type):
+    """Per-program enabled=True must still send even when global is False."""
+    from core.models import ProgramOrderWindow
+
+    _make_participant_with_user(monday_program, suffix="pgm_enabled")
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+
+    global_settings = OrderWindowSettings.get_settings()
+    global_settings.enabled = False
+    global_settings.save()
+
+    ProgramOrderWindow.objects.create(program=monday_program, enabled=True)
+
+    try:
+        frozen_now = opens_at + timedelta(minutes=1)
+        mock_send = _run_task_frozen_at(frozen_now)
+        mock_send.assert_called_once()
+    finally:
+        global_settings.enabled = True
+        global_settings.save()
+
+
+# ---------------------------------------------------------------------------
+# 16. Participant whose User has an empty email is skipped
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_empty_email_participant_skipped(monday_program, email_type):
+    """Participants whose linked User has email='' must not be dispatched."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    user = User.objects.create_user(
+        username="noemail_user",
+        email="",
+        password="pass",
+    )
+    p = Participant(
+        name="No Email",
+        email="placeholder@example.com",
+        program=monday_program,
+        active=True,
+        user=user,
+        adults=1,
+    )
+    p._skip_onboarding_signal = True
+    p.save()
+    AccountBalance.objects.get_or_create(
+        participant=p,
+        defaults={"base_balance": Decimal("50.00")},
+    )
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    mock_send.assert_not_called()
+

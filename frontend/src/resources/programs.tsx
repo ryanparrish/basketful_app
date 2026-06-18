@@ -141,12 +141,21 @@ const OrderWindowTab = () => {
 
   const applyOverride = async () => {
     if (!record?.id) return;
-    await fetch(`${API_URL}/api/v1/programs/${record.id}/order-window/override/`, {
+    if (!expiresAt) {
+      alert('Expiry time is required.');
+      return;
+    }
+    const res = await fetch(`${API_URL}/api/v1/programs/${record.id}/order-window/override/`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({ force_status: forceStatus, expires_at: expiresAt, reason }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail || `Error applying override (${res.status}).`);
+      return;
+    }
     setOverrideOpen(false);
     fetchStatus();
   };

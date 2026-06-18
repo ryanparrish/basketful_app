@@ -346,6 +346,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.account.tasks.order_window.notify_participants_order_window_opened',
         'schedule': crontab(minute='*/10'),  # Every 10 minutes
     },
+    'retry-failed-emails': {
+        'task': 'apps.account.tasks.email.retry_failed_emails',
+        'schedule': crontab(hour='*/6', minute=0),  # Every 6 hours
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']
