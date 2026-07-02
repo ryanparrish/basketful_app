@@ -176,19 +176,22 @@ const CustomLayout = ({ children }: { children: ReactNode }) => {
     };
   }, [notify]);
 
-  return <Layout menu={CustomMenu}>{children}</Layout>;
+  return (
+    <PermissionProvider>
+      <Layout menu={CustomMenu}>{children}</Layout>
+    </PermissionProvider>
+  );
 };
 
 const App = () => (
-  <PermissionProvider>
-    <Admin
-      authProvider={authProvider}
-      dataProvider={dataProvider}
-      dashboard={Dashboard}
-      title="Basketful Admin"
-      layout={CustomLayout}
-      loginPage={LoginPage}
-    >
+  <Admin
+    authProvider={authProvider}
+    dataProvider={dataProvider}
+    dashboard={Dashboard}
+    title="Basketful Admin"
+    layout={CustomLayout}
+    loginPage={LoginPage}
+  >
     {/* Core Resources */}
     <Resource
       name="participants"
@@ -409,7 +412,6 @@ const App = () => (
       <Route path="/coach-dashboard" element={<CoachDashboard />} />
     </CustomRoutes>
   </Admin>
-  </PermissionProvider>
 );
 
 export default App;
