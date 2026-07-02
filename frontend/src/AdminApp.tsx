@@ -9,6 +9,7 @@ import { SESSION_EXPIRED_EVENT } from './lib/api/apiClient.ts';
 
 // Providers
 import { authProvider, dataProvider } from './providers';
+import { PermissionProvider } from './contexts/PermissionContext';
 
 // Resources
 import {
@@ -179,14 +180,15 @@ const CustomLayout = ({ children }: { children: ReactNode }) => {
 };
 
 const App = () => (
-  <Admin
-    authProvider={authProvider}
-    dataProvider={dataProvider}
-    dashboard={Dashboard}
-    title="Basketful Admin"
-    layout={CustomLayout}
-    loginPage={LoginPage}
-  >
+  <PermissionProvider>
+    <Admin
+      authProvider={authProvider}
+      dataProvider={dataProvider}
+      dashboard={Dashboard}
+      title="Basketful Admin"
+      layout={CustomLayout}
+      loginPage={LoginPage}
+    >
     {/* Core Resources */}
     <Resource
       name="participants"
@@ -407,6 +409,7 @@ const App = () => (
       <Route path="/coach-dashboard" element={<CoachDashboard />} />
     </CustomRoutes>
   </Admin>
+  </PermissionProvider>
 );
 
 export default App;
