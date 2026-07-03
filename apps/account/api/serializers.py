@@ -152,6 +152,8 @@ class ParticipantSerializer(serializers.ModelSerializer):
     balances = serializers.SerializerMethodField()
     base_balance = serializers.SerializerMethodField()
     household_size = serializers.SerializerMethodField()
+    account_balance_id = serializers.SerializerMethodField()
+    has_account = serializers.SerializerMethodField()
     program_name = serializers.CharField(source='program.name', read_only=True)
     coach_name = serializers.CharField(
         source='assigned_coach.name', read_only=True
@@ -168,6 +170,7 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'program', 'program_name', 'assigned_coach', 'coach_name',
             'user', 'user_username', 'create_user',
             'allergy', 'active', 'archived_at', 'balances', 'base_balance',
+            'account_balance_id', 'has_account',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'customer_number', 'archived_at', 'created_at', 'updated_at']
@@ -180,6 +183,17 @@ class ParticipantSerializer(serializers.ModelSerializer):
             return str(obj.accountbalance.base_balance)
         except AccountBalance.DoesNotExist:
             return '0'
+
+    def get_account_balance_id(self, obj):
+        """Return the ID of the associated AccountBalance, or None."""
+        try:
+            return obj.accountbalance.id
+        except AccountBalance.DoesNotExist:
+            return None
+
+    def get_has_account(self, obj):
+        """Return True if the participant has an AccountBalance."""
+        return hasattr(obj, 'accountbalance')
 
     def get_household_size(self, obj):
         return obj.household_size()
