@@ -293,63 +293,83 @@ export const BulkVoucherCreate = () => {
               {/* Participant Selection - Autocomplete Style */}
               {mode === 'select' && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
                     Search and select participants:
                   </Typography>
                   
                   {participantsLoading ? (
                     <CircularProgress size={24} />
                   ) : (
-                    <Autocomplete
-                      options={participants?.filter(p => p.account_balance_id !== null) || []}
-                      getOptionLabel={(option) => `${option.name} (${option.customer_number})`}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Search by name or customer number"
-                          placeholder="Start typing to search..."
-                        />
-                      )}
-                      onChange={(_, value) => handleAddParticipant(value)}
-                      value={null}
-                      isOptionEqualToValue={(option, value) => option.id === value.id}
-                      filterOptions={(options, { inputValue }) => {
-                        const filtered = options.filter(option => 
-                          option.name.toLowerCase().includes(inputValue.toLowerCase()) ||
-                          option.customer_number?.toLowerCase().includes(inputValue.toLowerCase())
-                        );
-                        return filtered;
-                      }}
-                    />
-                  )}
-
-                  {/* Selected Participants List */}
-                  {selectedParticipants.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="subtitle2">
-                          Selected ({selectedParticipants.length}):
-                        </Typography>
-                        <Button 
-                          size="small" 
-                          onClick={handleDeselectAll}
-                          variant="text"
-                        >
-                          Clear All
-                        </Button>
-                      </Box>
-                      <Stack spacing={1}>
-                        {selectedParticipants.map((participant) => (
-                          <Chip
-                            key={participant.id}
-                            label={`${participant.name} (${participant.customer_number})`}
-                            onDelete={() => handleRemoveParticipant(participant.id)}
-                            deleteIcon={<CloseIcon />}
-                            sx={{ justifyContent: 'space-between', px: 1 }}
+                    <>
+                      <Autocomplete
+                        options={participants?.filter(p => p.account_balance_id !== null) || []}
+                        getOptionLabel={(option) => `${option.name} (${option.customer_number})`}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Search by name or customer number"
+                            placeholder="Type to search, click to add..."
+                            helperText="Search for a participant and click their name to add them to your selection"
                           />
-                        ))}
-                      </Stack>
-                    </Box>
+                        )}
+                        onChange={(_, value) => handleAddParticipant(value)}
+                        value={null}
+                        isOptionEqualToValue={(option, value) => option.id === value.id}
+                        filterOptions={(options, { inputValue }) => {
+                          const filtered = options.filter(option => 
+                            option.name.toLowerCase().includes(inputValue.toLowerCase()) ||
+                            option.customer_number?.toLowerCase().includes(inputValue.toLowerCase())
+                          );
+                          return filtered;
+                        }}
+                      />
+
+                      {/* Selected Participants List - Always show */}
+                      <Box sx={{ mt: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            Selected Participants ({selectedParticipants.length}):
+                          </Typography>
+                          {selectedParticipants.length > 0 && (
+                            <Button 
+                              size="small" 
+                              onClick={handleDeselectAll}
+                              variant="text"
+                            >
+                              Clear All
+                            </Button>
+                          )}
+                        </Box>
+                        {selectedParticipants.length === 0 ? (
+                          <Paper 
+                            variant="outlined" 
+                            sx={{ 
+                              p: 3, 
+                              textAlign: 'center', 
+                              bgcolor: '#f9f9f9',
+                              border: '2px dashed #ddd'
+                            }}
+                          >
+                            <Typography variant="body2" color="text.secondary">
+                              No participants selected yet.<br/>
+                              Search above and click on a participant to add them here.
+                            </Typography>
+                          </Paper>
+                        ) : (
+                          <Stack spacing={1}>
+                            {selectedParticipants.map((participant) => (
+                              <Chip
+                                key={participant.id}
+                                label={`${participant.name} (${participant.customer_number})`}
+                                onDelete={() => handleRemoveParticipant(participant.id)}
+                                deleteIcon={<CloseIcon />}
+                                sx={{ justifyContent: 'space-between', px: 1 }}
+                              />
+                            ))}
+                          </Stack>
+                        )}
+                      </Box>
+                    </>
                   )}
                 </Box>
               )}
