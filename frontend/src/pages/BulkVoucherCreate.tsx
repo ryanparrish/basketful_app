@@ -90,6 +90,7 @@ export const BulkVoucherCreate = () => {
   
   // For select mode - store full participant objects for display
   const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([]);
+  const [autocompleteInputValue, setAutocompleteInputValue] = useState('');
   
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -312,8 +313,15 @@ export const BulkVoucherCreate = () => {
                             helperText="Search for a participant and click their name to add them to your selection"
                           />
                         )}
-                        onChange={(_, value) => handleAddParticipant(value)}
+                        onChange={(_, value) => {
+                          handleAddParticipant(value);
+                          setAutocompleteInputValue(''); // Clear the input after selection
+                        }}
                         value={null}
+                        inputValue={autocompleteInputValue}
+                        onInputChange={(_, newInputValue) => {
+                          setAutocompleteInputValue(newInputValue);
+                        }}
                         isOptionEqualToValue={(option, value) => option.id === value.id}
                         filterOptions={(options, { inputValue }) => {
                           const filtered = options.filter(option => 
