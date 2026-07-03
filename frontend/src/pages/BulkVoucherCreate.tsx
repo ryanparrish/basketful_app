@@ -135,7 +135,18 @@ export const BulkVoucherCreate = () => {
   };
 
   const handleAddParticipant = (participant: Participant | null) => {
-    if (!participant || !participant.account_balance_id) return;
+    console.log('handleAddParticipant called with:', participant);
+    
+    if (!participant) {
+      console.log('No participant provided');
+      return;
+    }
+    
+    if (!participant.account_balance_id) {
+      console.log('Participant missing account_balance_id:', participant);
+      notify('This participant does not have an account balance', { type: 'warning' });
+      return;
+    }
     
     // Check if already selected
     if (selectedParticipants.some(p => p.id === participant.id)) {
@@ -143,7 +154,9 @@ export const BulkVoucherCreate = () => {
       return;
     }
     
+    console.log('Adding participant to selection:', participant);
     setSelectedParticipants((prev) => [...prev, participant]);
+    notify(`Added ${participant.name}`, { type: 'success' });
   };
 
   const handleRemoveParticipant = (participantId: number) => {
