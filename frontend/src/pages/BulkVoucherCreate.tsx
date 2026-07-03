@@ -1,10 +1,13 @@
 /**
- * Bulk Voucher Creation Page - Two-Step Flow
+ * Voucher Creation Page - Flexible Flow
  * 
- * Step 1: Configuration (mode, program, voucher type, notes)
- * Step 2: Review & Select Participants
+ * Supports:
+ * - Creating vouchers for everyone in a program
+ * - Creating vouchers for specific selected participants
+ * 
+ * Can be initialized with URL param ?mode=select for quick single-participant flow
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Title,
   useNotify,
@@ -12,6 +15,7 @@ import {
   useGetList,
   Loading,
 } from 'react-admin';
+import { useSearchParams } from 'react-router-dom';
 import apiClient from '../lib/api/apiClient.ts';
 import {
   Card,
@@ -36,7 +40,11 @@ import {
   Typography,
   Paper,
   Divider,
+  Autocomplete,
+  IconButton,
+  Stack,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 
 interface Program {
   id: number;
@@ -62,12 +70,14 @@ interface PreviewResponse {
 export const BulkVoucherCreate = () => {
   const notify = useNotify();
   const redirect = useRedirect();
+  const [searchParams] = useSearchParams();
 
   // Step management
   const [step, setStep] = useState<1 | 2>(1);
 
-  // Form state
-  const [mode, setMode] = useState<'program' | 'select'>('program');
+  // Form state - check URL params for initial mode
+  const initialMode = (searchParams.get('mode') === 'select' ? 'select' : 'program') as 'program' | 'select';
+  const [mode, setMode] = useState<'program' | 'select'>(initialMode);
   const [selectedProgram, setSelectedProgram] = useState<number | ''>('');
   const [voucherType, setVoucherType] = useState<'grocery' | 'life'>('grocery');
   const [quantity, setQuantity] = useState<number>(1);
@@ -78,8 +88,8 @@ export const BulkVoucherCreate = () => {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<number[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   
-  // For select mode
-  const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
+  // For select mode - store full participant objects for display
+  const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([]);
   
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -123,12 +133,20 @@ export const BulkVoucherCreate = () => {
     setLoadingParticipants(false);
   };
 
-  const handleAccountToggle = (accountId: number) => {
-    setSelectedAccounts((prev) =>
-      prev.includes(accountId)
-        ? prev.filter((id) => id !== accountId)
-        : [...prev, accountId]
-    );
+  const handleAddParticipant = (participant: Participant | null) => {
+    if (!participant || !participant.account_balance_id) return;
+    
+    // Check if already selected
+    if (selectedParticipants.some(p => p.id === participant.id)) {
+      notify('Participant already selected', { type: 'info' });
+      return;
+    }
+    
+    setSelectedParticipants((prev) => [...prev, participant]);
+  };
+
+  const handleRemoveParticipant = (participantId: number) => {
+    setSelectedParticipants((prev) => prev.filter((p) => p.id !== participantId));
   };
 
   const handleParticipantToggle = (participantId: number) => {
@@ -146,8 +164,8 @@ export const BulkVoucherCreate = () => {
         .map(p => p.id);
       setSelectedParticipantIds(allIds);
     } else if (participants) {
-      const allIds = participants.map((p) => p.account_balance_id).filter(Boolean);
-      setSelectedAccounts(allIds as number[]);
+      const eligible = participants.filter(p => p.account_balance_id !== null);
+      setSelectedParticipants(eligible);
     }
   };
 
@@ -155,7 +173,7 @@ export const BulkVoucherCreate = () => {
     if (mode === 'program') {
       setSelectedParticipantIds([]);
     } else {
-      setSelectedAccounts([]);
+      setSelectedParticipants([]);
     }
   };
 
@@ -163,7 +181,7 @@ export const BulkVoucherCreate = () => {
     if (mode === 'program' && selectedProgram) {
       await loadProgramParticipants(selectedProgram as number);
       setStep(2);
-    } else if (mode === 'select' && selectedAccounts.length > 0) {
+    } else if (mode === 'select' && selectedParticipants.length > 0) {
       setStep(2);
     } else {
       notify('Please select a program or at least one participant', {
@@ -197,8 +215,8 @@ export const BulkVoucherCreate = () => {
       if (mode === 'program' && selectedProgram) {
         payload.program_id = selectedProgram as number;
         payload.participant_ids = selectedParticipantIds;
-      } else if (mode === 'select' && selectedAccounts.length > 0) {
-        payload.account_ids = selectedAccounts;
+      } else if (mode === 'select' && selectedParticipants.length > 0) {
+        payload.account_ids = selectedParticipants.map(p => p.account_balance_id!).filter(Boolean);
       } else {
         notify('Please select at least one participant', {
           type: 'warning',
@@ -230,12 +248,12 @@ export const BulkVoucherCreate = () => {
 
   return (
     <div>
-      <Title title="Bulk Voucher Creation" />
+      <Title title="Create Vouchers" />
 
       <Card sx={{ maxWidth: 900, m: 2 }}>
         <CardHeader 
-          title="Create Vouchers in Bulk" 
-          subheader={`Step ${step} of 2: ${step === 1 ? 'Configuration' : 'Review & Select Participants'}`}
+          title="Create Vouchers" 
+          subheader={`Step ${step} of 2: ${step === 1 ? 'Configuration' : 'Review & Confirm'}`}
         />
         <CardContent>
           {/* Step 1: Configuration */}
@@ -243,14 +261,14 @@ export const BulkVoucherCreate = () => {
             <>
               {/* Mode Selection */}
               <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Creation Mode</InputLabel>
+                <InputLabel>Who should receive these vouchers?</InputLabel>
                 <Select
                   value={mode}
                   onChange={(e) => setMode(e.target.value as 'program' | 'select')}
-                  label="Creation Mode"
+                  label="Who should receive these vouchers?"
                 >
-                  <MenuItem value="program">By Program (All Active Participants)</MenuItem>
-                  <MenuItem value="select">Select Individual Participants</MenuItem>
+                  <MenuItem value="program">Everyone in a Program</MenuItem>
+                  <MenuItem value="select">Specific Participants</MenuItem>
                 </Select>
               </FormControl>
 
@@ -272,70 +290,69 @@ export const BulkVoucherCreate = () => {
                 </FormControl>
               )}
 
-              {/* Participant Selection */}
+              {/* Participant Selection - Autocomplete Style */}
               {mode === 'select' && (
                 <Box sx={{ mb: 3 }}>
-                  <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-                    <Button variant="outlined" size="small" onClick={handleSelectAll}>
-                      Select All
-                </Button>
-                <Button variant="outlined" size="small" onClick={handleDeselectAll}>
-                  Deselect All
-                </Button>
-                <Chip
-                  label={`${selectedAccounts.length} selected`}
-                  color="primary"
-                />
-              </Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Search and select participants:
+                  </Typography>
+                  
+                  {participantsLoading ? (
+                    <CircularProgress size={24} />
+                  ) : (
+                    <Autocomplete
+                      options={participants?.filter(p => p.account_balance_id !== null) || []}
+                      getOptionLabel={(option) => `${option.name} (${option.customer_number})`}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Search by name or customer number"
+                          placeholder="Start typing to search..."
+                        />
+                      )}
+                      onChange={(_, value) => handleAddParticipant(value)}
+                      value={null}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                      filterOptions={(options, { inputValue }) => {
+                        const filtered = options.filter(option => 
+                          option.name.toLowerCase().includes(inputValue.toLowerCase()) ||
+                          option.customer_number?.toLowerCase().includes(inputValue.toLowerCase())
+                        );
+                        return filtered;
+                      }}
+                    />
+                  )}
 
-              {participantsLoading ? (
-                <CircularProgress />
-              ) : (
-                <Box
-                  sx={{
-                    maxHeight: 300,
-                    overflow: 'auto',
-                    border: '1px solid #ddd',
-                    borderRadius: 1,
-                  }}
-                >
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell padding="checkbox" />
-                        <TableCell>Name</TableCell>
-                        <TableCell>Customer #</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(participants || [])
-                        .filter((participant) => participant.account_balance_id !== null)
-                        .map((participant) => (
-                          <TableRow
+                  {/* Selected Participants List */}
+                  {selectedParticipants.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2">
+                          Selected ({selectedParticipants.length}):
+                        </Typography>
+                        <Button 
+                          size="small" 
+                          onClick={handleDeselectAll}
+                          variant="text"
+                        >
+                          Clear All
+                        </Button>
+                      </Box>
+                      <Stack spacing={1}>
+                        {selectedParticipants.map((participant) => (
+                          <Chip
                             key={participant.id}
-                            hover
-                            onClick={() =>
-                              handleAccountToggle(participant.account_balance_id!)
-                            }
-                            sx={{ cursor: 'pointer' }}
-                          >
-                            <TableCell padding="checkbox">
-                              <Checkbox
-                                checked={selectedAccounts.includes(
-                                  participant.account_balance_id!
-                                )}
-                              />
-                            </TableCell>
-                            <TableCell>{participant.name}</TableCell>
-                            <TableCell>{participant.customer_number}</TableCell>
-                          </TableRow>
+                            label={`${participant.name} (${participant.customer_number})`}
+                            onDelete={() => handleRemoveParticipant(participant.id)}
+                            deleteIcon={<CloseIcon />}
+                            sx={{ justifyContent: 'space-between', px: 1 }}
+                          />
                         ))}
-                    </TableBody>
-                  </Table>
+                      </Stack>
+                    </Box>
+                  )}
                 </Box>
               )}
-            </Box>
-          )}
 
           {/* Voucher Type */}
           <FormControl fullWidth sx={{ mb: 3 }}>
@@ -381,10 +398,10 @@ export const BulkVoucherCreate = () => {
               onClick={handleNextStep}
               disabled={
                 (mode === 'program' && !selectedProgram) ||
-                (mode === 'select' && selectedAccounts.length === 0)
+                (mode === 'select' && selectedParticipants.length === 0)
               }
             >
-              Next: Review Participants
+              Next: Review & Confirm
             </Button>
             <Button variant="outlined" onClick={() => redirect('/vouchers')}>
               Cancel
@@ -504,6 +521,58 @@ export const BulkVoucherCreate = () => {
                       </Table>
                     </Box>
                   )}
+                </Box>
+              )}
+
+              {/* Selected Participants Display for Select Mode */}
+              {mode === 'select' && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
+                    Selected Participants ({selectedParticipants.length})
+                  </Typography>
+                  <Box
+                    sx={{
+                      maxHeight: 300,
+                      overflow: 'auto',
+                      border: '1px solid #ddd',
+                      borderRadius: 1,
+                      p: 2,
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      {selectedParticipants.map((participant) => (
+                        <Box
+                          key={participant.id}
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            p: 1,
+                            bgcolor: '#f5f5f5',
+                            borderRadius: 1,
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="body1" fontWeight="medium">
+                              {participant.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {participant.customer_number} • {participant.email}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                  <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button 
+                      variant="outlined" 
+                      size="small" 
+                      onClick={handleBackStep}
+                    >
+                      Add/Remove Participants
+                    </Button>
+                  </Box>
                 </Box>
               )}
 

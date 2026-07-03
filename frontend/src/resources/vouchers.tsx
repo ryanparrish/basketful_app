@@ -68,14 +68,14 @@ const voucherFilters = [
 const ListActions = () => (
   <TopToolbar>
     <FilterButton />
-    <CreateButton />
-    <BulkCreateButton />
+    <CreateButton label="Create Vouchers" />
     <BulkStatusUpdateButton />
     <ExportButton />
   </TopToolbar>
 );
 
-// Bulk Create Button
+// Bulk Create Button (deprecated - now handled by standard Create)
+// Keeping for backwards compatibility with any bookmarks
 const BulkCreateButton = () => (
   <Button
     label="Bulk Create"
@@ -454,18 +454,13 @@ export const VoucherEdit = () => {
   return null;
 };
 
-export const VoucherCreate = () => (
-  <Create>
-    <SimpleForm>
-      <ReferenceInput source="account" reference="account-balances" required>
-        <AutocompleteInput optionText="participant_name" />
-      </ReferenceInput>
-      <SelectInput
-        source="voucher_type"
-        choices={VOUCHER_TYPE_CHOICES}
-        defaultValue="grocery"
-      />
-      <TextInput source="notes" multiline rows={3} />
-    </SimpleForm>
-  </Create>
-);
+export const VoucherCreate = () => {
+  const redirect = useRedirect();
+  
+  // Redirect to bulk create with select mode
+  useEffect(() => {
+    redirect('/vouchers/bulk-create?mode=select');
+  }, [redirect]);
+  
+  return null;
+};
