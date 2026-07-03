@@ -142,9 +142,9 @@ export const BulkVoucherCreate = () => {
       return;
     }
     
-    if (!participant.account_balance_id) {
-      console.log('Participant missing account_balance_id:', participant);
-      notify('This participant does not have an account balance', { type: 'warning' });
+    if (!participant.has_account || !participant.account_balance_id) {
+      console.log('Participant missing account:', participant);
+      notify(`${participant.name} does not have an active account balance`, { type: 'warning' });
       return;
     }
     
@@ -316,7 +316,7 @@ export const BulkVoucherCreate = () => {
                   ) : (
                     <>
                       <Autocomplete
-                        options={participants?.filter(p => p.account_balance_id !== null) || []}
+                        options={participants?.filter(p => p.has_account && p.account_balance_id) || []}
                         getOptionLabel={(option) => `${option.name} (${option.customer_number})`}
                         renderInput={(params) => (
                           <TextField
