@@ -193,7 +193,7 @@ class Order(models.Model):
     def clean(self):
         """
         Validate order constraints:
-        - Duplicate active order guard (BEH-005): only one confirmed/packing order
+        - Duplicate active order guard (BEH-005): only one pending/confirmed/packing order
         - Hygiene balance
         - Category limits
         - Voucher totals
@@ -201,10 +201,22 @@ class Order(models.Model):
         super().clean()
 
         # --- Duplicate active order guard ---
-        # A participant may only have one confirmed/packing order at a time.
-        # Pending orders are pre-validation drafts and do not count toward this
-        # limit. Cancelled and completed orders also do not count.
-        ACTIVE_STATUSES = {"confirmed", "packing"}
+        # A participant may only have one pending, confirmed, or packing order
+        # at a time. Cancelled and completed orders do not count, so placing a
+        # new order after one is cancelled or fulfilled is always allowed.
+        #
+        # Pending orders count as of the Issue #50 fix: pending orders don't
+        # reduce available_balance (vouchers are only consumed at
+        # confirmation), so multiple simultaneous pending orders could each
+        # independently pass balance validation against the same unconsumed
+        # funds — e.g. a participant creates a $20 pending order, their
+        # available_balance is unchanged, so a second $45 pending order also
+        # validates fine even though the two combined exceed what they can
+        # actually afford. Blocking a second pending order closes this at
+        # the source, rather than relying on confirmation-time checks (which
+        # don't reliably run — see Order.confirm()'s use of
+        # save(update_fields=[...]), which skips this guard entirely).
+        ACTIVE_STATUSES = {"pending", "confirmed", "packing"}
         if self.status in ACTIVE_STATUSES:
             existing_qs = Order.objects.filter(
                 account=self.account,

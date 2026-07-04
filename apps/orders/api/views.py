@@ -360,14 +360,37 @@ class OrderViewSet(viewsets.ModelViewSet):
                         updated_ids.append(order.id)
 
             if updated_ids:
-                # Use queryset.update() to bypass the model's save() method,
-                # which has side-effects (voucher consumption, stock decrement)
-                # that are only appropriate during the normal order-creation flow —
-                # not for admin bulk status corrections.
-                Order.objects.filter(id__in=updated_ids).update(
-                    status=new_status,
-                    updated_at=timezone.now(),
-                )
+                # A pending order moving to confirmed is a genuine FIRST
+                # confirmation — the exact same operation as the single-order
+                # confirm() action, just triggered from the bulk UI. It must
+                # consume vouchers and decrement stock, so it goes through
+                # Order.confirm() individually rather than the raw update()
+                # below. (Previously this used queryset.update() for every
+                # transition uniformly, which silently skipped resource
+                # consumption for bulk-confirmed orders — see Issue #50.)
+                updated_ids_set = set(updated_ids)
+                first_confirmation_ids = {
+                    o.id for o in orders
+                    if o.id in updated_ids_set
+                    and o.status == 'pending'
+                    and new_status == 'confirmed'
+                }
+                for order in orders:
+                    if order.id in first_confirmation_ids:
+                        order.confirm()
+
+                # Every other transition (confirmed→packing, packing→completed,
+                # any bypass correction among already-active statuses, or a
+                # bypass re-confirm from packing/completed) represents a status
+                # correction, not a first confirmation — resources already
+                # moved the first time, so queryset.update() correctly bypasses
+                # save() here to avoid re-consuming them.
+                other_ids = [oid for oid in updated_ids if oid not in first_confirmation_ids]
+                if other_ids:
+                    Order.objects.filter(id__in=other_ids).update(
+                        status=new_status,
+                        updated_at=timezone.now(),
+                    )
 
             # Audit every bypassed transition to OrderValidationLog.
             if bypassed_orders:
