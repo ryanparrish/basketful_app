@@ -15,10 +15,11 @@ import PaymentIcon from '@mui/icons-material/Payment';
 
 // Providers
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { CartProvider } from './providers/CartProvider';
 import { ValidationProvider } from './providers/ValidationContext';
 import { AuthProvider } from './providers/AuthContext';
-import { dataProvider, authProvider } from './providers/refine';
+import { dataProvider, authProvider, i18nProvider } from './providers/refine';
 
 // Theme
 import { useThemeConfig, defaultMuiTheme } from './shared/theme/dynamicTheme';
@@ -120,6 +121,62 @@ const ThemedApp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
+// Refine wrapper — lives inside a component so resource labels re-render
+// when the language changes
+const RefineApp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
+
+  return (
+    <Refine
+      dataProvider={dataProvider}
+      authProvider={authProvider}
+      routerProvider={routerProvider}
+      notificationProvider={useNotificationProvider}
+      i18nProvider={i18nProvider}
+      resources={[
+        {
+          name: 'products',
+          list: '/products',
+          meta: {
+            label: t('nav.shop'),
+            icon: <ShoppingCartIcon />,
+          },
+        },
+        {
+          name: 'checkout',
+          list: '/checkout',
+          meta: {
+            label: t('nav.checkout'),
+            icon: <PaymentIcon />,
+          },
+        },
+        {
+          name: 'orders',
+          list: '/orders',
+          meta: {
+            label: t('nav.orderHistory'),
+            icon: <ReceiptLongIcon />,
+          },
+        },
+        {
+          name: 'account',
+          list: '/account',
+          meta: {
+            label: t('nav.myAccount'),
+            icon: <AccountCircleIcon />,
+          },
+        },
+      ]}
+      options={{
+        syncWithLocation: true,
+        warnWhenUnsavedChanges: false,
+      }}
+    >
+      {children}
+    </Refine>
+  );
+};
+
 // Main app with Refine
 const App: React.FC = () => {
   return (
@@ -129,50 +186,7 @@ const App: React.FC = () => {
           <ThemedApp>
             <OfflineBanner />
             <SessionExpiredDialog />
-            <Refine
-            dataProvider={dataProvider}
-            authProvider={authProvider}
-            routerProvider={routerProvider}
-            notificationProvider={useNotificationProvider}
-            resources={[
-              {
-                name: 'products',
-                list: '/products',
-                meta: {
-                  label: 'Shop',
-                  icon: <ShoppingCartIcon />,
-                },
-              },
-              {
-                name: 'checkout',
-                list: '/checkout',
-                meta: {
-                  label: 'Checkout',
-                  icon: <PaymentIcon />,
-                },
-              },
-              {
-                name: 'orders',
-                list: '/orders',
-                meta: {
-                  label: 'Order History',
-                  icon: <ReceiptLongIcon />,
-                },
-              },
-              {
-                name: 'account',
-                list: '/account',
-                meta: {
-                  label: 'My Account',
-                  icon: <AccountCircleIcon />,
-                },
-              },
-            ]}
-            options={{
-              syncWithLocation: true,
-              warnWhenUnsavedChanges: false,
-            }}
-          >
+            <RefineApp>
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<LoginPage />} />
@@ -201,7 +215,7 @@ const App: React.FC = () => {
               <Route path="/" element={<Navigate to="/products" replace />} />
               <Route path="*" element={<ErrorComponent />} />
             </Routes>
-          </Refine>
+          </RefineApp>
           </ThemedApp>
         </AuthProvider>
       </QueryClientProvider>

@@ -34,6 +34,7 @@ export interface User {
   name: string;
   first_name: string;
   last_name: string;
+  preferred_language?: string | null;
 }
 
 export interface TokenResponse {
@@ -182,13 +183,6 @@ export interface OrderListItem {
   notes?: string;
 }
 
-export interface ParticipantProfile {
-  id: number;
-  customer_number: string;
-  name: string;
-  email: string;
-}
-
 export interface ParticipantProgram {
   id: number;
   name: string;
@@ -208,6 +202,7 @@ export interface ParticipantCoach {
 export interface ParticipantMeProfile {
   name: string;
   customer_number: string;
+  preferred_language: string;
   program: ParticipantProgram | null;
   coach: ParticipantCoach | null;
 }

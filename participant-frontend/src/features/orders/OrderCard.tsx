@@ -26,39 +26,42 @@ import {
   Cancel,
   Pending,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import type { Order, OrderListItem } from '../../shared/types/api';
+import { useFormatters } from '../../shared/hooks/useFormatters';
+import { translateDynamic } from '../../i18n';
 
 interface OrderCardProps {
   order: Order | OrderListItem;
 }
 
-const getStatusConfig = (status: string) => {
-  const configs: Record<string, { color: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info'; icon: React.ReactNode; label: string }> = {
-    pending: { color: 'warning', icon: <Pending />, label: 'Pending' },
-    confirmed: { color: 'info', icon: <Schedule />, label: 'Confirmed' },
-    processing: { color: 'primary', icon: <Schedule />, label: 'Processing' },
-    shipped: { color: 'secondary', icon: <LocalShipping />, label: 'Shipped' },
-    delivered: { color: 'success', icon: <CheckCircle />, label: 'Delivered' },
-    completed: { color: 'success', icon: <CheckCircle />, label: 'Completed' },
-    cancelled: { color: 'error', icon: <Cancel />, label: 'Cancelled' },
-  };
-  return configs[status?.toLowerCase()] || { color: 'default', icon: <Pending />, label: status };
+type StatusChipColor = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info';
+
+const STATUS_CONFIGS: Record<string, { color: StatusChipColor; icon: React.ReactNode }> = {
+  pending: { color: 'warning', icon: <Pending /> },
+  confirmed: { color: 'info', icon: <Schedule /> },
+  processing: { color: 'primary', icon: <Schedule /> },
+  shipped: { color: 'secondary', icon: <LocalShipping /> },
+  delivered: { color: 'success', icon: <CheckCircle /> },
+  completed: { color: 'success', icon: <CheckCircle /> },
+  cancelled: { color: 'error', icon: <Cancel /> },
 };
 
 export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
+  const { t } = useTranslation();
+  const { formatCurrency, formatDate, formatTime } = useFormatters();
   const [expanded, setExpanded] = useState(false);
 
-  const statusConfig = getStatusConfig(order.status);
+  const statusKey = order.status?.toLowerCase();
+  const statusConfig = STATUS_CONFIGS[statusKey] || { color: 'default' as StatusChipColor, icon: <Pending /> };
+  // Status labels are keyed by the backend status code; an unknown status
+  // falls back to displaying the raw code
+  const statusLabel = translateDynamic(`orders.status.${statusKey}`, {
+    defaultValue: order.status,
+  });
   const orderDate = new Date(order.created_at || order.order_date);
-  const formattedDate = orderDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-  const formattedTime = orderDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const formattedDate = formatDate(orderDate);
+  const formattedTime = formatTime(orderDate);
 
   const itemCount = order.items?.length || 0;
   const totalQuantity = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
@@ -77,15 +80,15 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
         >
           <Box>
             <Typography variant="subtitle1" fontWeight={600}>
-              Order #{order.id}
+              {t('orders.orderNumber', { id: order.id })}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {formattedDate} at {formattedTime}
+              {t('orders.dateAtTime', { date: formattedDate, time: formattedTime })}
             </Typography>
           </Box>
           <Chip
             icon={statusConfig.icon as React.ReactElement}
-            label={statusConfig.label}
+            label={statusLabel}
             color={statusConfig.color}
             size="small"
           />
@@ -99,10 +102,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
           sx={{ mt: 2 }}
         >
           <Typography variant="body2" color="text.secondary">
-            {itemCount} {itemCount === 1 ? 'item' : 'items'} ({totalQuantity} total)
+            {t('orders.itemsSummary', { count: itemCount, total: totalQuantity })}
           </Typography>
           <Typography variant="h6" color="primary" fontWeight={600}>
-            ${Number(order.total || order.total_price).toFixed(2)}
+            {formatCurrency(order.total || order.total_price)}
           </Typography>
         </Stack>
 
@@ -112,7 +115,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
             onClick={() => setExpanded(!expanded)}
             size="small"
             aria-expanded={expanded}
-            aria-label={expanded ? 'Show less' : 'Show details'}
+            aria-label={expanded ? t('orders.showLess') : t('orders.showDetails')}
           >
             {expanded ? <ExpandLess /> : <ExpandMore />}
           </IconButton>
@@ -122,17 +125,17 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
         <Collapse in={expanded}>
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle2" gutterBottom>
-            Items
+            {t('orders.itemsHeading')}
           </Typography>
           <List disablePadding dense>
             {order.items?.map((item, idx) => (
               <ListItem key={idx} disableGutters>
                 <ListItemText
-                  primary={item.product_name || `Product #${item.product_id || item.product}`}
-                  secondary={`Qty: ${item.quantity}`}
+                  primary={item.product_name || t('orders.productFallback', { id: item.product_id || item.product })}
+                  secondary={t('checkout.quantity', { count: item.quantity })}
                 />
                 <Typography variant="body2">
-                  ${(Number(item.price) * item.quantity).toFixed(2)}
+                  {formatCurrency(Number(item.price) * item.quantity)}
                 </Typography>
               </ListItem>
             ))}
@@ -142,7 +145,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
             <>
               <Divider sx={{ my: 2 }} />
               <Typography variant="subtitle2" gutterBottom>
-                Notes
+                {t('orders.notesHeading')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {order.notes}

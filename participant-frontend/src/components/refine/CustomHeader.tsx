@@ -25,14 +25,17 @@ import {
 } from '@mui/icons-material';
 import { useLogout, useGetIdentity, useGo } from '@refinedev/core';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useCartContext } from '../../providers/CartProvider';
 import { CartDrawer } from '../../features/cart';
 import { getThemeConfig } from '../../shared/api/endpoints';
+import { LanguageSwitcher } from '../LanguageSwitcher';
 import type { User } from '../../shared/types/api';
 
 export const CustomHeader: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { t } = useTranslation();
   const go = useGo();
   const { mutate: logout } = useLogout();
   const { data: user } = useGetIdentity<User>();
@@ -110,6 +113,9 @@ export const CustomHeader: React.FC = () => {
           {/* Spacer */}
           <Box sx={{ flexGrow: 1 }} />
 
+          {/* Language switcher */}
+          <LanguageSwitcher variant="menu" />
+
           {/* Desktop: Cart button */}
           {!isMobile && (
             <IconButton
@@ -176,11 +182,11 @@ export const CustomHeader: React.FC = () => {
             <Divider />
             <MenuItem onClick={handleAccount}>
               <AccountIcon sx={{ mr: 1 }} fontSize="small" />
-              My Account
+              {t('nav.myAccount')}
             </MenuItem>
             <MenuItem onClick={handleLogout}>
               <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
-              Logout
+              {t('common.logout')}
             </MenuItem>
           </Menu>
         </Toolbar>

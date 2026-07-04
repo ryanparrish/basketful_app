@@ -17,7 +17,6 @@ import type {
   OrderListItem,
   CreateOrderRequest,
   CreateOrderResponse,
-  ParticipantProfile,
   ParticipantMeProfile,
   Balances,
 } from '../types/api';
@@ -112,16 +111,14 @@ export const confirmOrder = async (orderId: number): Promise<Order> => {
   return response.data;
 };
 
-// Participant Profile
-export const getParticipantProfile = async (): Promise<ParticipantProfile> => {
-  const response = await apiClient.get('/participants/me/');
-  return response.data;
-};
-
-export const updateParticipantProfile = async (
-  data: Partial<ParticipantProfile>
-): Promise<ParticipantProfile> => {
-  const response = await apiClient.patch('/participants/me/', data);
+// Participant language preference — persists across sessions and drives
+// the language of emails and API responses
+export const updateMyPreferredLanguage = async (
+  preferredLanguage: string
+): Promise<ParticipantMeProfile> => {
+  const response = await apiClient.patch('/participants/me/profile/', {
+    preferred_language: preferredLanguage,
+  });
   return response.data;
 };
 

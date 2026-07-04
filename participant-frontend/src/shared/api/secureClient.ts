@@ -8,6 +8,7 @@
  * - Session expiry handling
  */
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import i18n from '../../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -67,6 +68,12 @@ apiClient.interceptors.request.use(
       if (csrfToken) {
         config.headers['X-CSRFToken'] = csrfToken;
       }
+    }
+
+    // Tell the backend which language to respond in (anonymous fallback;
+    // authenticated requests are served in the participant's saved language)
+    if (i18n.language) {
+      config.headers['Accept-Language'] = i18n.language;
     }
 
     return config;

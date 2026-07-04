@@ -8,50 +8,20 @@ import { useCartContext } from '../../providers/CartProvider';
 
 export const useCartValidation = () => {
   const validation = useValidation();
-  const { canCheckout, checkoutBlockedReason } = useCanCheckout();
+  const { canCheckout, checkoutBlockedReasonKey } = useCanCheckout();
   const { items, cartTotal, totalItems } = useCartContext();
 
-  // Group errors by type
-  const errorsByType = useMemo(() => {
-    const grouped: Record<string, typeof validation.errors> = {};
-    
-    validation.errors.forEach(error => {
-      const type = error.type || 'general';
-      if (!grouped[type]) {
-        grouped[type] = [];
-      }
-      grouped[type].push(error);
-    });
-    
-    return grouped;
-  }, [validation.errors]);
+  // Bucket errors by the backend's machine-readable type — never by
+  // message text, which is locale-dependent
+  const hasBudgetError = useMemo(
+    () => validation.errors.some(e => e.type === 'balance'),
+    [validation.errors]
+  );
 
-  // Check if there are budget-related errors
-  const hasBudgetError = useMemo(() => {
-    return validation.errors.some(e => 
-      e.type === 'budget' || 
-      e.type === 'over_budget' ||
-      e.message?.toLowerCase().includes('budget')
-    );
-  }, [validation.errors]);
-
-  // Check if there are quantity limit errors
-  const hasQuantityError = useMemo(() => {
-    return validation.errors.some(e => 
-      e.type === 'quantity' || 
-      e.type === 'limit' ||
-      e.message?.toLowerCase().includes('limit')
-    );
-  }, [validation.errors]);
-
-  // Check if there are availability errors
-  const hasAvailabilityError = useMemo(() => {
-    return validation.errors.some(e => 
-      e.type === 'availability' || 
-      e.message?.toLowerCase().includes('unavailable') ||
-      e.message?.toLowerCase().includes('out of stock')
-    );
-  }, [validation.errors]);
+  const hasQuantityError = useMemo(
+    () => validation.errors.some(e => e.type === 'limit'),
+    [validation.errors]
+  );
 
   // Get remaining budget computed client-side so it updates instantly as cart changes.
   // available_balance is the participant's static account balance; subtract cartTotal for live display.
@@ -100,11 +70,9 @@ export const useCartValidation = () => {
     
     // Derived state
     canCheckout,
-    checkoutBlockedReason,
-    errorsByType,
+    checkoutBlockedReasonKey,
     hasBudgetError,
     hasQuantityError,
-    hasAvailabilityError,
     remainingBudget,
     isOverBudget,
     productsWithErrors,

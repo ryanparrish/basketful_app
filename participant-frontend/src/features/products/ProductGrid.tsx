@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Grid, Box, Typography, Skeleton } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import type { Product } from '../../shared/types/api';
 import { ProductCard } from './ProductCard';
 
@@ -26,8 +27,10 @@ const ProductSkeleton: React.FC = () => (
 export const ProductGrid: React.FC<ProductGridProps> = ({
   products,
   isLoading = false,
-  emptyMessage = 'No products available',
+  emptyMessage,
 }) => {
+  const { t } = useTranslation();
+
   if (isLoading) {
     return (
       <Grid container spacing={3}>
@@ -55,7 +58,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         }}
       >
         <Typography variant="body1" color="text.secondary">
-          {emptyMessage}
+          {emptyMessage ?? t('products.empty')}
         </Typography>
       </Box>
     );

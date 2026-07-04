@@ -30,45 +30,28 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../providers/AuthContext';
 import { getBalances, getProfile } from '../shared/api/endpoints';
+import { useFormatters } from '../shared/hooks/useFormatters';
+import { translateDynamic } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { GRID_COLUMNS, PAGE_PADDING, useFullWidth } from '../shared/constants/layout';
 import type { Balances } from '../shared/types/api';
 
-const BALANCE_CARDS: {
-  key: keyof Balances;
-  label: string;
-  subtitle: string;
-  bg: string;
-}[] = [
-  {
-    key: 'full_balance',
-    label: 'Full Balance',
-    subtitle: 'Total value of all your active vouchers',
-    bg: '#00BCD4',
-  },
-  {
-    key: 'available_balance',
-    label: 'Available Balance',
-    subtitle: 'Ready to use on your next order',
-    bg: '#1976D2',
-  },
-  {
-    key: 'hygiene_balance',
-    label: 'Hygiene Balance',
-    subtitle: 'A portion of your available balance, reserved for hygiene items',
-    bg: '#F59E0B',
-  },
-  {
-    key: 'go_fresh_balance',
-    label: 'Go Fresh Balance',
-    subtitle: 'A separate per-order allowance based on household size',
-    bg: '#4CAF50',
-  },
-];
+// Holds i18n key references, never translated strings — module-level
+// constants must not capture a language
+const BALANCE_CARDS = [
+  { key: 'full_balance', bg: '#00BCD4' },
+  { key: 'available_balance', bg: '#1976D2' },
+  { key: 'hygiene_balance', bg: '#F59E0B' },
+  { key: 'go_fresh_balance', bg: '#4CAF50' },
+] as const;
 
 export const AccountPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { formatCurrency, formatTimeOfDay } = useFormatters();
   const { user, logout } = useAuth();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
@@ -101,15 +84,12 @@ export const AccountPage: React.FC = () => {
     return (first + last).toUpperCase() || user.customer_number?.[0] || '?';
   };
 
+  // Backend sends English day names (e.g. "monday"); translate via the
+  // days catalog, falling back to a capitalized version of the raw value
   const formatMeetingDay = (day: string) =>
-    day.charAt(0).toUpperCase() + day.slice(1);
-
-  const formatTime = (timeStr: string) => {
-    const [h, m] = timeStr.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
-  };
+    translateDynamic(`days.${day.toLowerCase()}`, {
+      defaultValue: day.charAt(0).toUpperCase() + day.slice(1),
+    });
 
   const getBalanceValue = (key: string): number => {
     if (!balances) return 0;
@@ -145,7 +125,7 @@ export const AccountPage: React.FC = () => {
               {user?.first_name} {user?.last_name}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Customer # {user?.customer_number}
+              {t('account.customerNumber', { number: user?.customer_number ?? '' })}
             </Typography>
             {user?.email && (
               <Typography variant="body2" color="text.secondary">
@@ -156,13 +136,14 @@ export const AccountPage: React.FC = () => {
             {isDesktop && (
               <Stack spacing={2} sx={{ mt: 3 }}>
                 <Divider />
+                <LanguageSwitcher variant="select" />
                 <Button
                   variant="outlined"
                   startIcon={<ShoppingBag />}
                   onClick={handleViewOrders}
                   fullWidth
                 >
-                  View Order History
+                  {t('account.viewOrderHistory')}
                 </Button>
                 <Button
                   variant="contained"
@@ -171,7 +152,7 @@ export const AccountPage: React.FC = () => {
                   onClick={handleLogout}
                   fullWidth
                 >
-                  Sign Out
+                  {t('common.signOut')}
                 </Button>
               </Stack>
             )}
@@ -184,7 +165,7 @@ export const AccountPage: React.FC = () => {
           <Box sx={{ mb: 3 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
               <AccountBalance color="primary" />
-              <Typography variant="h6">Your Balances</Typography>
+              <Typography variant="h6">{t('account.yourBalances')}</Typography>
             </Stack>
 
             {balancesLoading ? (
@@ -214,13 +195,13 @@ export const AccountPage: React.FC = () => {
                         sx={{ opacity: 0.9, fontWeight: 600, letterSpacing: 0.3 }}
                         gutterBottom
                       >
-                        {card.label}
+                        {t(`account.balances.${card.key}.label`)}
                       </Typography>
                       <Typography variant="h4" fontWeight={700} sx={{ my: 0.5 }}>
-                        ${getBalanceValue(card.key).toFixed(2)}
+                        {formatCurrency(getBalanceValue(card.key))}
                       </Typography>
                       <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                        {card.subtitle}
+                        {t(`account.balances.${card.key}.subtitle`)}
                       </Typography>
                     </Paper>
                   </Grid>
@@ -228,7 +209,7 @@ export const AccountPage: React.FC = () => {
               </Grid>
             ) : (
               <Typography color="text.secondary">
-                Unable to load balance information
+                {t('account.balanceLoadFailed')}
               </Typography>
             )}
           </Box>
@@ -244,7 +225,7 @@ export const AccountPage: React.FC = () => {
                 <Card sx={{ mb: 3 }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
-                      Your Program
+                      {t('account.yourProgram')}
                     </Typography>
                     <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>
                       {profile.program.name}
@@ -253,13 +234,15 @@ export const AccountPage: React.FC = () => {
                       <Stack direction="row" spacing={1} alignItems="center">
                         <CalendarToday fontSize="small" color="action" />
                         <Typography variant="body2">
-                          {formatMeetingDay(profile.program.meeting_day)}s
+                          {t('account.weeklyMeetingDay', {
+                            day: formatMeetingDay(profile.program.meeting_day),
+                          })}
                         </Typography>
                       </Stack>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <AccessTime fontSize="small" color="action" />
                         <Typography variant="body2">
-                          {formatTime(profile.program.meeting_time)}
+                          {formatTimeOfDay(profile.program.meeting_time)}
                         </Typography>
                       </Stack>
                       {profile.program.meeting_address && (
@@ -279,7 +262,7 @@ export const AccountPage: React.FC = () => {
                 <Card sx={{ mb: 3 }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
-                      Your Life Skills Leader
+                      {t('account.yourCoach')}
                     </Typography>
                     <Stack direction="row" spacing={2} alignItems="center">
                       <Avatar
@@ -334,6 +317,8 @@ export const AccountPage: React.FC = () => {
           {/* Mobile Actions */}
           {!isDesktop && (
             <Stack spacing={2}>
+              <LanguageSwitcher variant="select" />
+
               <Button
                 variant="outlined"
                 size="large"
@@ -341,7 +326,7 @@ export const AccountPage: React.FC = () => {
                 onClick={handleViewOrders}
                 fullWidth
               >
-                View Order History
+                {t('account.viewOrderHistory')}
               </Button>
 
               <Divider />
@@ -354,7 +339,7 @@ export const AccountPage: React.FC = () => {
                 onClick={handleLogout}
                 fullWidth
               >
-                Sign Out
+                {t('common.signOut')}
               </Button>
             </Stack>
           )}

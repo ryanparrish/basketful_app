@@ -52,7 +52,7 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
     lastValidated: null,
   });
 
-  const debounceRef = useRef<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRuleVersionRef = useRef<number | null>(null);
 
   // Fetch program config
@@ -131,10 +131,8 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
       setValidationState(prev => ({
         ...prev,
         isValidating: false,
-        errors: [{
-          type: 'system',
-          message: 'Failed to validate cart. Please try again.',
-        }],
+        // No message — components translate type 'system' at render time
+        errors: [{ type: 'system', message: '' }],
       }));
     }
   }, [isEmpty, getApiCartItems, refetchBalances]);
@@ -214,6 +212,21 @@ export const useValidation = (): ValidationContextType => {
   return context;
 };
 
+/**
+ * Why checkout is blocked, as an i18n key — consumers translate it so the
+ * text follows the active language.
+ */
+export type CheckoutBlockedReasonKey =
+  | 'validation.blocked.cartEmpty'
+  | 'validation.blocked.validating'
+  | 'validation.blocked.checkingWindow'
+  | 'validation.blocked.windowForceClosed'
+  | 'validation.blocked.windowDisabled'
+  | 'validation.blocked.windowNoSchedule'
+  | 'validation.blocked.windowClosed'
+  | 'validation.blocked.fixCartErrors'
+  | 'validation.blocked.cartInvalid';
+
 // Hook to check if cart can be submitted
 export const useCanCheckout = () => {
   const { isValid, isValidating, errors, balances, programConfig } = useValidation();
@@ -230,24 +243,24 @@ export const useCanCheckout = () => {
     return true;
   }, [isEmpty, isValidating, windowLoading, windowIsOpen, isValid, errors]);
 
-  const checkoutBlockedReason = useMemo(() => {
-    if (isEmpty) return 'Cart is empty';
-    if (isValidating) return 'Validating cart...';
-    if (windowLoading) return 'Checking order window...';
+  const checkoutBlockedReasonKey = useMemo((): CheckoutBlockedReasonKey | null => {
+    if (isEmpty) return 'validation.blocked.cartEmpty';
+    if (isValidating) return 'validation.blocked.validating';
+    if (windowLoading) return 'validation.blocked.checkingWindow';
     if (!windowIsOpen) {
-      if (windowStatus === 'force_closed') return 'Order window is temporarily closed';
-      if (windowStatus === 'disabled') return 'Order window is not enabled';
-      if (windowStatus === 'no_schedule') return 'No class schedule found';
-      return 'Order window is closed';
+      if (windowStatus === 'force_closed') return 'validation.blocked.windowForceClosed';
+      if (windowStatus === 'disabled') return 'validation.blocked.windowDisabled';
+      if (windowStatus === 'no_schedule') return 'validation.blocked.windowNoSchedule';
+      return 'validation.blocked.windowClosed';
     }
-    if (errors.length > 0) return 'Please fix cart errors';
-    if (!isValid) return 'Cart is not valid';
+    if (errors.length > 0) return 'validation.blocked.fixCartErrors';
+    if (!isValid) return 'validation.blocked.cartInvalid';
     return null;
   }, [isEmpty, isValidating, windowLoading, windowIsOpen, windowStatus, isValid, errors]);
 
   return {
     canCheckout,
-    checkoutBlockedReason,
+    checkoutBlockedReasonKey,
     isValidating,
     balances,
     programConfig,

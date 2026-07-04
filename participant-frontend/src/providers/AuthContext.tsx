@@ -7,12 +7,33 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { User, LoginRequest } from '../shared/types/api';
 import { login as apiLogin, logout as apiLogout, refreshTokenRequest as apiRefresh, checkAuth } from '../shared/api/endpoints';
 import { SESSION_EXPIRED_EVENT } from '../shared/api/secureClient';
+import i18n from '../i18n';
+
+// The participant's saved backend preference wins over the local
+// (localStorage/browser) language once we know who they are.
+const applyPreferredLanguage = (user: User | null) => {
+  const preferredLanguage = user?.preferred_language;
+  if (preferredLanguage && preferredLanguage !== i18n.language) {
+    i18n.changeLanguage(preferredLanguage);
+  }
+};
+
+/**
+ * Login failures are stored as the backend's machine-readable code plus its
+ * (server-translated) detail text. Rendering components translate the code
+ * via the authErrors i18n namespace, so a language switch retranslates any
+ * visible error.
+ */
+export interface AuthError {
+  code: string;
+  detail?: string;
+}
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
+  error: AuthError | null;
 }
 
 interface AuthContextType extends AuthState {
@@ -51,6 +72,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const authStatus = await checkAuth();
           if (authStatus.is_authenticated) {
             const user = JSON.parse(storedUser) as User;
+            applyPreferredLanguage(user);
             setState({
               user,
               isAuthenticated: true,
@@ -64,6 +86,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           try {
             await apiRefresh(''); // Token is read from cookie
             const user = JSON.parse(storedUser) as User;
+            applyPreferredLanguage(user);
             setState({
               user,
               isAuthenticated: true,
@@ -118,7 +141,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Tokens are now stored in httpOnly cookies by the server
       // Only store user info in localStorage
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
-      
+
+      applyPreferredLanguage(response.user);
+
       // Invalidate queries to fetch fresh data
       queryClient.invalidateQueries();
       
@@ -129,45 +154,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         error: null,
       });
     } catch (err: any) {
-      // Extract error code and detail from backend response
-      const errorCode = err?.response?.data?.code;
-      const errorDetail = err?.response?.data?.detail;
-      
-      // Map backend error codes to user-friendly messages
-      let errorMessage = 'Login failed. Please try again.';
-      
-      switch (errorCode) {
-        case 'customer_not_found':
-          errorMessage = 'Customer number not found. Please check and try again.';
-          break;
-        case 'username_not_found':
-          errorMessage = 'Username not found. Please check and try again.';
-          break;
-        case 'no_user_account':
-          errorMessage = 'No user account is linked to this customer number. Please contact support.';
-          break;
-        case 'invalid_password':
-          errorMessage = 'Incorrect password. Please try again.';
-          break;
-        case 'account_disabled':
-          errorMessage = 'Your account has been disabled. Please contact support.';
-          break;
-        case 'recaptcha_required':
-          errorMessage = 'Please complete the security verification.';
-          break;
-        case 'recaptcha_failed':
-          errorMessage = 'Security verification failed. Please try again.';
-          break;
-        default:
-          errorMessage = errorDetail || (err instanceof Error ? err.message : 'Login failed. Please try again.');
-      }
-      
+      // Store the backend's machine-readable code; the login page translates
+      // it at render time so it follows the active language
+      const authError: AuthError = {
+        code: err?.response?.data?.code || 'default',
+        detail: err?.response?.data?.detail,
+      };
+
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: errorMessage,
+        error: authError,
       }));
-      throw new Error(errorMessage);
+      throw new Error(authError.detail || authError.code);
     }
   }, [queryClient]);
 

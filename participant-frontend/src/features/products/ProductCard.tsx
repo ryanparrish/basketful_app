@@ -20,15 +20,19 @@ import {
   ErrorOutline,
   WarningAmber,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import type { Product } from '../../shared/types/api';
 import { useCartContext, useItemInCart } from '../../providers/CartProvider';
 import { useValidation } from '../../providers/ValidationContext';
+import { useFormatters } from '../../shared/hooks/useFormatters';
 
 interface ProductCardProps {
   product: Product;
 }
 
 const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
+  const { t } = useTranslation();
+  const { formatCurrency } = useFormatters();
   const { addItem, updateItemQuantity, removeItem } = useCartContext();
   const { isInCart, quantity } = useItemInCart(product.id);
   const { getErrorsForProduct, getWarningsForProduct } = useValidation();
@@ -59,8 +63,8 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
   };
 
   const isUnavailable = !product.is_available;
-  const displayPrice = product.price ? `$${Number(product.price).toFixed(2)}` : 'Free';
-  const unitLabel = product.unit || 'each';
+  const displayPrice = product.price ? formatCurrency(product.price) : t('common.free');
+  const unitLabel = product.unit || t('common.each');
 
   return (
     <Card
@@ -77,27 +81,27 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
       {/* Status Badges */}
       <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1, display: 'flex', gap: 0.5 }}>
         {hasError && (
-          <Tooltip title={errors[0]?.message || 'Error'}>
+          <Tooltip title={errors[0]?.message || t('common.error')}>
             <Chip
               icon={<ErrorOutline />}
-              label="Error"
+              label={t('common.error')}
               color="error"
               size="small"
             />
           </Tooltip>
         )}
         {hasWarning && !hasError && (
-          <Tooltip title={warnings[0]?.message || 'Warning'}>
+          <Tooltip title={warnings[0]?.message || t('common.warning')}>
             <Chip
               icon={<WarningAmber />}
-              label="Warning"
+              label={t('common.warning')}
               color="warning"
               size="small"
             />
           </Tooltip>
         )}
         {isUnavailable && (
-          <Chip label="Unavailable" size="small" />
+          <Chip label={t('common.unavailable')} size="small" />
         )}
       </Box>
 
@@ -186,7 +190,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
       >
         {!product.image && (
           <Typography variant="body2" color="text.secondary">
-            No image
+            {t('common.noImage')}
           </Typography>
         )}
       </CardMedia>
@@ -233,7 +237,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
               size="small"
               onClick={handleRemove}
               color="primary"
-              aria-label="Remove one"
+              aria-label={t('products.removeOne')}
               sx={{
                 border: 1,
                 borderColor: 'primary.main',
@@ -252,7 +256,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
               onClick={handleAdd}
               color="primary"
               disabled={isUnavailable}
-              aria-label="Add one"
+              aria-label={t('products.addOne')}
               sx={{
                 border: 1,
                 borderColor: 'primary.main',
@@ -266,7 +270,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
             onClick={handleAdd}
             color="primary"
             disabled={isUnavailable}
-            aria-label="Add to cart"
+            aria-label={t('products.addToCart')}
             sx={{
               border: 2,
               borderColor: 'primary.main',

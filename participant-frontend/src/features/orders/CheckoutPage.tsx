@@ -27,19 +27,23 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useCartContext } from '../../providers/CartProvider';
 import { useCanCheckout, useValidation } from '../../providers/ValidationContext';
 import { ValidationFeedback } from '../cart/ValidationFeedback';
 import { createOrder } from '../../shared/api/endpoints';
 import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
+import { useFormatters } from '../../shared/hooks/useFormatters';
 import type { CartItemData } from '../../providers/CartProvider';
 import { MAX_WIDTHS, PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const { formatCurrency } = useFormatters();
   const { items, cartTotal, clearCart, getApiCartItems } = useCartContext();
-  const { canCheckout, checkoutBlockedReason, balances, programConfig } = useCanCheckout();
+  const { canCheckout, checkoutBlockedReasonKey, balances } = useCanCheckout();
   const { isOpen: windowIsOpen, windowStatus } = useOrderWindow();
   const { revalidate } = useValidation();
 
@@ -90,13 +94,13 @@ export const CheckoutPage: React.FC = () => {
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <CheckCircle color="success" sx={{ fontSize: 80, mb: 2 }} />
           <Typography variant="h4" gutterBottom>
-            Order Placed!
+            {t('checkout.orderPlaced')}
           </Typography>
           <Typography variant="body1" color="text.secondary" paragraph>
-            Your order #{orderId} has been submitted successfully.
+            {t('checkout.orderSubmitted', { orderId })}
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
-            You will receive a confirmation soon.
+            {t('checkout.confirmationSoon')}
           </Typography>
           <Stack spacing={2} sx={{ mt: 4 }}>
             <Button
@@ -105,13 +109,13 @@ export const CheckoutPage: React.FC = () => {
               onClick={handleViewOrders}
               startIcon={<ShoppingBag />}
             >
-              View My Orders
+              {t('checkout.viewMyOrders')}
             </Button>
             <Button
               variant="outlined"
               onClick={handleBackToProducts}
             >
-              Continue Shopping
+              {t('common.continueShopping')}
             </Button>
           </Stack>
         </Paper>
@@ -132,17 +136,17 @@ export const CheckoutPage: React.FC = () => {
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <ShoppingBag sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
-            Your cart is empty
+            {t('checkout.emptyTitle')}
           </Typography>
           <Typography variant="body1" color="text.secondary" paragraph>
-            Add some products before checking out.
+            {t('checkout.emptySubtitle')}
           </Typography>
           <Button
             variant="contained"
             onClick={handleBackToProducts}
             startIcon={<ArrowBack />}
           >
-            Browse Products
+            {t('common.browseProducts')}
           </Button>
         </Paper>
       </Box>
@@ -163,13 +167,13 @@ export const CheckoutPage: React.FC = () => {
           onClick={() => navigate(-1)}
           sx={{ mb: 2 }}
         >
-          Back
+          {t('common.back')}
         </Button>
         <Typography variant="h4" component="h1" gutterBottom>
-          Checkout
+          {t('checkout.title')}
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Review your order before submitting
+          {t('checkout.subtitle')}
         </Typography>
       </Box>
 
@@ -177,10 +181,10 @@ export const CheckoutPage: React.FC = () => {
       {!windowIsOpen && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {windowStatus === 'force_closed'
-            ? 'Orders are temporarily paused. Please try again later.'
+            ? t('checkout.windowForceClosed')
             : windowStatus === 'no_schedule'
-            ? 'No class schedule found for your program. Please contact staff.'
-            : 'The order window is currently closed. You cannot submit orders at this time.'}
+            ? t('checkout.windowNoSchedule')
+            : t('checkout.windowClosed')}
         </Alert>
       )}
 
@@ -193,7 +197,7 @@ export const CheckoutPage: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Order Summary
+            {t('checkout.orderSummary')}
           </Typography>
           <List disablePadding>
             {items.map((item: CartItemData) => (
@@ -205,10 +209,10 @@ export const CheckoutPage: React.FC = () => {
                 </ListItemAvatar>
                 <ListItemText
                   primary={item.name}
-                  secondary={`Qty: ${item.quantity || 1}`}
+                  secondary={t('checkout.quantity', { count: item.quantity || 1 })}
                 />
                 <Typography variant="body1" fontWeight={500}>
-                  ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                  {formatCurrency((item.price || 0) * (item.quantity || 1))}
                 </Typography>
               </ListItem>
             ))}
@@ -221,30 +225,30 @@ export const CheckoutPage: React.FC = () => {
         <CardContent>
           <Stack spacing={1}>
             <Stack direction="row" justifyContent="space-between">
-              <Typography color="text.secondary">Items:</Typography>
+              <Typography color="text.secondary">{t('checkout.itemsLabel')}</Typography>
               <Typography>{items.length}</Typography>
             </Stack>
             {balances && (
               <Stack direction="row" justifyContent="space-between">
-                <Typography color="text.secondary">Available Budget:</Typography>
-                <Typography>${Number(balances.available_balance).toFixed(2)}</Typography>
+                <Typography color="text.secondary">{t('checkout.availableBudget')}</Typography>
+                <Typography>{formatCurrency(balances.available_balance)}</Typography>
               </Stack>
             )}
             <Divider sx={{ my: 1 }} />
             <Stack direction="row" justifyContent="space-between">
-              <Typography variant="h6">Order Total:</Typography>
+              <Typography variant="h6">{t('checkout.orderTotal')}</Typography>
               <Typography variant="h6" color="primary" fontWeight={600}>
-                ${cartTotal.toFixed(2)}
+                {formatCurrency(cartTotal)}
               </Typography>
             </Stack>
             {balances && (
               <Stack direction="row" justifyContent="space-between">
-                <Typography color="text.secondary">Remaining After Order:</Typography>
+                <Typography color="text.secondary">{t('checkout.remainingAfterOrder')}</Typography>
                 <Typography
                   color={balances.available_balance - cartTotal < 0 ? 'error.main' : 'success.main'}
                   fontWeight={500}
                 >
-                  ${(balances.available_balance - cartTotal).toFixed(2)}
+                  {formatCurrency(balances.available_balance - cartTotal)}
                 </Typography>
               </Stack>
             )}
@@ -257,7 +261,7 @@ export const CheckoutPage: React.FC = () => {
         <Alert severity="error" sx={{ mb: 3 }}>
           {submitMutation.error instanceof Error
             ? submitMutation.error.message
-            : 'Failed to submit order. Please try again.'}
+            : t('checkout.submitFailed')}
         </Alert>
       )}
 
@@ -273,12 +277,14 @@ export const CheckoutPage: React.FC = () => {
           {submitMutation.isPending ? (
             <>
               <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
-              Submitting Order...
+              {t('checkout.submitting')}
             </>
           ) : canCheckout ? (
-            'Submit Order'
+            t('checkout.submitOrder')
+          ) : checkoutBlockedReasonKey ? (
+            t(checkoutBlockedReasonKey)
           ) : (
-            checkoutBlockedReason || 'Cannot Submit'
+            t('checkout.cannotSubmit')
           )}
         </Button>
 
@@ -287,7 +293,7 @@ export const CheckoutPage: React.FC = () => {
           onClick={handleBackToProducts}
           disabled={submitMutation.isPending}
         >
-          Continue Shopping
+          {t('common.continueShopping')}
         </Button>
       </Box>
     </Box>

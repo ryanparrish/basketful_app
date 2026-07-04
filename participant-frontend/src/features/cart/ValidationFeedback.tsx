@@ -20,7 +20,9 @@ import {
   WarningAmber,
   CheckCircleOutline,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
+import type { ValidationError } from '../../shared/types/api';
 
 interface ValidationFeedbackProps {
   showSuccess?: boolean;
@@ -31,6 +33,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
   showSuccess = false,
   compact = false,
 }) => {
+  const { t } = useTranslation();
   const {
     isValid,
     isValidating,
@@ -43,23 +46,22 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
   const hasErrors = errors.length > 0;
   const hasWarnings = warnings.length > 0;
 
-  // Group errors by type
-  const budgetErrors = errors.filter(e => 
-    e.type === 'budget' || e.message?.toLowerCase().includes('budget')
-  );
-  const quantityErrors = errors.filter(e => 
-    e.type === 'quantity' || e.type === 'limit' || e.message?.toLowerCase().includes('limit')
-  );
-  const otherErrors = errors.filter(e => 
-    !budgetErrors.includes(e) && !quantityErrors.includes(e)
-  );
+  // Server messages arrive already translated; only the frontend-synthesized
+  // 'system' error carries no message and is translated here
+  const displayMessage = (violation: ValidationError) =>
+    violation.type === 'system' ? t('validation.systemError') : violation.message;
+
+  // Bucket by the backend's machine-readable type, never by message text
+  const budgetErrors = errors.filter(e => e.type === 'balance');
+  const quantityErrors = errors.filter(e => e.type === 'limit');
+  const otherErrors = errors.filter(e => e.type !== 'balance' && e.type !== 'limit');
 
   if (isValidating) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
         <CircularProgress size={16} />
         <Typography variant="body2" color="text.secondary">
-          Validating cart...
+          {t('validation.validating')}
         </Typography>
       </Box>
     );
@@ -69,7 +71,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
     if (showSuccess && isValid) {
       return (
         <Alert severity="success" icon={<CheckCircleOutline />} sx={{ mt: 1 }}>
-          Cart is valid and ready for checkout
+          {t('validation.cartValid')}
         </Alert>
       );
     }
@@ -81,12 +83,12 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       <Box>
         {hasErrors && (
           <Alert severity="error" sx={{ mb: 1 }}>
-            {errors.length} {errors.length === 1 ? 'issue' : 'issues'} found in your cart
+            {t('validation.issuesFound', { count: errors.length })}
           </Alert>
         )}
         {hasWarnings && !hasErrors && (
           <Alert severity="warning">
-            {warnings.length} {warnings.length === 1 ? 'warning' : 'warnings'}
+            {t('validation.warningCount', { count: warnings.length })}
           </Alert>
         )}
       </Box>
@@ -98,7 +100,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       {/* Budget Errors */}
       <Collapse in={hasBudgetError}>
         <Alert severity="error" sx={{ mb: 1 }}>
-          <AlertTitle>Budget Exceeded</AlertTitle>
+          <AlertTitle>{t('validation.budgetExceeded')}</AlertTitle>
           <List dense disablePadding>
             {budgetErrors.map((error, idx) => (
               <ListItem key={`budget-${idx}`} disablePadding>
@@ -106,7 +108,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
                   <ErrorOutline fontSize="small" color="error" />
                 </ListItemIcon>
                 <ListItemText
-                  primary={error.message}
+                  primary={displayMessage(error)}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
@@ -118,7 +120,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       {/* Quantity/Limit Errors */}
       <Collapse in={hasQuantityError}>
         <Alert severity="error" sx={{ mb: 1 }}>
-          <AlertTitle>Quantity Limits</AlertTitle>
+          <AlertTitle>{t('validation.quantityLimits')}</AlertTitle>
           <List dense disablePadding>
             {quantityErrors.map((error, idx) => (
               <ListItem key={`quantity-${idx}`} disablePadding>
@@ -126,8 +128,8 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
                   <ErrorOutline fontSize="small" color="error" />
                 </ListItemIcon>
                 <ListItemText
-                  primary={error.message}
-                  secondary={error.product_id ? `Product ID: ${error.product_id}` : undefined}
+                  primary={displayMessage(error)}
+                  secondary={error.product_id ? t('validation.productId', { id: error.product_id }) : undefined}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
@@ -139,7 +141,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       {/* Other Errors */}
       <Collapse in={otherErrors.length > 0}>
         <Alert severity="error" sx={{ mb: 1 }}>
-          <AlertTitle>Cart Issues</AlertTitle>
+          <AlertTitle>{t('validation.cartIssues')}</AlertTitle>
           <List dense disablePadding>
             {otherErrors.map((error, idx) => (
               <ListItem key={`other-${idx}`} disablePadding>
@@ -147,7 +149,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
                   <ErrorOutline fontSize="small" color="error" />
                 </ListItemIcon>
                 <ListItemText
-                  primary={error.message}
+                  primary={displayMessage(error)}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
@@ -159,7 +161,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       {/* Warnings */}
       <Collapse in={hasWarnings}>
         <Alert severity="warning">
-          <AlertTitle>Warnings</AlertTitle>
+          <AlertTitle>{t('validation.warningsTitle')}</AlertTitle>
           <List dense disablePadding>
             {warnings.map((warning, idx) => (
               <ListItem key={`warning-${idx}`} disablePadding>
@@ -167,7 +169,7 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
                   <WarningAmber fontSize="small" color="warning" />
                 </ListItemIcon>
                 <ListItemText
-                  primary={warning.message}
+                  primary={displayMessage(warning)}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>

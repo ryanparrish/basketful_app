@@ -1,0 +1,209 @@
+{
+  "common": {
+    "back": "Atrás",
+    "refresh": "Actualizar",
+    "retry": "Reintentar",
+    "signIn": "Iniciar sesión",
+    "signOut": "Cerrar sesión",
+    "logout": "Cerrar sesión",
+    "browseProducts": "Ver productos",
+    "continueShopping": "Seguir comprando",
+    "free": "Gratis",
+    "each": "cada uno",
+    "error": "Error",
+    "warning": "Aviso",
+    "unavailable": "No disponible",
+    "noImage": "Sin imagen"
+  },
+  "nav": {
+    "shop": "Tienda",
+    "checkout": "Finalizar pedido",
+    "orderHistory": "Historial de pedidos",
+    "myAccount": "Mi cuenta",
+    "categories": "CATEGORÍAS",
+    "allProducts": "Todos los productos",
+    "itemCount_one": "{{count}} artículo",
+    "itemCount_other": "{{count}} artículos",
+    "availableBudget": "Disponible: {{amount}}",
+    "expandSidebar": "Expandir menú",
+    "collapseSidebar": "Contraer menú"
+  },
+  "language": {
+    "label": "Idioma",
+    "select": "Seleccionar idioma"
+  },
+  "login": {
+    "subtitle": "Inicie sesión en su cuenta",
+    "sessionExpired": "Su sesión ha expirado. Por favor, inicie sesión de nuevo.",
+    "customerNumber": "Número de cliente",
+    "password": "Contraseña",
+    "showPassword": "Mostrar contraseña",
+    "hidePassword": "Ocultar contraseña",
+    "enterCustomerNumber": "Por favor, ingrese su número de cliente",
+    "enterPassword": "Por favor, ingrese su contraseña",
+    "completeRecaptcha": "Por favor, complete la verificación reCAPTCHA",
+    "recaptchaLoadFailed": "No se pudo cargar reCAPTCHA. Por favor, actualice la página.",
+    "needHelp": "¿Necesita ayuda? Comuníquese con el administrador de su programa."
+  },
+  "authErrors": {
+    "customer_not_found": "Número de cliente no encontrado. Verifíquelo e intente de nuevo.",
+    "username_not_found": "Nombre de usuario no encontrado. Verifíquelo e intente de nuevo.",
+    "no_user_account": "No hay una cuenta de usuario vinculada a este número de cliente. Comuníquese con soporte.",
+    "invalid_password": "Contraseña incorrecta. Intente de nuevo.",
+    "account_disabled": "Su cuenta ha sido desactivada. Comuníquese con soporte.",
+    "recaptcha_required": "Por favor, complete la verificación de seguridad.",
+    "recaptcha_failed": "La verificación de seguridad falló. Intente de nuevo.",
+    "default": "No se pudo iniciar sesión. Intente de nuevo."
+  },
+  "session": {
+    "expiredTitle": "Sesión expirada",
+    "expiredMessage": "Su sesión ha expirado. Inicie sesión de nuevo para continuar."
+  },
+  "offline": {
+    "youAreOffline": "Está sin conexión. Algunas funciones pueden no estar disponibles.",
+    "backOnline": "¡Está de nuevo en línea! Sincronizando datos..."
+  },
+  "products": {
+    "searchPlaceholder": "Buscar productos...",
+    "count_one": "{{count}} producto",
+    "count_other": "{{count}} productos",
+    "inCategory": " en {{category}}",
+    "matchingQuery": " que coinciden con \"{{query}}\"",
+    "loadFailed": "No se pudieron cargar los productos. Intente de nuevo.",
+    "emptySearch": "No se encontraron productos que coincidan con \"{{query}}\"",
+    "emptyCategory": "No hay productos disponibles en esta categoría",
+    "empty": "No hay productos disponibles",
+    "all": "Todos",
+    "categoryFilter": "Filtro de categorías",
+    "orderWindowClosedBrowse": "El período para hacer pedidos está cerrado. Puede ver los productos, pero no puede hacer pedidos.",
+    "overBudget": "Su carrito supera su presupuesto disponible. Por favor, quite algunos artículos.",
+    "addToCart": "Agregar al carrito",
+    "addOne": "Agregar uno",
+    "removeOne": "Quitar uno"
+  },
+  "cart": {
+    "title": "Carrito ({{count}})",
+    "clearCart": "Vaciar carrito",
+    "closeCart": "Cerrar carrito",
+    "clearConfirm": "¿Está seguro de que desea vaciar su carrito?",
+    "emptyTitle": "Su carrito está vacío",
+    "emptySubtitle": "Empiece a agregar productos a su carrito",
+    "budgetRemaining": "Presupuesto restante:",
+    "total": "Total:",
+    "proceedToCheckout": "Finalizar pedido",
+    "cannotCheckout": "No se puede finalizar",
+    "priceTimesQuantity": "{{price}} × {{quantity}}",
+    "increaseQuantity": "Aumentar cantidad",
+    "decreaseQuantity": "Reducir cantidad",
+    "removeFromCart": "Quitar del carrito"
+  },
+  "validation": {
+    "validating": "Validando el carrito...",
+    "cartValid": "El carrito es válido y está listo para finalizar el pedido",
+    "issuesFound_one": "Se encontró {{count}} problema en su carrito",
+    "issuesFound_other": "Se encontraron {{count}} problemas en su carrito",
+    "warningCount_one": "{{count}} aviso",
+    "warningCount_other": "{{count}} avisos",
+    "budgetExceeded": "Presupuesto excedido",
+    "quantityLimits": "Límites de cantidad",
+    "cartIssues": "Problemas del carrito",
+    "warningsTitle": "Avisos",
+    "productId": "ID del producto: {{id}}",
+    "systemError": "No se pudo validar el carrito. Intente de nuevo.",
+    "blocked": {
+      "cartEmpty": "El carrito está vacío",
+      "validating": "Validando el carrito...",
+      "checkingWindow": "Verificando el período de pedidos...",
+      "windowForceClosed": "El período de pedidos está cerrado temporalmente",
+      "windowDisabled": "El período de pedidos no está habilitado",
+      "windowNoSchedule": "No se encontró un horario de clases",
+      "windowClosed": "El período de pedidos está cerrado",
+      "fixCartErrors": "Por favor, corrija los errores del carrito",
+      "cartInvalid": "El carrito no es válido"
+    }
+  },
+  "checkout": {
+    "title": "Finalizar pedido",
+    "subtitle": "Revise su pedido antes de enviarlo",
+    "orderPlaced": "¡Pedido realizado!",
+    "orderSubmitted": "Su pedido #{{orderId}} se ha enviado correctamente.",
+    "confirmationSoon": "Pronto recibirá una confirmación.",
+    "viewMyOrders": "Ver mis pedidos",
+    "emptyTitle": "Su carrito está vacío",
+    "emptySubtitle": "Agregue algunos productos antes de finalizar el pedido.",
+    "windowForceClosed": "Los pedidos están pausados temporalmente. Intente de nuevo más tarde.",
+    "windowNoSchedule": "No se encontró un horario de clases para su programa. Comuníquese con el personal.",
+    "windowClosed": "El período de pedidos está cerrado. No puede enviar pedidos en este momento.",
+    "orderSummary": "Resumen del pedido",
+    "quantity": "Cant.: {{count}}",
+    "itemsLabel": "Artículos:",
+    "availableBudget": "Presupuesto disponible:",
+    "orderTotal": "Total del pedido:",
+    "remainingAfterOrder": "Restante después del pedido:",
+    "submitFailed": "No se pudo enviar el pedido. Intente de nuevo.",
+    "submitting": "Enviando el pedido...",
+    "submitOrder": "Enviar pedido",
+    "cannotSubmit": "No se puede enviar"
+  },
+  "orders": {
+    "title": "Mis pedidos",
+    "subtitle": "Vea su historial de pedidos",
+    "loadFailed": "No se pudieron cargar los pedidos. Intente de nuevo.",
+    "emptyTitle": "Aún no hay pedidos",
+    "emptyBody": "Todavía no ha realizado ningún pedido. Empiece a comprar para ver sus pedidos aquí.",
+    "orderNumber": "Pedido #{{id}}",
+    "dateAtTime": "{{date}} a las {{time}}",
+    "itemsSummary_one": "{{count}} artículo ({{total}} en total)",
+    "itemsSummary_other": "{{count}} artículos ({{total}} en total)",
+    "showDetails": "Mostrar detalles",
+    "showLess": "Mostrar menos",
+    "itemsHeading": "Artículos",
+    "notesHeading": "Notas",
+    "productFallback": "Producto #{{id}}",
+    "status": {
+      "pending": "Pendiente",
+      "confirmed": "Confirmado",
+      "processing": "En proceso",
+      "shipped": "Enviado",
+      "delivered": "Entregado",
+      "completed": "Completado",
+      "cancelled": "Cancelado"
+    }
+  },
+  "account": {
+    "customerNumber": "Cliente n.º {{number}}",
+    "viewOrderHistory": "Ver historial de pedidos",
+    "yourBalances": "Sus saldos",
+    "balanceLoadFailed": "No se pudo cargar la información de saldos",
+    "yourProgram": "Su programa",
+    "yourCoach": "Su líder de Life Skills",
+    "weeklyMeetingDay": "Cada {{day}}",
+    "balances": {
+      "full_balance": {
+        "label": "Saldo total",
+        "subtitle": "Valor total de todos sus vales activos"
+      },
+      "available_balance": {
+        "label": "Saldo disponible",
+        "subtitle": "Listo para usar en su próximo pedido"
+      },
+      "hygiene_balance": {
+        "label": "Saldo de higiene",
+        "subtitle": "Una parte de su saldo disponible, reservada para artículos de higiene"
+      },
+      "go_fresh_balance": {
+        "label": "Saldo Go Fresh",
+        "subtitle": "Una asignación separada por pedido según el tamaño del hogar"
+      }
+    }
+  },
+  "days": {
+    "monday": "lunes",
+    "tuesday": "martes",
+    "wednesday": "miércoles",
+    "thursday": "jueves",
+    "friday": "viernes",
+    "saturday": "sábado",
+    "sunday": "domingo"
+  }
+}

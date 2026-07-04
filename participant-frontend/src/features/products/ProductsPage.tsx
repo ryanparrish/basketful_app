@@ -9,16 +9,18 @@ import { Box, Typography, Alert, TextField, InputAdornment, useMediaQuery, useTh
 import { Search as SearchIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getProducts, getCategories } from '../../shared/api/endpoints';
 import { CategoryTabs } from './CategoryTabs';
 import { ProductGrid } from './ProductGrid';
 import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
 import { DesktopLayoutContext } from '../../App';
-import { CONTAINER_PADDING, DESKTOP_CART_WIDTH, useFullWidth } from '../../shared/constants/layout';
+import { CONTAINER_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const ProductsPage: React.FC = () => {
   const theme = useTheme();
+  const { t } = useTranslation();
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   // Context available for future cart visibility logic
   useContext(DesktopLayoutContext);
@@ -124,13 +126,13 @@ export const ProductsPage: React.FC = () => {
         {/* Alerts - full width */}
         {!orderWindowOpen && (
           <Alert severity="warning" sx={{ borderRadius: 0 }}>
-            The order window is currently closed. You can browse products but cannot place orders.
+            {t('products.orderWindowClosedBrowse')}
           </Alert>
         )}
 
         {isOverBudget && (
           <Alert severity="error" sx={{ borderRadius: 0 }}>
-            Your cart exceeds your available budget. Please remove some items.
+            {t('products.overBudget')}
           </Alert>
         )}
 
@@ -140,7 +142,7 @@ export const ProductsPage: React.FC = () => {
             {/* Search Bar */}
             <TextField
               fullWidth
-              placeholder="Search products..."
+              placeholder={t('products.searchPlaceholder')}
               value={searchQuery}
               onChange={handleSearchChange}
               size="small"
@@ -157,24 +159,25 @@ export const ProductsPage: React.FC = () => {
             {/* Results count */}
             {!productsLoading && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
-                {selectedCategory !== null && (
-                  <> in {categories.find(c => c.id === selectedCategory)?.name}</>
-                )}
-                {searchQuery && <> matching "{searchQuery}"</>}
+                {t('products.count', { count: filteredProducts.length })}
+                {selectedCategory !== null &&
+                  t('products.inCategory', {
+                    category: categories.find(c => c.id === selectedCategory)?.name ?? '',
+                  })}
+                {searchQuery && t('products.matchingQuery', { query: searchQuery })}
               </Typography>
             )}
 
             {productsError ? (
-              <Alert severity="error">Failed to load products. Please try again.</Alert>
+              <Alert severity="error">{t('products.loadFailed')}</Alert>
             ) : (
               <ProductGrid
                 products={filteredProducts}
                 isLoading={productsLoading}
                 emptyMessage={
                   searchQuery
-                    ? `No products found matching "${searchQuery}"`
-                    : 'No products available in this category'
+                    ? t('products.emptySearch', { query: searchQuery })
+                    : t('products.emptyCategory')
                 }
               />
             )}
@@ -189,7 +192,7 @@ export const ProductsPage: React.FC = () => {
             }}>
               <TextField
                 fullWidth
-                placeholder="Search products..."
+                placeholder={t('products.searchPlaceholder')}
                 value={searchQuery}
                 onChange={handleSearchChange}
                 size="small"
@@ -218,16 +221,17 @@ export const ProductsPage: React.FC = () => {
               px: CONTAINER_PADDING 
             }}>
               {productsError ? (
-                <Alert severity="error">Failed to load products. Please try again.</Alert>
+                <Alert severity="error">{t('products.loadFailed')}</Alert>
               ) : (
                 <>
                   {!productsLoading && (
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
-                      {selectedCategory !== null && (
-                        <> in {categories.find(c => c.id === selectedCategory)?.name}</>
-                      )}
-                      {searchQuery && <> matching "{searchQuery}"</>}
+                      {t('products.count', { count: filteredProducts.length })}
+                      {selectedCategory !== null &&
+                        t('products.inCategory', {
+                          category: categories.find(c => c.id === selectedCategory)?.name ?? '',
+                        })}
+                      {searchQuery && t('products.matchingQuery', { query: searchQuery })}
                     </Typography>
                   )}
 
@@ -236,8 +240,8 @@ export const ProductsPage: React.FC = () => {
                     isLoading={productsLoading}
                     emptyMessage={
                       searchQuery
-                        ? `No products found matching "${searchQuery}"`
-                        : 'No products available in this category'
+                        ? t('products.emptySearch', { query: searchQuery })
+                        : t('products.emptyCategory')
                     }
                   />
                 </>

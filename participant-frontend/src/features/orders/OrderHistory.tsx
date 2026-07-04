@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { ShoppingBag, Refresh } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getOrders } from '../../shared/api/endpoints';
 import { OrderCard } from './OrderCard';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +21,7 @@ import { PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const OrderHistory: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const {
     data: orders = [],
@@ -59,10 +61,10 @@ export const OrderHistory: React.FC = () => {
       >
         <Box>
           <Typography variant="h4" component="h1" gutterBottom>
-            My Orders
+            {t('orders.title')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            View your order history
+            {t('orders.subtitle')}
           </Typography>
         </Box>
         <Button
@@ -71,7 +73,7 @@ export const OrderHistory: React.FC = () => {
           onClick={handleRefresh}
           disabled={isFetching}
         >
-          Refresh
+          {t('common.refresh')}
         </Button>
       </Box>
 
@@ -85,7 +87,7 @@ export const OrderHistory: React.FC = () => {
       {/* Error State */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          Failed to load orders. Please try again.
+          {t('orders.loadFailed')}
         </Alert>
       )}
 
@@ -94,17 +96,17 @@ export const OrderHistory: React.FC = () => {
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <ShoppingBag sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
-            No orders yet
+            {t('orders.emptyTitle')}
           </Typography>
           <Typography variant="body1" color="text.secondary" paragraph>
-            You haven't placed any orders yet. Start shopping to see your orders here.
+            {t('orders.emptyBody')}
           </Typography>
           <Button
             variant="contained"
             onClick={handleBrowseProducts}
             size="large"
           >
-            Browse Products
+            {t('common.browseProducts')}
           </Button>
         </Paper>
       )}

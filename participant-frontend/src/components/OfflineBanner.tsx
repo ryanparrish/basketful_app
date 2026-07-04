@@ -5,9 +5,11 @@
 import React from 'react';
 import { Alert, Slide, Box } from '@mui/material';
 import { WifiOff, CloudSync } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { useNetworkStatus } from '../shared/hooks/useNetworkStatus';
 
 export const OfflineBanner: React.FC = () => {
+  const { t } = useTranslation();
   const { isOnline, wasOffline } = useNetworkStatus();
 
   return (
@@ -22,7 +24,7 @@ export const OfflineBanner: React.FC = () => {
             justifyContent: 'center',
           }}
         >
-          You are offline. Some features may be unavailable.
+          {t('offline.youAreOffline')}
         </Alert>
       </Slide>
 
@@ -36,7 +38,7 @@ export const OfflineBanner: React.FC = () => {
             justifyContent: 'center',
           }}
         >
-          You're back online! Syncing data...
+          {t('offline.backOnline')}
         </Alert>
       </Slide>
     </Box>

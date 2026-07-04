@@ -18,9 +18,11 @@ import {
   ErrorOutline,
   WarningAmber,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import type { CartItemData } from '../../providers/CartProvider';
 import { useCartContext } from '../../providers/CartProvider';
 import { useValidation } from '../../providers/ValidationContext';
+import { useFormatters } from '../../shared/hooks/useFormatters';
 import { tokens } from '../../shared/theme/tokens';
 
 interface CartItemProps {
@@ -28,6 +30,8 @@ interface CartItemProps {
 }
 
 const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
+  const { t } = useTranslation();
+  const { formatCurrency } = useFormatters();
   const { updateItemQuantity, removeItem } = useCartContext();
   const { getErrorsForProduct, getWarningsForProduct } = useValidation();
 
@@ -95,10 +99,13 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
-              ${Number(item.price || 0).toFixed(2)} × {item.quantity || 1}
+              {t('cart.priceTimesQuantity', {
+                price: formatCurrency(item.price || 0),
+                quantity: item.quantity || 1,
+              })}
             </Typography>
             <Typography variant="body1" fontWeight={600} sx={{ color: tokens.brand.greenPrimary }}>
-              ${itemTotal.toFixed(2)}
+              {formatCurrency(itemTotal)}
             </Typography>
           </Box>
 
@@ -135,7 +142,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
             <IconButton
               size="small"
               onClick={handleDecrease}
-              aria-label="Decrease quantity"
+              aria-label={t('cart.decreaseQuantity')}
             >
               <RemoveIcon fontSize="small" />
             </IconButton>
@@ -152,7 +159,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
             <IconButton
               size="small"
               onClick={handleIncrease}
-              aria-label="Increase quantity"
+              aria-label={t('cart.increaseQuantity')}
               disabled={!item.available}
             >
               <AddIcon fontSize="small" />
@@ -163,7 +170,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
             size="small"
             onClick={handleRemove}
             color="error"
-            aria-label="Remove from cart"
+            aria-label={t('cart.removeFromCart')}
           >
             <DeleteIcon fontSize="small" />
           </IconButton>

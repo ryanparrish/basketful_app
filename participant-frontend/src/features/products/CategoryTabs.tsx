@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Tabs, Tab, Box, Chip, Skeleton } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import type { Category } from '../../shared/types/api';
 
 interface CategoryTabsProps {
@@ -21,6 +22,8 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
   isLoading = false,
   productCounts,
 }) => {
+  const { t } = useTranslation();
+
   const handleChange = (_event: React.SyntheticEvent, newValue: number | 'all') => {
     onCategoryChange(newValue === 'all' ? null : newValue);
   };
@@ -58,7 +61,7 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
         variant="scrollable"
         scrollButtons="auto"
         allowScrollButtonsMobile
-        aria-label="Category filter"
+        aria-label={t('products.categoryFilter')}
         sx={{
           '& .MuiTab-root': {
             minHeight: 48,
@@ -69,7 +72,7 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
         <Tab
           label={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <span>All</span>
+              <span>{t('products.all')}</span>
               {productCounts && (
                 <Chip
                   size="small"

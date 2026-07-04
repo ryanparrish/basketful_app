@@ -31,8 +31,10 @@ import {
 import { useGo, useResourceParams } from '@refinedev/core';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getCategories, getProducts } from '../../shared/api/endpoints';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
+import { useFormatters } from '../../shared/hooks/useFormatters';
 
 const SIDER_WIDTH = 240;
 const SIDER_COLLAPSED_WIDTH = 64;
@@ -40,6 +42,8 @@ const SIDER_COLLAPSED_WIDTH = 64;
 export const CustomSider: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { t } = useTranslation();
+  const { formatCurrency } = useFormatters();
   const go = useGo();
   const { resource } = useResourceParams();
   const { remainingBudget, isOverBudget } = useCartValidation();
@@ -75,9 +79,9 @@ export const CustomSider: React.FC = () => {
   }, [products]);
 
   const menuItems = [
-    { key: 'products', label: 'Shop', icon: <StorefrontIcon />, path: '/products' },
-    { key: 'orders', label: 'Order History', icon: <ReceiptIcon />, path: '/orders' },
-    { key: 'account', label: 'My Account', icon: <AccountIcon />, path: '/account' },
+    { key: 'products', label: t('nav.shop'), icon: <StorefrontIcon />, path: '/products' },
+    { key: 'orders', label: t('nav.orderHistory'), icon: <ReceiptIcon />, path: '/orders' },
+    { key: 'account', label: t('nav.myAccount'), icon: <AccountIcon />, path: '/account' },
   ];
 
   // Don't render sider on mobile - use bottom nav instead
@@ -151,10 +155,10 @@ export const CustomSider: React.FC = () => {
           >
             {!collapsed && (
               <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                Available: ${Number(remainingBudget ?? 0).toFixed(2)}
+                {t('nav.availableBudget', { amount: formatCurrency(remainingBudget ?? 0) })}
               </Typography>
             )}
-            <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
+            <Tooltip title={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')} placement="right">
               <IconButton
                 size="small"
                 onClick={() => setCollapsed(c => !c)}
@@ -213,7 +217,7 @@ export const CustomSider: React.FC = () => {
               <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CategoryIcon color="primary" fontSize="small" />
                 <Typography variant="subtitle2" color="primary" fontWeight={600} sx={{ letterSpacing: '0.05em' }}>
-                  CATEGORIES
+                  {t('nav.categories')}
                 </Typography>
               </Box>
 
@@ -233,8 +237,8 @@ export const CustomSider: React.FC = () => {
                         onClick={() => go({ to: '/products' })}
                       >
                         <ListItemText
-                          primary="All Products"
-                          secondary={`${products.length} items`}
+                          primary={t('nav.allProducts')}
+                          secondary={t('nav.itemCount', { count: products.length })}
                         />
                       </ListItemButton>
                       {categories.map((category) => (
@@ -246,7 +250,7 @@ export const CustomSider: React.FC = () => {
                         >
                           <ListItemText
                             primary={category.name}
-                            secondary={`${productCounts[category.id] ?? 0} items`}
+                            secondary={t('nav.itemCount', { count: productCounts[category.id] ?? 0 })}
                           />
                         </ListItemButton>
                       ))}

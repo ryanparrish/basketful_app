@@ -1,0 +1,209 @@
+{
+  "common": {
+    "back": "Back",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "logout": "Logout",
+    "browseProducts": "Browse Products",
+    "continueShopping": "Continue Shopping",
+    "free": "Free",
+    "each": "each",
+    "error": "Error",
+    "warning": "Warning",
+    "unavailable": "Unavailable",
+    "noImage": "No image"
+  },
+  "nav": {
+    "shop": "Shop",
+    "checkout": "Checkout",
+    "orderHistory": "Order History",
+    "myAccount": "My Account",
+    "categories": "CATEGORIES",
+    "allProducts": "All Products",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "availableBudget": "Available: {{amount}}",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar"
+  },
+  "language": {
+    "label": "Language",
+    "select": "Select language"
+  },
+  "login": {
+    "subtitle": "Sign in to your account",
+    "sessionExpired": "Your session has expired. Please sign in again.",
+    "customerNumber": "Customer Number",
+    "password": "Password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "enterCustomerNumber": "Please enter your customer number",
+    "enterPassword": "Please enter your password",
+    "completeRecaptcha": "Please complete the reCAPTCHA verification",
+    "recaptchaLoadFailed": "reCAPTCHA failed to load. Please refresh the page.",
+    "needHelp": "Need help? Contact your program administrator."
+  },
+  "authErrors": {
+    "customer_not_found": "Customer number not found. Please check and try again.",
+    "username_not_found": "Username not found. Please check and try again.",
+    "no_user_account": "No user account is linked to this customer number. Please contact support.",
+    "invalid_password": "Incorrect password. Please try again.",
+    "account_disabled": "Your account has been disabled. Please contact support.",
+    "recaptcha_required": "Please complete the security verification.",
+    "recaptcha_failed": "Security verification failed. Please try again.",
+    "default": "Login failed. Please try again."
+  },
+  "session": {
+    "expiredTitle": "Session Expired",
+    "expiredMessage": "Your session has expired. Please sign in again to continue."
+  },
+  "offline": {
+    "youAreOffline": "You are offline. Some features may be unavailable.",
+    "backOnline": "You're back online! Syncing data..."
+  },
+  "products": {
+    "searchPlaceholder": "Search products...",
+    "count_one": "{{count}} product",
+    "count_other": "{{count}} products",
+    "inCategory": " in {{category}}",
+    "matchingQuery": " matching \"{{query}}\"",
+    "loadFailed": "Failed to load products. Please try again.",
+    "emptySearch": "No products found matching \"{{query}}\"",
+    "emptyCategory": "No products available in this category",
+    "empty": "No products available",
+    "all": "All",
+    "categoryFilter": "Category filter",
+    "orderWindowClosedBrowse": "The order window is currently closed. You can browse products but cannot place orders.",
+    "overBudget": "Your cart exceeds your available budget. Please remove some items.",
+    "addToCart": "Add to cart",
+    "addOne": "Add one",
+    "removeOne": "Remove one"
+  },
+  "cart": {
+    "title": "Cart ({{count}})",
+    "clearCart": "Clear cart",
+    "closeCart": "Close cart",
+    "clearConfirm": "Are you sure you want to clear your cart?",
+    "emptyTitle": "Your cart is empty",
+    "emptySubtitle": "Start adding products to your cart",
+    "budgetRemaining": "Budget Remaining:",
+    "total": "Total:",
+    "proceedToCheckout": "Proceed to Checkout",
+    "cannotCheckout": "Cannot Checkout",
+    "priceTimesQuantity": "{{price}} × {{quantity}}",
+    "increaseQuantity": "Increase quantity",
+    "decreaseQuantity": "Decrease quantity",
+    "removeFromCart": "Remove from cart"
+  },
+  "validation": {
+    "validating": "Validating cart...",
+    "cartValid": "Cart is valid and ready for checkout",
+    "issuesFound_one": "{{count}} issue found in your cart",
+    "issuesFound_other": "{{count}} issues found in your cart",
+    "warningCount_one": "{{count}} warning",
+    "warningCount_other": "{{count}} warnings",
+    "budgetExceeded": "Budget Exceeded",
+    "quantityLimits": "Quantity Limits",
+    "cartIssues": "Cart Issues",
+    "warningsTitle": "Warnings",
+    "productId": "Product ID: {{id}}",
+    "systemError": "Failed to validate cart. Please try again.",
+    "blocked": {
+      "cartEmpty": "Cart is empty",
+      "validating": "Validating cart...",
+      "checkingWindow": "Checking order window...",
+      "windowForceClosed": "Order window is temporarily closed",
+      "windowDisabled": "Order window is not enabled",
+      "windowNoSchedule": "No class schedule found",
+      "windowClosed": "Order window is closed",
+      "fixCartErrors": "Please fix cart errors",
+      "cartInvalid": "Cart is not valid"
+    }
+  },
+  "checkout": {
+    "title": "Checkout",
+    "subtitle": "Review your order before submitting",
+    "orderPlaced": "Order Placed!",
+    "orderSubmitted": "Your order #{{orderId}} has been submitted successfully.",
+    "confirmationSoon": "You will receive a confirmation soon.",
+    "viewMyOrders": "View My Orders",
+    "emptyTitle": "Your cart is empty",
+    "emptySubtitle": "Add some products before checking out.",
+    "windowForceClosed": "Orders are temporarily paused. Please try again later.",
+    "windowNoSchedule": "No class schedule found for your program. Please contact staff.",
+    "windowClosed": "The order window is currently closed. You cannot submit orders at this time.",
+    "orderSummary": "Order Summary",
+    "quantity": "Qty: {{count}}",
+    "itemsLabel": "Items:",
+    "availableBudget": "Available Budget:",
+    "orderTotal": "Order Total:",
+    "remainingAfterOrder": "Remaining After Order:",
+    "submitFailed": "Failed to submit order. Please try again.",
+    "submitting": "Submitting Order...",
+    "submitOrder": "Submit Order",
+    "cannotSubmit": "Cannot Submit"
+  },
+  "orders": {
+    "title": "My Orders",
+    "subtitle": "View your order history",
+    "loadFailed": "Failed to load orders. Please try again.",
+    "emptyTitle": "No orders yet",
+    "emptyBody": "You haven't placed any orders yet. Start shopping to see your orders here.",
+    "orderNumber": "Order #{{id}}",
+    "dateAtTime": "{{date}} at {{time}}",
+    "itemsSummary_one": "{{count}} item ({{total}} total)",
+    "itemsSummary_other": "{{count}} items ({{total}} total)",
+    "showDetails": "Show details",
+    "showLess": "Show less",
+    "itemsHeading": "Items",
+    "notesHeading": "Notes",
+    "productFallback": "Product #{{id}}",
+    "status": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "processing": "Processing",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "account": {
+    "customerNumber": "Customer # {{number}}",
+    "viewOrderHistory": "View Order History",
+    "yourBalances": "Your Balances",
+    "balanceLoadFailed": "Unable to load balance information",
+    "yourProgram": "Your Program",
+    "yourCoach": "Your Life Skills Leader",
+    "weeklyMeetingDay": "{{day}}s",
+    "balances": {
+      "full_balance": {
+        "label": "Full Balance",
+        "subtitle": "Total value of all your active vouchers"
+      },
+      "available_balance": {
+        "label": "Available Balance",
+        "subtitle": "Ready to use on your next order"
+      },
+      "hygiene_balance": {
+        "label": "Hygiene Balance",
+        "subtitle": "A portion of your available balance, reserved for hygiene items"
+      },
+      "go_fresh_balance": {
+        "label": "Go Fresh Balance",
+        "subtitle": "A separate per-order allowance based on household size"
+      }
+    }
+  },
+  "days": {
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  }
+}

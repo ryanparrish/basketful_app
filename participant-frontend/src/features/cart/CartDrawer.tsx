@@ -18,10 +18,12 @@ import {
   DeleteSweep as ClearIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useCartContext } from '../../providers/CartProvider';
 import { useCanCheckout } from '../../providers/ValidationContext';
 import { CartItem } from './CartItem';
 import { ValidationFeedback } from './ValidationFeedback';
+import { useFormatters } from '../../shared/hooks/useFormatters';
 import type { CartItemData } from '../../providers/CartProvider';
 
 interface CartDrawerProps {
@@ -31,8 +33,10 @@ interface CartDrawerProps {
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { formatCurrency } = useFormatters();
   const { items, totalItems, cartTotal, isEmpty, clearCart } = useCartContext();
-  const { canCheckout, checkoutBlockedReason, balances } = useCanCheckout();
+  const { canCheckout, checkoutBlockedReasonKey, balances } = useCanCheckout();
 
   const handleCheckout = () => {
     onClose();
@@ -40,7 +44,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
   };
 
   const handleClearCart = () => {
-    if (window.confirm('Are you sure you want to clear your cart?')) {
+    if (window.confirm(t('cart.clearConfirm'))) {
       clearCart();
     }
   };
@@ -76,7 +80,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
         <Stack direction="row" alignItems="center" spacing={1}>
           <CartIcon color="primary" />
           <Typography variant="h6">
-            Cart ({totalItems})
+            {t('cart.title', { count: totalItems })}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1}>
@@ -85,12 +89,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
               onClick={handleClearCart}
               size="small"
               color="error"
-              aria-label="Clear cart"
+              aria-label={t('cart.clearCart')}
             >
               <ClearIcon />
             </IconButton>
           )}
-          <IconButton onClick={onClose} aria-label="Close cart">
+          <IconButton onClick={onClose} aria-label={t('cart.closeCart')}>
             <CloseIcon />
           </IconButton>
         </Stack>
@@ -111,13 +115,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
           >
             <CartIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary" gutterBottom>
-              Your cart is empty
+              {t('cart.emptyTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
-              Start adding products to your cart
+              {t('cart.emptySubtitle')}
             </Typography>
             <Button variant="contained" onClick={handleContinueShopping}>
-              Browse Products
+              {t('common.browseProducts')}
             </Button>
           </Box>
         ) : (
@@ -145,10 +149,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
             <Box sx={{ mb: 2 }}>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Budget Remaining:
+                  {t('cart.budgetRemaining')}
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
-                  ${Math.max(0, balances.available_balance - cartTotal).toFixed(2)}
+                  {formatCurrency(Math.max(0, balances.available_balance - cartTotal))}
                 </Typography>
               </Stack>
             </Box>
@@ -158,9 +162,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
 
           {/* Cart Total */}
           <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
-            <Typography variant="h6">Total:</Typography>
+            <Typography variant="h6">{t('cart.total')}</Typography>
             <Typography variant="h6" color="primary" fontWeight={600}>
-              ${cartTotal.toFixed(2)}
+              {formatCurrency(cartTotal)}
             </Typography>
           </Stack>
 
@@ -173,7 +177,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
             disabled={!canCheckout}
             sx={{ py: 1.5 }}
           >
-            {canCheckout ? 'Proceed to Checkout' : checkoutBlockedReason || 'Cannot Checkout'}
+            {canCheckout
+              ? t('cart.proceedToCheckout')
+              : checkoutBlockedReasonKey
+              ? t(checkoutBlockedReasonKey)
+              : t('cart.cannotCheckout')}
           </Button>
 
           {/* Continue Shopping */}
@@ -183,7 +191,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
             onClick={handleContinueShopping}
             sx={{ mt: 1 }}
           >
-            Continue Shopping
+            {t('common.continueShopping')}
           </Button>
         </Box>
       )}

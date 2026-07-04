@@ -20,7 +20,7 @@ const defaultTheme: ThemeConfig = {
 };
 
 // Create Material-UI theme from backend config
-export const createDynamicTheme = (config: ThemeConfig): Theme => {
+export const createDynamicTheme = (_config: ThemeConfig): Theme => {
   const themeOptions: ThemeOptions = {
     palette: {
       primary: {

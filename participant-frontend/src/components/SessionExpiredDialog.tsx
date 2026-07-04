@@ -14,9 +14,11 @@ import {
   Button,
 } from '@mui/material';
 import { Warning as WarningIcon } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { SESSION_EXPIRED_EVENT } from '../shared/api/secureClient';
 
 export const SessionExpiredDialog: React.FC = () => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -45,16 +47,16 @@ export const SessionExpiredDialog: React.FC = () => {
     >
       <DialogTitle id="session-expired-dialog-title" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <WarningIcon color="warning" />
-        Session Expired
+        {t('session.expiredTitle')}
       </DialogTitle>
       <DialogContent>
         <DialogContentText id="session-expired-dialog-description">
-          Your session has expired. Please sign in again to continue.
+          {t('session.expiredMessage')}
         </DialogContentText>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleSignIn} variant="contained" color="primary" autoFocus>
-          Sign In
+          {t('common.signIn')}
         </Button>
       </DialogActions>
     </Dialog>
