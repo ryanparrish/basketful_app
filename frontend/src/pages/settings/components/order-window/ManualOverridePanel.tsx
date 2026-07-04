@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { getCsrfToken, fmt } from '../../utils';
+import { API_URL } from '../../../../utils/apiUrl';
 import type { ActiveOverride } from '../../types';
 
 const DURATION_PRESETS = [
@@ -48,7 +49,7 @@ export const ManualOverridePanel = ({
     setSaving(true);
     try {
       const res = await fetch(
-        `/api/v1/programs/${programId}/order-window/override/`,
+        `${API_URL}/api/v1/programs/${programId}/order-window/override/`,
         {
           method: 'POST',
           credentials: 'include',
@@ -73,7 +74,7 @@ export const ManualOverridePanel = ({
 
   const clearOverride = async () => {
     try {
-      await fetch(`/api/v1/programs/${programId}/order-window/override/`, {
+      await fetch(`${API_URL}/api/v1/programs/${programId}/order-window/override/`, {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'X-CSRFToken': getCsrfToken() },

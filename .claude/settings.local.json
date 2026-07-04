@@ -6,7 +6,23 @@
       "Bash(.venv/Scripts/python.exe manage.py migrate lifeskills)",
       "Bash(venv/Scripts/python.exe manage.py migrate lifeskills)",
       "Bash(venv/Scripts/pip.exe list:*)",
-      "Bash(venv/Scripts/pip.exe install:*)"
+      "Bash(venv/Scripts/pip.exe install:*)",
+      "Bash(gh issue *)",
+      "Bash(curl -sL -o issue51_image.png \"https://github.com/user-attachments/assets/4eb953e6-0dcc-4dce-9021-a9197f384dfd\")",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad)",
+      "Bash(mv /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue51_image.png /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue51_image.jpg)",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app log --oneline --all -i --grep=\"override\")",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app log --oneline --all -i --grep=\"force open\\\\|force_open\\\\|window_override\\\\|ProgramWindowOverride\")",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app log -1 --format=\"%H %ci\")",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app show --stat 9efae95)",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app show 9efae95 -- frontend/src/pages/settings/components/order-window/ManualOverridePanel.tsx apps/lifeskills/api/views.py)",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app log --follow --oneline -- frontend/src/pages/settings/components/order-window/ManualOverridePanel.tsx)",
+      "Bash(git -C /Users/ryanparrish/Documents/GitHub/basketful_app log --follow --oneline -- frontend/src/resources/programs.tsx)",
+      "Bash(python3 -c ' *)",
+      "Bash(cat)",
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

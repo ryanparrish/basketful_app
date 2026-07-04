@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import { ProgramWindowRow } from './ProgramWindowRow';
+import { API_URL } from '../../../../utils/apiUrl';
 import type { OrderWindowDashboardData, OrderWindowSettings } from '../../types';
 
 export const OrderWindowDashboard = ({
@@ -35,7 +36,7 @@ export const OrderWindowDashboard = ({
 
   const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/order-windows/status/`, {
+      const res = await fetch(`${API_URL}/api/v1/order-windows/status/`, {
         credentials: 'include',
       });
       if (res.ok) {
