@@ -80,17 +80,16 @@ def update_base_balance_on_change(instance, created, **kwargs):
 def initialize_participant(instance: Participant, created, **kwargs):
     """
     Initialize a participant after creation:
-    - Create linked User if `create_user` is True
+    - Create a linked User if one isn't already set
     - Create UserProfile
     - Setup account and vouchers
     - Trigger onboarding email
     """
-    create_user_flag = getattr(instance, "create_user", False)
     user_created_here = False
 
     if not created:
         return
-    elif create_user_flag is True and not instance.user:
+    elif not instance.user:
         user = create_participant_user(
             first_name=instance.name,
             email=instance.email,

@@ -51,9 +51,6 @@ class Participant(BaseModel):
         LifeskillsCoach, on_delete=models.CASCADE, related_name='customers',
         null=True, blank=True
     )
-    create_user = models.BooleanField(
-        default=True, help_text="If checked this will create a user account."
-    )
     user = models.OneToOneField(
         User, null=True, blank=True, on_delete=models.CASCADE
     )

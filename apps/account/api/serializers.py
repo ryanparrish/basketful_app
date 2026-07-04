@@ -168,7 +168,7 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'id', 'name', 'email', 'customer_number',
             'adults', 'children', 'diaper_count', 'household_size',
             'program', 'program_name', 'assigned_coach', 'coach_name',
-            'user', 'user_username', 'create_user',
+            'user', 'user_username',
             'allergy', 'active', 'archived_at', 'balances', 'base_balance',
             'account_balance_id', 'has_account',
             'created_at', 'updated_at'
@@ -208,7 +208,7 @@ class ParticipantCreateSerializer(serializers.ModelSerializer):
         model = Participant
         fields = [
             'id', 'name', 'email', 'adults', 'children', 'diaper_count',
-            'program', 'assigned_coach', 'create_user', 'allergy', 'active',
+            'program', 'assigned_coach', 'allergy', 'active',
             'preferred_language', 'customer_number', 'user_username',
         ]
         read_only_fields = ['id', 'customer_number', 'user_username']

@@ -412,7 +412,7 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             )
         errors = []
         for i, row in enumerate(rows):
-            s = ParticipantCreateSerializer(data={**row, 'create_user': True})
+            s = ParticipantCreateSerializer(data=row)
             if not s.is_valid():
                 errors.append({'index': i, 'errors': s.errors})
         return Response({'errors': errors, 'valid_count': len(rows) - len(errors)})
@@ -443,7 +443,6 @@ class ParticipantViewSet(viewsets.ModelViewSet):
         for index, row_data in enumerate(rows):
             try:
                 with transaction.atomic():  # per-row savepoint
-                    row_data['create_user'] = True
                     row_data['_skip_onboarding_signal'] = use_grace
 
                     row_serializer = ParticipantCreateSerializer(data=row_data)

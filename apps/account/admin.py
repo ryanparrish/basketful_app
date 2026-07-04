@@ -11,7 +11,7 @@ from django.utils.crypto import get_random_string
 from django.apps import apps
 # Local app imports
 from .models import Participant
-from .forms import CustomUserCreationForm, ParticipantAdminForm
+from .forms import CustomUserCreationForm
 from .models import UserProfile, AccountBalance, GoFreshSettings, HygieneSettings, BulkCreateBatch
 from .utils.user_utils import _generate_admin_username, ensure_participant_user
 from .utils.balance_utils import calculate_base_balance
@@ -91,7 +91,6 @@ class CustomUserAdmin(DefaultUserAdmin):
 @admin.register(Participant)
 class ParticipantAdmin(admin.ModelAdmin):
     """Admin for Participant with balance displays and actions."""
-    form = ParticipantAdminForm
     list_display = (
         'name',
         'customer_number',

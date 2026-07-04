@@ -921,7 +921,6 @@ export const ParticipantCreate = () => {
           <SelectInput optionText="name" />
         </ReferenceInput>
         <BooleanInput source="active" defaultValue={true} />
-        <BooleanInput source="create_user" label="Create user account (allows login)" defaultValue={true} />
         <NumberInput source="adults" min={0} defaultValue={1} />
         <NumberInput source="children" min={0} defaultValue={0} />
         <NumberInput source="diaper_count" label="Infants" min={0} defaultValue={0} />

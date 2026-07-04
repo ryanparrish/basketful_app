@@ -234,7 +234,7 @@ class TestUserOnboardingSignals:
         self, voucher_setting_fixture, mocker
     ):
         """
-        Tests that if `create_user=True`, the signal correctly calls the user
+        Tests that creating a participant without a user calls the user
         creation utility, links the new user, and creates a UserProfile.
         """
         # --- ARRANGE ---
@@ -256,12 +256,9 @@ class TestUserOnboardingSignals:
         mock_create_user.return_value = mock_user
 
         # --- ACT ---
-        # --- Create a participant with the flag to create a user ---
-        # Build the participant without saving
+        # Build the participant without saving — it has no user yet, so
+        # saving it triggers the signal to create one automatically.
         participant = ParticipantFactory.build()
-        # Set the create_user flag
-        participant.create_user = True
-        # Save to trigger the signal with create_user=True
         participant.save()
         participant.refresh_from_db()
 
@@ -296,10 +293,9 @@ class TestUserOnboardingSignals:
         mock_create_user.return_value = mock_user
 
         # --- ACT ---
-        # Build the participant without saving
+        # Build the participant without saving — no user yet, so saving
+        # triggers the signal to create one and fire the onboarding email.
         participant = ParticipantFactory.build()
-        # Set the create_user flag
-        participant.create_user = True
         # captureOnCommitCallbacks flushes on_commit hooks even inside a test
         # transaction (which never really commits).
         with DjangoTestCase.captureOnCommitCallbacks(execute=True):
@@ -578,16 +574,19 @@ class TestParticipantAdminActions:
         
         # Mock the signal to prevent it from creating AccountBalance
         mocker.patch("apps.account.signals.setup_account_and_vouchers")
+        # Mock the onboarding email the signal fires for the auto-created user
+        mocker.patch("apps.account.signals.send_new_user_onboarding_email.delay")
 
-        # Create participant manually without user
+        # Create participant, then detach its auto-created user to simulate
+        # legacy/manually-cleared data with no linked user.
         program = ProgramFactory()
         participant = Participant.objects.create(
             name="No User Participant",
             email="nouser@test.com",
-            user=None,
-            create_user=False,
             program=program
         )
+        participant.user = None
+        participant.save(update_fields=['user'])
         
         # Create AccountBalance manually
         # Use get_or_create in case signal already created it

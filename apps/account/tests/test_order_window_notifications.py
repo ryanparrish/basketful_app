@@ -275,10 +275,12 @@ def test_participant_without_user_is_skipped(monday_program, email_type):
         program=monday_program,
         active=True,
         adults=1,
-        create_user=False,
     )
     p._skip_onboarding_signal = True
     p.save()
+    # Detach the auto-created user to simulate legacy/manually-cleared data.
+    p.user = None
+    p.save(update_fields=["user"])
     AccountBalance.objects.get_or_create(
         participant=p,
         defaults={"base_balance": Decimal("50.00")},

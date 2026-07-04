@@ -29,15 +29,6 @@ class CustomUserCreationForm(forms.ModelForm):
         fields = ('first_name', 'last_name', 'email')  # no username or password here
 
 
-class ParticipantAdminForm(forms.ModelForm):
-    """Admin form for Participant with option to create linked user."""
-    create_user = forms.BooleanField(required=False, initial=True, label="Create linked user?")
-
-    class Meta:
-        model = Participant
-        fields = '__all__'
-
-
 class ParticipantUpdateForm(forms.ModelForm):
     """Form for updating Participant email and name only."""
     class Meta:
