@@ -1,6 +1,7 @@
 """
 ViewSets for the Account app API.
 """
+import logging
 import uuid
 from django.db import transaction
 from rest_framework import viewsets, status
@@ -41,6 +42,8 @@ from .serializers import (
     HygieneSettingsSerializer,
     BalanceSummarySerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 EMAIL_EAGER_THRESHOLD = 5   # <= this many participants -> send immediately
 EMAIL_GRACE_SECONDS = 300   # 5-minute hold for larger batches
@@ -477,12 +480,15 @@ class ParticipantViewSet(viewsets.ModelViewSet):
                         },
                         'errors': None,
                     })
-            except Exception as exc:
+            except Exception:
+                logger.exception(
+                    "Unexpected error creating participant row index=%s", index
+                )
                 result_rows.append({
                     'index': index,
                     'status': 'failed',
                     'participant': None,
-                    'errors': {'non_field': [str(exc)]},
+                    'errors': {'non_field': ['An unexpected error occurred while creating this row.']},
                 })
 
         created_rows = [r for r in result_rows if r['status'] == 'created']
