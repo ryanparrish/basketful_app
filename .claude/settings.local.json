@@ -70,7 +70,14 @@
       "Bash(awk 'NR==133{print NR\": \"$0} NR==198{print NR\": \"$0} NR==688{print NR\": \"$0} NR==1300{print NR\": \"$0} NR==1382{print NR\": \"$0}' apps/orders/api/views.py)",
       "Bash(awk 'NR==492{print NR\": \"$0} NR==508{print NR\": \"$0}' apps/account/api/views.py)",
       "Bash(awk 'NR==104{print NR\": \"$0}' core/middleware.py)",
-      "Bash(awk '/_ValidationDone/{print NR\": \"$0}' apps/orders/api/views.py)"
+      "Bash(awk '/_ValidationDone/{print NR\": \"$0}' apps/orders/api/views.py)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(brew list *)",
+      "Bash(brew --prefix gettext)",
+      "Bash(echo \"installed at: $\\(brew --prefix gettext\\)\")",
+      "Bash(brew install *)",
+      "Bash(pip show *)",
+      "Bash(flake8 apps/account/management/commands/backfill_participant_user_accounts.py --count)"
     ],
     "additionalDirectories": [
       "/tmp"
