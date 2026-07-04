@@ -89,15 +89,14 @@ jobs:
         continue-on-error: false
 
       - name: Compile translation catalogs
-        env:
-          DJANGO_SETTINGS_MODULE: core.settings
-          SECRET_KEY: test-secret-key-for-ci
-          HASHIDS_SALT: test-hashids-salt-for-ci
-          DOMAIN_NAME: test.example.com
+        # django-admin (not manage.py) on purpose: without DJANGO_SETTINGS_MODULE,
+        # compilemessages skips settings entirely and just walks locale/ dirs —
+        # importing settings here would require DATABASE_URL before the DB
+        # service is needed. Mirrors the Dockerfile build step.
         run: |
           sudo apt-get update && sudo apt-get install -y gettext
           msgfmt --check -o /dev/null locale/es/LC_MESSAGES/django.po
-          python manage.py compilemessages -l es --ignore=venv --ignore=node_modules \
+          django-admin compilemessages -l es --ignore=venv --ignore=node_modules \
             --ignore=frontend --ignore=participant-frontend
 
       - name: Run migrations
