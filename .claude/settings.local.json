@@ -33,7 +33,12 @@
       "Read(//tmp/**)",
       "Bash(npm test *)",
       "Bash(npm ls *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('scripts:', d.get\\('scripts'\\)\\)\")",
+      "Bash(npm run *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('version:', d['version']\\); print\\('deps:', d.get\\('dependencies'\\)\\)\")",
+      "Bash(npm view *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('main'\\), d.get\\('module'\\)\\)\")"
     ]
   }
 }
