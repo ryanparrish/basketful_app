@@ -275,9 +275,41 @@ def test_pause_created_outside_ordering_window_schedules_for_future(
         
         # Verify immediate task was NOT called
         assert not mock_immediate.called
-        
+
         # Verify scheduling was called for future execution
         assert mock_schedule.called
+
+
+@freeze_time("2026-01-25 12:00:00")  # 28 days before pause (outside window)
+@pytest.mark.django_db(transaction=True)
+def test_extended_pause_outside_window_schedules_multiplier_3_not_2(
+    participant_with_vouchers
+):
+    """
+    Regression: schedule_voucher_tasks used to hardcode multiplier=2
+    regardless of pause duration, so an extended pause (>=14 days) created
+    outside the 10-14 day immediate-flagging window silently got the short-
+    pause multiplier instead of the correct one. It must compute the
+    multiplier the same way the immediate-flagging path does.
+    """
+    # 21-day pause, 28 days out — outside the window, and long enough to
+    # require multiplier=3 per calculate_multiplier_for_duration.
+    pause_start = timezone.now() + timedelta(days=28)
+    pause_end = pause_start + timedelta(days=20)
+
+    with mock.patch(
+        "apps.voucher.tasks.voucher_scheduling.update_voucher_flag_task.apply_async"
+    ) as mock_apply_async:
+        ProgramPause.objects.create(
+            pause_start=pause_start,
+            pause_end=pause_end,
+            reason="Extended Future Pause",
+        )
+
+        assert mock_apply_async.called
+        # First call schedules activation; assert its multiplier kwarg is 3.
+        activation_call = mock_apply_async.call_args_list[0]
+        assert activation_call.kwargs["kwargs"]["multiplier"] == 3
 
 
 @freeze_time("2026-02-10 12:00:00")

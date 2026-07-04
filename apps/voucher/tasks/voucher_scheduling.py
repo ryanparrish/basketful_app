@@ -36,14 +36,20 @@ def schedule_voucher_tasks(vouchers, activate_time=None, deactivate_time=None):
 
     # Activation
     if activate_time:
+        # Match the immediate-flagging path in handle_program_pause: multiplier
+        # depends on pause duration (2 for <14 days, 3 for >=14 days), not a
+        # flat 2 regardless of how long the pause actually is.
+        from apps.lifeskills.models import ProgramPause
+        multiplier = ProgramPause.calculate_multiplier_for_duration(activate_time, deactivate_time)
+
         if activate_time > now:
-            logger.debug("Scheduling activation at %s", activate_time)
+            logger.debug("Scheduling activation at %s with multiplier=%d", activate_time, multiplier)
             update_voucher_flag_task.apply_async(
-                args=[voucher_ids], kwargs={"multiplier": 2, "activate": True}, eta=activate_time
+                args=[voucher_ids], kwargs={"multiplier": multiplier, "activate": True}, eta=activate_time
             )
         else:
-            logger.debug("Activating vouchers immediately.")
-            update_voucher_flag_task.delay(voucher_ids, multiplier=2, activate=True)
+            logger.debug("Activating vouchers immediately with multiplier=%d", multiplier)
+            update_voucher_flag_task.delay(voucher_ids, multiplier=multiplier, activate=True)
 
     # Deactivation
     if deactivate_time and "test" not in sys.argv:
