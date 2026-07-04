@@ -21,6 +21,7 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
+from django.core import mail
 from django.utils import timezone
 from freezegun import freeze_time
 
@@ -52,14 +53,30 @@ def _required_singletons(db):
 
 @pytest.fixture
 def email_type(db):
-    """Active `order_window_opened` EmailType."""
+    """
+    Active `order_window_opened` EmailType.
+
+    Uses every placeholder send_order_window_opened_notification actually
+    populates (program_name, closes_at, participant_name,
+    participant_customer_number) in both the text and html bodies, so
+    content assertions in the full-pipeline test catch a broken/renamed
+    context key in either template variant.
+    """
     et, _ = EmailType.objects.get_or_create(
         name="order_window_opened",
         defaults=dict(
             display_name="Order Window Opened",
-            subject="Your order window is open",
-            html_content="<p>Hi {{ participant_name }}, window is open.</p>",
-            text_content="Hi {{ participant_name }}, window is open.",
+            subject="Your order window is open — {{ program_name }}",
+            html_content=(
+                "<p>Hi {{ participant_name }}, the window for "
+                "{{ program_name }} is open until {{ closes_at }}. "
+                "Customer #: {{ participant_customer_number }}</p>"
+            ),
+            text_content=(
+                "Hi {{ participant_name }}, the window for {{ program_name }} "
+                "is open until {{ closes_at }}. "
+                "Customer #: {{ participant_customer_number }}"
+            ),
             is_active=True,
         ),
     )
@@ -425,7 +442,9 @@ def test_email_log_created_on_full_pipeline(monday_program, email_type):
     EmailSettings.get_settings()  # ensure singleton exists
 
     participant = _make_participant_with_user(monday_program, suffix="integration")
+    assert participant.customer_number, "customer_number must be auto-assigned on save"
 
+    mail.outbox = []
     with _override(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
         result = send_order_window_opened_notification(
             user_id=participant.user.id,
@@ -439,6 +458,31 @@ def test_email_log_created_on_full_pipeline(monday_program, email_type):
         email_type__name="order_window_opened",
         status="sent",
     ).exists()
+
+    # Strong content assertions — prove the email that actually left the
+    # process, not just the EmailLog row, has the right recipient and the
+    # right values rendered into every placeholder the task populates.
+    assert len(mail.outbox) == 1, "exactly one email must be sent"
+    sent = mail.outbox[0]
+
+    assert sent.to == [participant.user.email]
+    assert monday_program.name in sent.subject
+
+    # Plain-text body
+    assert participant.name in sent.body
+    assert monday_program.name in sent.body
+    assert "Monday, June 3 at 9:00 AM" in sent.body
+    assert participant.customer_number in sent.body
+
+    # HTML alternative — rendered independently from the text body, so it
+    # needs its own assertions to catch a placeholder broken in only one.
+    assert len(sent.alternatives) == 1
+    html_body, mimetype = sent.alternatives[0]
+    assert mimetype == "text/html"
+    assert participant.name in html_body
+    assert monday_program.name in html_body
+    assert "Monday, June 3 at 9:00 AM" in html_body
+    assert participant.customer_number in html_body
 
 
 # ---------------------------------------------------------------------------
