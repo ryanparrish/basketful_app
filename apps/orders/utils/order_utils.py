@@ -8,6 +8,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.contrib.auth import get_user_model
+from django.utils.translation import gettext as _
 
 # First-party imports
 from apps.orders.utils.order_validation import OrderItemData, OrderValidation
@@ -64,7 +65,7 @@ class OrderOrchestration:
         from apps.pantry.models import Product
         
         if not order_items_data:
-            raise ValidationError("Cannot create an order with no items.")
+            raise ValidationError(_("Cannot create an order with no items."))
         
         # Extract request metadata
         ip_address = None
@@ -94,7 +95,7 @@ class OrderOrchestration:
         
         # Check for duplicate submission
         if check_duplicate_submission(idempotency_key):
-            error_msg = "Duplicate order submission detected. Please wait before retrying."
+            error_msg = _("Duplicate order submission detected. Please wait before retrying.")
             logger.warning(
                 f"Duplicate submission for participant {account.participant.id}: "
                 f"{idempotency_key}"
@@ -121,7 +122,7 @@ class OrderOrchestration:
         # Acquire distributed lock
         with distributed_order_lock(account.participant.id, timeout=10) as lock_acquired:
             if not lock_acquired:
-                error_msg = (
+                error_msg = _(
                     "Another order is being processed. Please wait a moment and try again."
                 )
                 logger.warning(
@@ -169,7 +170,7 @@ class OrderOrchestration:
                     ]
 
                     if not items_bulk:
-                        raise ValidationError("Order must have at least one valid item.")
+                        raise ValidationError(_("Order must have at least one valid item."))
 
                     OrderItem.objects.bulk_create(items_bulk)
                 

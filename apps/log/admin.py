@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path
 from django.utils.html import format_html
+from modeltranslation.admin import TranslationAdmin
 from .models import EmailLog, EmailType, OrderValidationLog, UserLoginLog, GraceAllowanceLog
 import logging
 
@@ -10,8 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 @admin.register(EmailType)
-class EmailTypeAdmin(admin.ModelAdmin):
-    """Admin for EmailType with TinyMCE editor and preview functionality."""
+class EmailTypeAdmin(TranslationAdmin):
+    """Admin for EmailType with TinyMCE editor and preview functionality.
+
+    TranslationAdmin swaps subject/html_content/text_content in the
+    fieldsets for their per-language columns (subject_en, subject_es, ...).
+    """
     
     list_display = (
         'display_name',

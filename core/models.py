@@ -325,6 +325,13 @@ class ProgramSettings(models.Model):
             existing.grace_amount = self.grace_amount
             existing.grace_enabled = self.grace_enabled
             existing.grace_message = self.grace_message
+            # Copy the modeltranslation language columns too, or the
+            # singleton merge would silently drop translations
+            from django.conf import settings as django_settings
+            for language_code, _label in django_settings.LANGUAGES:
+                field = f'grace_message_{language_code}'
+                if hasattr(self, field):
+                    setattr(existing, field, getattr(self, field))
             existing.save()
             return existing
         return super().save(*args, **kwargs)

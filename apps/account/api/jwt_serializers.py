@@ -119,6 +119,7 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
             'participant_id': participant.id if participant else None,
             'customer_number': participant.customer_number if participant else None,
             'name': participant.name if participant else f"{user.first_name} {user.last_name}".strip(),
+            'preferred_language': participant.preferred_language if participant else None,
         }
         
         return data

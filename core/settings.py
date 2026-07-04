@@ -173,6 +173,9 @@ sys.path.append(os.path.join(BASE_DIR, 'apps'))
 
 # Installed apps
 INSTALLED_APPS = [
+    # modeltranslation must precede django.contrib.admin so its admin
+    # integration (per-language fields) is picked up
+    'modeltranslation',
     # Local apps - listed first to override Django admin templates
     'apps.pantry.apps.PantryConfig',
     # Django contrib apps
@@ -211,6 +214,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'core.middleware.StaffAwareLocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -271,12 +275,26 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'en'
 TIME_ZONE = 'America/New_York'
 TIME_FORMAT = 'g:i A'
 
 USE_I18N = True
 USE_TZ = True
+
+# Languages offered to participants. Staff-facing surfaces (Django admin,
+# React-Admin API) are always served in English regardless of this list —
+# see core.middleware.StaffAwareLocaleMiddleware and CookieJWTAuthentication.
+LANGUAGES = [
+    ('en', 'English'),
+    ('es', 'Español'),
+]
+LOCALE_PATHS = [BASE_DIR / 'locale']
+
+# django-modeltranslation: catalog content (product/category names, email
+# templates) gets per-language columns; empty translations fall back to English
+MODELTRANSLATION_DEFAULT_LANGUAGE = 'en'
+MODELTRANSLATION_FALLBACK_LANGUAGES = ('en',)
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

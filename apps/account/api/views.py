@@ -14,6 +14,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.hashers import make_password
 from django.utils.crypto import get_random_string
+from django.utils.translation import gettext as _
 from django.shortcuts import get_object_or_404
 
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsSingletonAdmin
@@ -41,6 +42,7 @@ from .serializers import (
     GoFreshSettingsSerializer,
     HygieneSettingsSerializer,
     BalanceSummarySerializer,
+    PreferredLanguageSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,23 +173,37 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except Participant.DoesNotExist:
             return Response(
-                {'error': 'No participant profile found for this user'},
+                {'error': _('No participant profile found for this user')},
                 status=status.HTTP_404_NOT_FOUND
             )
     
-    @action(detail=False, methods=['get'], url_path='me/profile', permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get', 'patch'], url_path='me/profile', permission_classes=[IsAuthenticated])
     def me_profile(self, request):
-        """Get profile info including program and coach for the current participant."""
+        """Get or update profile info for the current participant.
+
+        PATCH accepts only preferred_language — the one profile field a
+        participant may change themselves.
+        """
         try:
             participant = request.user.participant
         except Participant.DoesNotExist:
             return Response(
-                {'error': 'No participant profile found for this user'},
+                {'error': _('No participant profile found for this user')},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+        if request.method == 'PATCH':
+            serializer = PreferredLanguageSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            participant.preferred_language = serializer.validated_data['preferred_language']
+            # update_fields keeps the household-change signal handlers from
+            # firing balance recalculations or emails off this save.
+            participant.save(update_fields=['preferred_language', 'updated_at'])
+
         data: dict = {
             'name': participant.name,
             'customer_number': participant.customer_number,
+            'preferred_language': participant.preferred_language,
             'program': None,
             'coach': None,
         }

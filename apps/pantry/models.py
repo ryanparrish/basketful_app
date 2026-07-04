@@ -6,6 +6,7 @@ from collections import defaultdict
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
+from django.utils.translation import gettext as _, ngettext
 from django.db import models
 from django.core.cache import cache
 # Local app imports
@@ -359,7 +360,7 @@ class CategoryLimitValidator:
         # Get active pause multiplier once for all validations
         pause_multiplier, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
         
-        category_totals, _, category_products, category_objects = \
+        category_totals, _product_totals, category_products, category_objects = \
             CategoryLimitValidator.aggregate_category_data(order_items)
         
         errors = []
@@ -389,10 +390,10 @@ class CategoryLimitValidator:
             if total > allowed:
                 # Build detailed error message
                 category_type = (
-                    "Subcategory" if isinstance(category, Subcategory)
-                    else "Category"
+                    _("Subcategory") if isinstance(category, Subcategory)
+                    else _("Category")
                 )
-                
+
                 # Get individual product details
                 product_details = []
                 for p in category_products[cid]:
@@ -402,41 +403,60 @@ class CategoryLimitValidator:
                         if item.product.id == p.id
                     )
                     product_details.append(
-                        f"{p.name} (qty: {product_qty})"
+                        _("%(product)s (qty: %(quantity)d)") % {
+                            'product': p.name, 'quantity': product_qty,
+                        }
                     )
-                
+
                 product_list = ", ".join(product_details)
-                
+
                 # Build scope description
                 scope = product_limit.limit_scope or "per_household"
+                adult_count = participant.adults
+                child_count = participant.children
+                infant_count = participant.diaper_count or 0
                 scope_description = {
-                    "per_adult": f"{participant.adults} adult(s)",
-                    "per_child": f"{participant.children} child(ren)",
-                    "per_infant": (
-                        f"{participant.diaper_count or 0} infant(s)"
-                    ),
-                    "per_household": (
-                        f"household of {participant.household_size()}"
-                    ),
-                    "per_order": "per order"
+                    "per_adult": ngettext(
+                        "%(count)d adult", "%(count)d adults", adult_count
+                    ) % {'count': adult_count},
+                    "per_child": ngettext(
+                        "%(count)d child", "%(count)d children", child_count
+                    ) % {'count': child_count},
+                    "per_infant": ngettext(
+                        "%(count)d infant", "%(count)d infants", infant_count
+                    ) % {'count': infant_count},
+                    "per_household": _("household of %(size)d") % {
+                        'size': participant.household_size(),
+                    },
+                    "per_order": _("per order"),
                 }.get(scope, scope)
-                
+
                 # Build limit description with pause context
                 if pause_multiplier > 1:
-                    limit_description = (
-                        f"{product_limit.limit} "
-                        f"({product_limit.limit * pause_multiplier} with {pause_multiplier}x pause)"
-                    )
+                    limit_description = _("%(limit)d (%(paused_limit)d with %(multiplier)dx pause)") % {
+                        'limit': product_limit.limit,
+                        'paused_limit': product_limit.limit * pause_multiplier,
+                        'multiplier': pause_multiplier,
+                    }
                 else:
                     limit_description = str(product_limit.limit)
-                
-                error_msg = (
-                    f"Limit exceeded for {category_type} "
-                    f"'{category.name}' (scope: {scope}, "
-                    f"limit: {limit_description} {scope_description}): "
-                    f"Ordered {total}, allowed {allowed}. "
-                    f"Products: {product_list}"
-                )
+
+                error_msg = _(
+                    "Limit exceeded for %(category_type)s "
+                    "'%(category)s' (scope: %(scope)s, "
+                    "limit: %(limit_description)s %(scope_description)s): "
+                    "Ordered %(ordered)d, allowed %(allowed)d. "
+                    "Products: %(product_list)s"
+                ) % {
+                    'category_type': category_type,
+                    'category': category.name,
+                    'scope': scope,
+                    'limit_description': limit_description,
+                    'scope_description': scope_description,
+                    'ordered': total,
+                    'allowed': allowed,
+                    'product_list': product_list,
+                }
                 
                 logger.warning(
                     f"Category limit violation - "

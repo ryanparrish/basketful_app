@@ -66,6 +66,6 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f'\nCreated {created} user account(s).'))
         if send_email and created:
-            self.stdout.write(f'Onboarding email queued for each.')
+            self.stdout.write('Onboarding email queued for each.')
         if skipped_no_email:
             self.stdout.write(self.style.WARNING(f'Skipped {skipped_no_email} (no email on file).'))

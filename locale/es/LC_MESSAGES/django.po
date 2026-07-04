@@ -1,0 +1,244 @@
+# Spanish translations for Basketful participant-facing backend strings.
+# Regenerate with scripts/makemessages.sh after adding new gettext calls.
+msgid ""
+msgstr ""
+"Project-Id-Version: basketful\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-04 14:13-0400\n"
+"PO-Revision-Date: 2026-07-04 14:13-0400\n"
+"Last-Translator: Basketful Team\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: apps/account/api/views.py:176 apps/account/api/views.py:191
+msgid "No participant profile found for this user"
+msgstr "No se encontró un perfil de participante para este usuario"
+
+#: apps/orders/api/serializers.py:207
+msgid "Account does not have an associated participant."
+msgstr "La cuenta no tiene un participante asociado."
+
+#: apps/orders/api/serializers.py:211
+msgid "You may not place an order for another participant's account."
+msgstr "No puede hacer un pedido con la cuenta de otro participante."
+
+#: apps/orders/api/views.py:493
+msgid "You do not have permission to validate a cart for this participant."
+msgstr "No tiene permiso para validar el carrito de este participante."
+
+#: apps/orders/api/views.py:503
+msgid "No participant profile found for this user."
+msgstr "No se encontró un perfil de participante para este usuario."
+
+#: apps/orders/api/views.py:508
+msgid "AccountBalance not found for this participant."
+msgstr "No se encontró el saldo de cuenta de este participante."
+
+#: apps/orders/api/views.py:546
+#, python-format
+msgid "Product %(product_id)s not found"
+msgstr "No se encontró el producto %(product_id)s"
+
+#: apps/orders/api/views.py:587
+#, python-format
+msgid "Food balance exceeded by $%(amount)s"
+msgstr "El saldo de alimentos se excedió por $%(amount)s"
+
+#: apps/orders/api/views.py:602
+#, python-format
+msgid "Hygiene balance exceeded by $%(amount)s"
+msgstr "El saldo de higiene se excedió por $%(amount)s"
+
+#: apps/orders/api/views.py:617
+#, python-format
+msgid "Go Fresh balance exceeded by $%(amount)s"
+msgstr "El saldo Go Fresh se excedió por $%(amount)s"
+
+#: apps/orders/models.py:230
+msgid ""
+"You already have an active order. Please wait for it to be completed or "
+"cancel it before placing a new one."
+msgstr ""
+"Ya tiene un pedido activo. Espere a que se complete o cancélelo antes de "
+"hacer uno nuevo."
+
+#: apps/orders/models.py:261
+#, python-format
+msgid "Food balance exceeded: $%(total)s > $%(balance)s"
+msgstr "Saldo de alimentos excedido: $%(total)s > $%(balance)s"
+
+#: apps/orders/models.py:275
+#, python-format
+msgid "Hygiene balance exceeded: $%(total)s > $%(balance)s"
+msgstr "Saldo de higiene excedido: $%(total)s > $%(balance)s"
+
+#: apps/orders/models.py:290
+#, python-format
+msgid "Go Fresh balance exceeded: $%(total)s > $%(balance)s"
+msgstr "Saldo Go Fresh excedido: $%(total)s > $%(balance)s"
+
+#: apps/orders/models.py:523
+#, python-format
+msgid ""
+"Order total $%(total)s exceeds available voucher balance $%(balance)s for "
+"%(participant)s"
+msgstr ""
+"El total del pedido $%(total)s supera el saldo de vales disponible "
+"$%(balance)s de %(participant)s"
+
+#: apps/orders/utils/order_utils.py:68
+msgid "Cannot create an order with no items."
+msgstr "No se puede crear un pedido sin artículos."
+
+#: apps/orders/utils/order_utils.py:98
+msgid "Duplicate order submission detected. Please wait before retrying."
+msgstr ""
+"Se detectó un envío de pedido duplicado. Espere un momento antes de "
+"intentarlo de nuevo."
+
+#: apps/orders/utils/order_utils.py:126
+msgid "Another order is being processed. Please wait a moment and try again."
+msgstr ""
+"Se está procesando otro pedido. Espere un momento e intente de nuevo."
+
+#: apps/orders/utils/order_utils.py:173
+msgid "Order must have at least one valid item."
+msgstr "El pedido debe tener al menos un artículo válido."
+
+#: apps/orders/utils/order_validation.py:42
+#, python-format
+msgid "Hygiene items total $%(total)s, exceeds hygiene balance $%(balance)s."
+msgstr ""
+"Los artículos de higiene suman $%(total)s, lo que supera el saldo de "
+"higiene de $%(balance)s."
+
+#: apps/orders/utils/order_validation.py:89
+#, python-format
+msgid ""
+"Food items total $%(total)s exceeds available voucher balance $%(balance)s."
+msgstr ""
+"Los alimentos suman $%(total)s, lo que supera el saldo de vales disponible "
+"de $%(balance)s."
+
+#: apps/orders/utils/order_validation.py:110
+#, python-format
+msgid ""
+"Food and hygiene items total $%(total)s exceeds available voucher balance $"
+"%(balance)s."
+msgstr ""
+"Los alimentos y artículos de higiene suman $%(total)s, lo que supera el "
+"saldo de vales disponible de $%(balance)s."
+
+#: apps/orders/utils/order_validation.py:130
+#, python-format
+msgid "Go Fresh items total $%(total)s exceeds Go Fresh balance $%(balance)s."
+msgstr ""
+"Los artículos Go Fresh suman $%(total)s, lo que supera el saldo Go Fresh "
+"de $%(balance)s."
+
+#: apps/orders/utils/order_validation.py:145
+#, python-format
+msgid "%(product)s: requested %(requested)d, only %(available)d in stock"
+msgstr ""
+"%(product)s: se pidieron %(requested)d, solo hay %(available)d en "
+"existencia"
+
+#: apps/orders/utils/order_validation.py:155
+#, python-format
+msgid "Insufficient stock: %(detail)s"
+msgstr "Existencias insuficientes: %(detail)s"
+
+#: apps/pantry/admin/orderitem/tabular.html:26
+msgid "Delete?"
+msgstr ""
+
+#: apps/pantry/admin/orderitem/tabular.html:40
+msgid "Change"
+msgstr ""
+
+#: apps/pantry/admin/orderitem/tabular.html:40
+msgid "View"
+msgstr ""
+
+#: apps/pantry/admin/orderitem/tabular.html:42
+msgid "View on site"
+msgstr ""
+
+#: apps/pantry/models.py:393
+msgid "Subcategory"
+msgstr "Subcategoría"
+
+#: apps/pantry/models.py:394
+msgid "Category"
+msgstr "Categoría"
+
+#: apps/pantry/models.py:406
+#, python-format
+msgid "%(product)s (qty: %(quantity)d)"
+msgstr "%(product)s (cant.: %(quantity)d)"
+
+#: apps/pantry/models.py:420
+#, python-format
+msgid "%(count)d adult"
+msgid_plural "%(count)d adults"
+msgstr[0] "%(count)d adulto"
+msgstr[1] "%(count)d adultos"
+
+#: apps/pantry/models.py:423
+#, python-format
+msgid "%(count)d child"
+msgid_plural "%(count)d children"
+msgstr[0] "%(count)d niño"
+msgstr[1] "%(count)d niños"
+
+#: apps/pantry/models.py:426
+#, python-format
+msgid "%(count)d infant"
+msgid_plural "%(count)d infants"
+msgstr[0] "%(count)d bebé"
+msgstr[1] "%(count)d bebés"
+
+#: apps/pantry/models.py:428
+#, python-format
+msgid "household of %(size)d"
+msgstr "hogar de %(size)d"
+
+#: apps/pantry/models.py:431
+msgid "per order"
+msgstr "por pedido"
+
+#: apps/pantry/models.py:436
+#, python-format
+msgid "%(limit)d (%(paused_limit)d with %(multiplier)dx pause)"
+msgstr "%(limit)d (%(paused_limit)d con pausa de %(multiplier)dx)"
+
+#: apps/pantry/models.py:445
+#, python-format
+msgid ""
+"Limit exceeded for %(category_type)s '%(category)s' (scope: %(scope)s, "
+"limit: %(limit_description)s %(scope_description)s): Ordered %(ordered)d, "
+"allowed %(allowed)d. Products: %(product_list)s"
+msgstr ""
+"Límite excedido para la %(category_type)s '%(category)s' (alcance: "
+"%(scope)s, límite: %(limit_description)s %(scope_description)s): Se "
+"pidieron %(ordered)d, se permiten %(allowed)d. Productos: %(product_list)s"
+
+#: apps/pantry/templates/admin/base_site.html:4
+msgid "Django site admin"
+msgstr ""
+
+#: apps/pantry/templates/admin/logged_out.html:4
+msgid "Home"
+msgstr ""
+
+#: apps/pantry/templates/admin/logged_out.html:8
+msgid "Thanks for spending some quality time with the web site today."
+msgstr ""
+
+#: apps/pantry/templates/admin/logged_out.html:10
+msgid "Log in again"
+msgstr ""

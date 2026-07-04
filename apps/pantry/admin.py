@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.http import HttpResponseRedirect
 from django.core.exceptions import PermissionDenied
+from modeltranslation.admin import TranslationAdmin
 # First-party imports
 from apps.orders.tasks.weekly_orders import create_weekly_combined_orders
 # Local application imports
@@ -25,7 +26,7 @@ class SubcategoryInline(admin.StackedInline):
 
    
 @admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
+class CategoryAdmin(TranslationAdmin):
     """Admin for Category with Subcategory inline and protection for critical categories."""
     list_display = ('name_with_lock',)
     inlines = [SubcategoryInline]
@@ -68,7 +69,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(Subcategory)
-class SubcategoryAdmin(admin.ModelAdmin):
+class SubcategoryAdmin(TranslationAdmin):
     """Admin for Subcategory with category filtering."""
     list_display = ('name', 'category')
     list_filter = ('category',)
@@ -77,7 +78,7 @@ class SubcategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(TranslationAdmin):
     """Admin for Product model with image preview."""
     readonly_fields = ['image_preview']
     search_fields = ['name', 'description', 'category__name', 'tags__name']
@@ -107,7 +108,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(Tag)
-class TagAdmin(admin.ModelAdmin):
+class TagAdmin(TranslationAdmin):
     """Admin for Tag model with product count."""
     list_display = ('name', 'slug', 'product_count', 'created_at')
     search_fields = ('name', 'description')

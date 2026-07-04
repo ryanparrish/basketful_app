@@ -1,6 +1,7 @@
 # food_orders.utils.order_validation.py
 """Utilities for validating orders and order items."""
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
 from typing import List, Any
 from dataclasses import dataclass
 import logging
@@ -37,10 +38,13 @@ class OrderValidation:
         hygiene_balance = getattr(account_balance, "hygiene_balance", 0)
 
         if hygiene_total > hygiene_balance:
-            msg = (
-                f"Hygiene items total ${hygiene_total:.2f}, "
-                f"exceeds hygiene balance ${hygiene_balance:.2f}."
-            )
+            msg = _(
+                "Hygiene items total $%(total)s, "
+                "exceeds hygiene balance $%(balance)s."
+            ) % {
+                'total': f"{hygiene_total:.2f}",
+                'balance': f"{hygiene_balance:.2f}",
+            }
             raise ValidationError(f"[{participant}] {msg}")
         
     # ----------------------------
@@ -81,10 +85,13 @@ class OrderValidation:
         available_balance = getattr(account_balance, "available_balance", 0)
 
         if food_total > available_balance:
-            msg = (
-                f"Food items total ${food_total:.2f} exceeds available voucher "
-                f"balance ${available_balance:.2f}."
-            )
+            msg = _(
+                "Food items total $%(total)s exceeds available voucher "
+                "balance $%(balance)s."
+            ) % {
+                'total': f"{food_total:.2f}",
+                'balance': f"{available_balance:.2f}",
+            }
             logger.warning("[Validator] %s - Food total exceeds balance", participant)
             raise ValidationError(f"[{participant}] {msg}")
 
@@ -99,10 +106,13 @@ class OrderValidation:
         hygiene_total = sum(item.product.price * item.quantity for item in hygiene_items)
         combined_total = food_total + hygiene_total
         if combined_total > available_balance:
-            msg = (
-                f"Food and hygiene items total ${combined_total:.2f} exceeds "
-                f"available voucher balance ${available_balance:.2f}."
-            )
+            msg = _(
+                "Food and hygiene items total $%(total)s exceeds "
+                "available voucher balance $%(balance)s."
+            ) % {
+                'total': f"{combined_total:.2f}",
+                'balance': f"{available_balance:.2f}",
+            }
             logger.warning("[Validator] %s - Combined food+hygiene total exceeds balance", participant)
             raise ValidationError(f"[{participant}] {msg}")
 
@@ -116,10 +126,13 @@ class OrderValidation:
             go_fresh_total = sum(item.product.price * item.quantity for item in go_fresh_items)
             
             if go_fresh_total > go_fresh_balance:
-                msg = (
-                    f"Go Fresh items total ${go_fresh_total:.2f} exceeds Go Fresh "
-                    f"balance ${go_fresh_balance:.2f}."
-                )
+                msg = _(
+                    "Go Fresh items total $%(total)s exceeds Go Fresh "
+                    "balance $%(balance)s."
+                ) % {
+                    'total': f"{go_fresh_total:.2f}",
+                    'balance': f"{go_fresh_balance:.2f}",
+                }
                 logger.warning("[Validator] %s - Go Fresh total exceeds balance", participant)
                 raise ValidationError(f"[{participant}] {msg}")
 
@@ -129,13 +142,17 @@ class OrderValidation:
             available = getattr(item.product, 'quantity_in_stock', None)
             if available is not None and available < item.quantity:
                 out_of_stock.append(
-                    f"{item.product.name}: requested {item.quantity}, only {available} in stock"
+                    _("%(product)s: requested %(requested)d, only %(available)d in stock") % {
+                        'product': item.product.name,
+                        'requested': item.quantity,
+                        'available': available,
+                    }
                 )
         if out_of_stock:
             detail = "; ".join(out_of_stock)
             logger.warning("[Validator] %s - insufficient stock: %s", participant, detail)
             raise ValidationError(
-                f"[{participant}] Insufficient stock: {detail}"
+                f"[{participant}] " + _("Insufficient stock: %(detail)s") % {'detail': detail}
             )
 
 

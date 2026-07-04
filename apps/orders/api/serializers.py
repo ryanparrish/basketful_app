@@ -2,6 +2,7 @@
 Serializers for the Orders app.
 """
 from decimal import Decimal
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from apps.orders.models import (
@@ -203,11 +204,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 participant_user = account.participant.user
             except Exception:
                 raise serializers.ValidationError(
-                    "Account does not have an associated participant."
+                    _("Account does not have an associated participant.")
                 )
             if participant_user != request.user:
                 raise serializers.ValidationError(
-                    "You may not place an order for another participant's account."
+                    _("You may not place an order for another participant's account.")
                 )
         return account
 

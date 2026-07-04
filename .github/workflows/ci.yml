@@ -88,6 +88,18 @@ jobs:
           flake8 apps/ core/ --count --show-source --statistics
         continue-on-error: false
 
+      - name: Compile translation catalogs
+        env:
+          DJANGO_SETTINGS_MODULE: core.settings
+          SECRET_KEY: test-secret-key-for-ci
+          HASHIDS_SALT: test-hashids-salt-for-ci
+          DOMAIN_NAME: test.example.com
+        run: |
+          sudo apt-get update && sudo apt-get install -y gettext
+          msgfmt --check -o /dev/null locale/es/LC_MESSAGES/django.po
+          python manage.py compilemessages -l es --ignore=venv --ignore=node_modules \
+            --ignore=frontend --ignore=participant-frontend
+
       - name: Run migrations
         env:
           DJANGO_SETTINGS_MODULE: core.settings

@@ -170,7 +170,7 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'program', 'program_name', 'assigned_coach', 'coach_name',
             'user', 'user_username',
             'allergy', 'active', 'archived_at', 'balances', 'base_balance',
-            'account_balance_id', 'has_account',
+            'account_balance_id', 'has_account', 'preferred_language',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'customer_number', 'archived_at', 'created_at', 'updated_at']
@@ -255,4 +255,11 @@ class BalanceSummarySerializer(serializers.Serializer):
     available_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
     hygiene_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
     go_fresh_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class PreferredLanguageSerializer(serializers.Serializer):
+    """Serializer for a participant updating their own preferred language."""
+    preferred_language = serializers.ChoiceField(
+        choices=Participant.LANGUAGE_CHOICES
+    )
 

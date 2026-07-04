@@ -13,6 +13,7 @@ from django.db import IntegrityError
 from django.db.models import Count, Sum, Q
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import action
@@ -489,7 +490,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 # Non-staff may not validate for other participants.
                 if not request.user.is_staff and participant.user_id != request.user.id:
                     return Response(
-                        {'error': 'You do not have permission to validate a cart for this participant.'},
+                        {'error': _('You do not have permission to validate a cart for this participant.')},
                         status=status.HTTP_403_FORBIDDEN
                     )
             else:
@@ -499,12 +500,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             account = participant.accountbalance
         except Participant.DoesNotExist:
             return Response(
-                {'error': 'No participant profile found for this user.'},
+                {'error': _('No participant profile found for this user.')},
                 status=status.HTTP_404_NOT_FOUND
             )
         except AccountBalance.DoesNotExist:
             return Response(
-                {'error': 'AccountBalance not found for this participant.'},
+                {'error': _('AccountBalance not found for this participant.')},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -542,7 +543,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         total_price += item.total_price()
                     except Product.DoesNotExist:
                         raise _ValidationDone(Response(
-                            {'error': f'Product {product_id} not found'},
+                            {'error': _('Product %(product_id)s not found') % {'product_id': product_id}},
                             status=status.HTTP_404_NOT_FOUND
                         ))
 
@@ -583,7 +584,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     violations.append({
                         'type': 'balance',
                         'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else f'Food balance exceeded by ${amount_over:.2f}',
+                        'message': program_settings.grace_message if grace_allowed else _('Food balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
                         'grace_allowed': grace_allowed
                     })
@@ -598,7 +599,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     violations.append({
                         'type': 'balance',
                         'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else f'Hygiene balance exceeded by ${amount_over:.2f}',
+                        'message': program_settings.grace_message if grace_allowed else _('Hygiene balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
                         'grace_allowed': grace_allowed
                     })
@@ -613,7 +614,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     violations.append({
                         'type': 'balance',
                         'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else f'Go Fresh balance exceeded by ${amount_over:.2f}',
+                        'message': program_settings.grace_message if grace_allowed else _('Go Fresh balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
                         'grace_allowed': grace_allowed
                     })

@@ -132,9 +132,14 @@ class ProgramSettingsSerializer(serializers.ModelSerializer):
         model = ProgramSettings
         fields = [
             'id', 'grace_amount', 'grace_enabled', 'grace_message',
+            'grace_message_en', 'grace_message_es',
             'rules_version', 'recaptcha_site_key', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'rules_version', 'recaptcha_site_key', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'grace_message_en': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'grace_message_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
     def get_recaptcha_site_key(self, obj):
         """Get reCAPTCHA site key from Django settings."""

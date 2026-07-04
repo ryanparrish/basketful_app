@@ -37,6 +37,7 @@ gunicorn>=22.0,<22.1
 
 # Django packages
 django-bootstrap5==25.1
+django-modeltranslation>=0.19
 django-storages[s3]>=1.13.2
 django-tinymce>=4.0.0
 django-anymail[mailgun]>=10.0

@@ -5,12 +5,36 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.http import JsonResponse
+from django.middleware.locale import LocaleMiddleware
 from django.shortcuts import redirect
+from django.utils import translation
 from apps.log.models import OrderValidationLog
 
 logger = logging.getLogger("custom_validation")
 
 _IS_PROD = getattr(settings, 'IS_PROD', False)
+
+
+class StaffAwareLocaleMiddleware(LocaleMiddleware):
+    """
+    LocaleMiddleware that pins the Django admin to English.
+
+    With 'es' in LANGUAGES, Django's shipped Spanish admin catalog would
+    otherwise activate for any staff member whose browser sends a Spanish
+    Accept-Language header. Staff surfaces are English-only by design.
+
+    All other requests get standard Accept-Language negotiation — the
+    fallback for anonymous participants (login, password reset). For
+    authenticated participants the JWT layer overrides this with their
+    saved preferred_language (see CookieJWTAuthentication).
+    """
+
+    def process_request(self, request):
+        if request.path.startswith('/admin/'):
+            translation.activate('en')
+            request.LANGUAGE_CODE = translation.get_language()
+            return
+        super().process_request(request)
 
 
 class SecurityHeadersMiddleware:

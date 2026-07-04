@@ -10,7 +10,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from django.utils import timezone
+from django.utils import timezone, translation
 from django.conf import settings
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
@@ -161,12 +161,19 @@ def send_email_by_type(self, user_id, email_type_name, force=False, extra_contex
     from_email = email_type.from_email or email_settings.get_from_email()
     reply_to = email_type.reply_to or email_settings.get_reply_to()
     
+    # Render in the participant's preferred language: the modeltranslation
+    # descriptors on EmailType resolve subject_es/html_content_es under
+    # override, with automatic English fallback when a translation is blank.
+    participant = getattr(user, 'participant', None)
+    email_language = getattr(participant, 'preferred_language', None) or 'en'
+
     try:
         # Render content
-        subject = email_type.render_subject(context)
-        html_content = email_type.render_html(context)
-        text_content = email_type.render_text(context)
-        
+        with translation.override(email_language):
+            subject = email_type.render_subject(context)
+            html_content = email_type.render_html(context)
+            text_content = email_type.render_text(context)
+
         # Send email
         message_id = send_email_message(
             subject=subject,

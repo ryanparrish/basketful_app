@@ -10,6 +10,7 @@ from datetime import datetime
 # Django imports
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
 # Local imports
 from apps.pantry.models import CategoryLimitValidator
 from apps.log.models import OrderValidationLog
@@ -179,7 +180,7 @@ class Order(models.Model):
         """Ensure order has a unique order number, generating one if needed."""
         if not self.order_number:
             max_attempts = 10
-            for _ in range(max_attempts):
+            for _attempt in range(max_attempts):
                 candidate = self._generate_order_number()
                 if not Order.objects.filter(order_number=candidate).exists():
                     self.order_number = candidate
@@ -226,8 +227,8 @@ class Order(models.Model):
                 existing_qs = existing_qs.exclude(pk=self.pk)
             if existing_qs.exists():
                 raise ValidationError(
-                    "You already have an active order. "
-                    "Please wait for it to be completed or cancel it before placing a new one."
+                    _("You already have an active order. "
+                      "Please wait for it to be completed or cancel it before placing a new one.")
                 )
 
         if self.status != "confirmed":
@@ -257,7 +258,9 @@ class Order(models.Model):
         available_balance = getattr(self.account, "available_balance", 0)
         if food_total > available_balance:
             errors.append(
-                f"Food balance exceeded: ${food_total} > ${available_balance}"
+                _("Food balance exceeded: $%(total)s > $%(balance)s") % {
+                    'total': food_total, 'balance': available_balance,
+                }
             )
 
         # --- Hygiene balance ---
@@ -269,8 +272,9 @@ class Order(models.Model):
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
         if hygiene_total > hygiene_balance:
             errors.append(
-                f"Hygiene balance exceeded: "
-                f"${hygiene_total} > ${hygiene_balance}"
+                _("Hygiene balance exceeded: $%(total)s > $%(balance)s") % {
+                    'total': hygiene_total, 'balance': hygiene_balance,
+                }
             )
 
         # --- Go Fresh balance ---
@@ -283,8 +287,10 @@ class Order(models.Model):
         # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
         if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
             errors.append(
-                f"Go Fresh balance exceeded: "
-                f"${go_fresh_total:.2f} > ${go_fresh_balance:.2f}"
+                _("Go Fresh balance exceeded: $%(total)s > $%(balance)s") % {
+                    'total': f"{go_fresh_total:.2f}",
+                    'balance': f"{go_fresh_balance:.2f}",
+                }
             )
         # Store go_fresh_total for tracking (will be saved when order is confirmed)
         self.go_fresh_total = go_fresh_total
@@ -514,8 +520,12 @@ class Order(models.Model):
                     self.id, order_total, total_voucher_balance,
                 )
                 raise ValidationError(
-                    f"Order total ${order_total:.2f} exceeds available voucher balance "
-                    f"${total_voucher_balance:.2f} for {participant}"
+                    _("Order total $%(total)s exceeds available voucher balance "
+                      "$%(balance)s for %(participant)s") % {
+                        'total': f"{order_total:.2f}",
+                        'balance': f"{total_voucher_balance:.2f}",
+                        'participant': participant,
+                    }
                 )
         else:
             # Normal flow: determine how many vouchers to consume

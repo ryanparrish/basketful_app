@@ -19,8 +19,18 @@ class TagSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tag
-        fields = ['id', 'name', 'slug', 'description', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'name_en', 'name_es', 'slug',
+            'description', 'description_en', 'description_es',
+            'created_at', 'updated_at',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'name_en': {'required': False},
+            'name_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'description_en': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'description_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
 
 class SubcategorySerializer(serializers.ModelSerializer):
@@ -29,8 +39,12 @@ class SubcategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subcategory
-        fields = ['id', 'name', 'category', 'category_name', 'sort_order']
+        fields = ['id', 'name', 'name_en', 'name_es', 'category', 'category_name', 'sort_order']
         read_only_fields = ['id']
+        extra_kwargs = {
+            'name_en': {'required': False},
+            'name_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -40,8 +54,12 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'sort_order', 'subcategories', 'product_count']
+        fields = ['id', 'name', 'name_en', 'name_es', 'sort_order', 'subcategories', 'product_count']
         read_only_fields = ['id']
+        extra_kwargs = {
+            'name_en': {'required': False},
+            'name_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
     def get_product_count(self, obj):
         return obj.products.filter(active=True).count()
@@ -75,7 +93,8 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'description', 'price',
+            'id', 'name', 'name_en', 'name_es',
+            'description', 'description_en', 'description_es', 'price',
             'category', 'category_name', 'subcategory', 'subcategory_name',
             'quantity_in_stock', 'is_meat', 'weight_lbs',
             'image', 'active', 'tags', 'tag_ids', 'limit',
@@ -84,6 +103,10 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {
             'description': {'required': False},
+            'name_en': {'required': False},
+            'name_es': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'description_en': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'description_es': {'required': False, 'allow_null': True, 'allow_blank': True},
             'price': {'required': False},
             'quantity_in_stock': {'required': False},
             'image': {'required': False, 'allow_null': True},
