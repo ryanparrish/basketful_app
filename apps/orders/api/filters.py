@@ -19,6 +19,14 @@ class OrderFilter(filters.FilterSet):
     account = filters.NumberFilter(field_name='account', lookup_expr='exact')
     user = filters.NumberFilter(field_name='user', lookup_expr='exact')
 
+    # Filter by participant id (Order → AccountBalance → Participant).
+    # The admin participant page's Orders tab queries ?participant=<id>;
+    # without this filter django-filter silently ignored the param and the
+    # tab showed every order in the system.
+    participant = filters.NumberFilter(
+        field_name='account__participant', lookup_expr='exact'
+    )
+
     # Multi-value program filter:
     # Accepts a single value (?account__participant__program=1)
     # OR repeated params  (?account__participant__program=1&account__participant__program=3)
@@ -35,5 +43,6 @@ class OrderFilter(filters.FilterSet):
             'paid',
             'account',
             'user',
+            'participant',
             'account__participant__program',
         ]

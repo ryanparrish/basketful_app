@@ -817,14 +817,16 @@ export const ParticipantShow = () => (
           <Datagrid rowClick="show">
             <TextField source="order_number" label="Order #" />
             <DateField source="created_at" label="Order Date" showTime />
-            <ReferenceField source="voucher" reference="vouchers" link="show">
-              <TextField source="voucher_number" />
-            </ReferenceField>
-            <FunctionField 
-              label="Items" 
-              render={(record: RaRecord) => record.items?.length || 0}
+            <TextField source="status" label="Status" />
+            <NumberField source="item_count" label="Items" />
+            <FunctionField
+              label="Total"
+              render={(record: RaRecord) =>
+                record.total_price !== undefined && record.total_price !== null
+                  ? `$${Number(record.total_price).toFixed(2)}`
+                  : '—'
+              }
             />
-            <DateField source="pickup_date" label="Pickup Date" />
             <ShowButton />
           </Datagrid>
         </ReferenceManyField>
