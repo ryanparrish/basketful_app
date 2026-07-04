@@ -24,15 +24,35 @@ import {
   FunctionField,
   useRecordContext,
   type RaRecord,
+  Link,
+  useSearchParams,
 } from 'react-admin';
-import { Chip, Box, Typography } from '@mui/material';
+import { Chip, Box, Typography, Alert } from '@mui/material';
+import InfoIcon from '@mui/icons-material/Info';
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
 export const CoachList = () => (
   <List sort={{ field: 'name', order: 'ASC' }}>
+    <Alert severity="info" icon={<InfoIcon />} sx={{ mb: 2 }}>
+      <Typography variant="body2">
+        <strong>Coach Profiles:</strong> This page shows coaches with program assignments. 
+        To manage user accounts (login credentials), go to{' '}
+        <Link to="/users" style={{ fontWeight: 600 }}>Users</Link>.
+      </Typography>
+    </Alert>
     <Datagrid rowClick="show">
       <TextField source="name" />
+      <FunctionField
+        label="User Account"
+        render={(record: RaRecord) =>
+          record.user_username ? (
+            <Chip label={record.user_username} size="small" color="primary" sx={{ fontWeight: 600 }} />
+          ) : (
+            <Chip label="⚠ No user linked" size="small" color="warning" variant="outlined" sx={{ fontWeight: 600 }} />
+          )
+        }
+      />
       <EmailField source="email" />
       <TextField source="phone_number" label="Phone" />
       <FunctionField
@@ -46,16 +66,6 @@ export const CoachList = () => (
             </Box>
           ) : (
             <Chip label="No program" size="small" variant="outlined" />
-          )
-        }
-      />
-      <FunctionField
-        label="User Account"
-        render={(record: RaRecord) =>
-          record.user_username ? (
-            <Chip label={record.user_username} size="small" color="primary" />
-          ) : (
-            <Chip label="No user linked" size="small" variant="outlined" />
           )
         }
       />
@@ -150,11 +160,11 @@ export const CoachEdit = () => (
           fullWidth
         />
       </ReferenceArrayInput>
-      <ReferenceInput source="user" reference="users">
+      <ReferenceInput source="user" reference="users" filter={{ is_staff: true }}>
         <SelectInput
           optionText="username"
-          label="Linked User Account"
-          helperText="Linking a user grants them Lifeskills Coach access to this admin"
+          label="User Account (Staff Only)"
+          helperText="⚠️ Required for login. Select a staff user to grant them coach access. Without a linked user, this coach cannot log in to the admin."
           fullWidth
         />
       </ReferenceInput>
@@ -164,34 +174,44 @@ export const CoachEdit = () => (
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
-export const CoachCreate = () => (
-  <Create>
-    <SimpleForm>
-      <Typography variant="h6" gutterBottom>Coach Profile</Typography>
-      <TextInput source="name" fullWidth required />
-      <TextInput source="email" type="email" fullWidth required />
-      <TextInput source="phone_number" label="Phone Number" fullWidth />
-      <ImageInput source="image" label="Profile Photo" accept={{ 'image/*': [] }}>
-        <ImageField source="src" title="title" />
-      </ImageInput>
+export const CoachCreate = () => {
+  const [searchParams] = useSearchParams();
+  const prefilledUser = searchParams.get('user');
 
-      <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Assignment</Typography>
-      <ReferenceArrayInput source="programs" reference="programs">
-        <SelectArrayInput
-          optionText="name"
-          label="Assigned Programs"
-          helperText="Select all programs this coach manages"
-          fullWidth
-        />
-      </ReferenceArrayInput>
-      <ReferenceInput source="user" reference="users">
-        <SelectInput
-          optionText="username"
-          label="Linked User Account"
-          helperText="Linking a user grants them Lifeskills Coach access to this admin"
-          fullWidth
-        />
-      </ReferenceInput>
-    </SimpleForm>
-  </Create>
-);
+  return (
+    <Create>
+      <SimpleForm defaultValues={prefilledUser ? { user: parseInt(prefilledUser) } : {}}>
+        <Typography variant="h6" gutterBottom>Coach Profile</Typography>
+        {prefilledUser && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Creating coach profile for the selected user account.
+          </Alert>
+        )}
+        <TextInput source="name" fullWidth required />
+        <TextInput source="email" type="email" fullWidth required />
+        <TextInput source="phone_number" label="Phone Number" fullWidth />
+        <ImageInput source="image" label="Profile Photo" accept={{ 'image/*': [] }}>
+          <ImageField source="src" title="title" />
+        </ImageInput>
+
+        <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Assignment</Typography>
+        <ReferenceArrayInput source="programs" reference="programs">
+          <SelectArrayInput
+            optionText="name"
+            label="Assigned Programs"
+            helperText="Select all programs this coach manages"
+            fullWidth
+          />
+        </ReferenceArrayInput>
+        <ReferenceInput source="user" reference="users" filter={{ is_staff: true }}>
+          <SelectInput
+            optionText="username"
+            label="User Account (Staff Only)"
+            helperText="⚠️ Required for login. Select a staff user to grant them coach access. Without a linked user, this coach cannot log in to the admin."
+            fullWidth
+          />
+        </ReferenceInput>
+      </SimpleForm>
+    </Create>
+  );
+};

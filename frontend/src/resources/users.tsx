@@ -22,8 +22,10 @@ import {
   email,
   useRecordContext,
   type RaRecord,
+  useRedirect,
 } from 'react-admin';
-import { Chip, Box } from '@mui/material';
+import { Chip, Box, Button } from '@mui/material';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 // List
 export const UserList = () => (
@@ -97,10 +99,34 @@ export const UserShow = () => {
     );
   };
 
+  const CoachProfileActions = () => {
+    const record = useRecordContext();
+    const redirect = useRedirect();
+
+    if (!record) return null;
+
+    // Only show for staff users (coaches must be staff)
+    if (!record.is_staff) return null;
+
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<PersonAddIcon />}
+          onClick={() => redirect(`/coaches/create?user=${record.id}`)}
+          size="small"
+        >
+          Create Coach Profile for This User
+        </Button>
+      </Box>
+    );
+  };
+
   return (
     <Show>
       <TabbedShowLayout>
         <Tab label="Basic Info">
+          <CoachProfileActions />
           <TextField source="id" />
           <TextField source="username" />
           <EmailField source="email" />
