@@ -23,7 +23,7 @@ import {
   useDataProvider,
   type RaRecord,
 } from 'react-admin';
-import { Card, CardContent, Typography, Box, Chip, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { Typography, Box, Chip, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -75,7 +75,6 @@ const RefreshSummaryButton = () => {
   const record = useRecordContext();
   const notify = useNotify();
   const refresh = useRefresh();
-  const dataProvider = useDataProvider();
 
   if (!record) return null;
 

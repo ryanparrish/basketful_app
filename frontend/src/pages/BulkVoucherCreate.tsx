@@ -7,7 +7,7 @@
  * 
  * Can be initialized with URL param ?mode=select for quick single-participant flow
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Title,
   useNotify,
@@ -41,7 +41,6 @@ import {
   Paper,
   Divider,
   Autocomplete,
-  IconButton,
   Stack,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';

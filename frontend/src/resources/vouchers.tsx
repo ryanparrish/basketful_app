@@ -6,13 +6,8 @@ import {
   Datagrid,
   TextField,
   DateField,
-  Create,
-  SimpleForm,
-  TextInput,
   BooleanInput,
   SelectInput,
-  ReferenceInput,
-  AutocompleteInput,
   Show,
   SimpleShowLayout,
   FilterButton,
@@ -75,14 +70,7 @@ const ListActions = () => (
 );
 
 // Bulk Create Button (deprecated - now handled by standard Create)
-// Keeping for backwards compatibility with any bookmarks
-const BulkCreateButton = () => (
-  <Button
-    label="Bulk Create"
-    onClick={() => {
-      window.location.href = '#/vouchers/bulk-create';
-    }}
-  />
+// Removed as it's no longer used
 );
 
 // Bulk Status Update Button

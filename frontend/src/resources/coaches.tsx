@@ -25,8 +25,8 @@ import {
   useRecordContext,
   type RaRecord,
   Link,
-  useSearchParams,
 } from 'react-admin';
+import { useSearchParams } from 'react-router-dom';
 import { Chip, Box, Typography, Alert } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 
