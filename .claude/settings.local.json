@@ -38,7 +38,30 @@
       "Bash(npm run *)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('version:', d['version']\\); print\\('deps:', d.get\\('dependencies'\\)\\)\")",
       "Bash(npm view *)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('main'\\), d.get\\('module'\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('main'\\), d.get\\('module'\\)\\)\")",
+      "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue43_image.bin \"https://github.com/user-attachments/assets/44e38c2c-b63f-4f10-850f-ef29af1c789d\")",
+      "Bash(brew services *)",
+      "Bash(lsof -i :8000 -sTCP:LISTEN)",
+      "Bash(lsof -i :5174 -sTCP:LISTEN)",
+      "Read(//Library/Frameworks/Python.framework/Versions/3.13/bin/**)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/token/ -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"admin\"}')",
+      "Bash(python3 -m json.tool)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(chromium-cli --help)",
+      "Bash(npx --no-install playwright --version)",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -X POST http://localhost:8000/api/v1/programs/ -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzMTMwNjEyLCJpYXQiOjE3ODMxMjcwMTIsImp0aSI6ImFmM2QzZDBjNTI1YTQ4MGM4ODY1ODhmZWZkNGUzYzg0IiwidXNlcl9pZCI6IjEifQ.J5O2lnAoFkMiXAfRUj52X2GzJ3Os_0PzqQ24QzZqq-8' -H 'Content-Type: application/json' -d '{\"name\":\"Test Program Issue43\",\"MeetingDay\":\"monday\",\"meeting_time\":\"09:00\",\"meeting_address\":\"Some address\",\"default_split_strategy\":\"none\"}')",
+      "Bash(git log *)",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -X POST http://localhost:8000/api/v1/programs/ -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzMTMwNjEyLCJpYXQiOjE3ODMxMjcwMTIsImp0aSI6ImFmM2QzZDBjNTI1YTQ4MGM4ODY1ODhmZWZkNGUzYzg0IiwidXNlcl9pZCI6IjEifQ.J5O2lnAoFkMiXAfRUj52X2GzJ3Os_0PzqQ24QzZqq-8' -H 'Content-Type: application/json' -d '{\"name\":\"Test Program Blank Strategy\",\"MeetingDay\":\"monday\",\"meeting_time\":\"09:00\",\"meeting_address\":\"Some address\",\"default_split_strategy\":\"\"}')",
+      "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue41_image.bin \"https://github.com/user-attachments/assets/51bdc9c5-95b9-4476-b8de-c3590a0608ce\")",
+      "Bash(grep -n \"available_balance\\\\|full_balance\\\\|Available\\\\|Budget\\\\|\\\\\\\\$\" participant-frontend/src/components/refine/CustomSider.tsx)",
+      "Bash(lsof -i :5173 -sTCP:LISTEN)",
+      "Bash(curl -sf http://localhost:5173)",
+      "Bash(break)",
+      "Bash(python3 -c \"import playwright\")",
+      "Bash(pkill -f \"vite.*participant-frontend\")",
+      "Bash(xargs kill)",
+      "Bash(xargs -I{} basename {})"
     ]
   }
 }
