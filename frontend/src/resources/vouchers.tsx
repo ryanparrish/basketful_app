@@ -69,10 +69,6 @@ const ListActions = () => (
   </TopToolbar>
 );
 
-// Bulk Create Button (deprecated - now handled by standard Create)
-// Removed as it's no longer used
-);
-
 // Bulk Status Update Button
 const BulkStatusUpdateButton = () => (
   <Button

@@ -20,7 +20,6 @@ import {
   useNotify,
   ListButton,
   useRefresh,
-  useDataProvider,
   type RaRecord,
 } from 'react-admin';
 import { Typography, Box, Chip, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';

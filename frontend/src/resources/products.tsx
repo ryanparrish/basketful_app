@@ -123,7 +123,9 @@ export const ProductEdit = () => (
   <Edit title={<ProductTitle />}>
     <SimpleForm>
       <TextInput source="name" required />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Shown to Spanish-speaking participants; blank falls back to English" />
       <TextInput source="description" multiline rows={3} />
+      <TextInput source="description_es" label="Description (Spanish)" multiline rows={3} />
       <NumberInput source="price" min={0} step={0.01} required />
       <ReferenceInput source="category" reference="categories" required>
         <SelectInput optionText="name" />
@@ -149,7 +151,9 @@ export const ProductCreate = () => (
   <Create>
     <SimpleForm>
       <TextInput source="name" required />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Shown to Spanish-speaking participants; blank falls back to English" />
       <TextInput source="description" multiline rows={3} />
+      <TextInput source="description_es" label="Description (Spanish)" multiline rows={3} />
       <NumberInput source="price" min={0} step={0.01} required />
       <ReferenceInput source="category" reference="categories" required>
         <SelectInput optionText="name" />

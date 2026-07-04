@@ -641,6 +641,7 @@ export const CategoryEdit = () => (
   <Edit title={<CategoryTitle />}>
     <SimpleForm>
       <TextInput source="name" validate={required()} />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <NumberInput
         source="sort_order"
         label="Pick Position"
@@ -654,6 +655,7 @@ export const CategoryCreate = () => (
   <Create>
     <SimpleForm>
       <TextInput source="name" validate={required()} />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <NumberInput
         source="sort_order"
         label="Pick Position (optional)"
@@ -683,6 +685,7 @@ export const SubcategoryEdit = () => (
   <Edit>
     <SimpleForm>
       <TextInput source="name" validate={required()} />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <ReferenceInput source="category" reference="categories">
         <SelectInput optionText="name" label="Category" validate={required()} />
       </ReferenceInput>
@@ -699,6 +702,7 @@ export const SubcategoryCreate = () => (
   <Create>
     <SimpleForm>
       <TextInput source="name" validate={required()} />
+      <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <ReferenceInput source="category" reference="categories">
         <SelectInput optionText="name" label="Category" validate={required()} />
       </ReferenceInput>
