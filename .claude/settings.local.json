@@ -61,7 +61,15 @@
       "Bash(python3 -c \"import playwright\")",
       "Bash(pkill -f \"vite.*participant-frontend\")",
       "Bash(xargs kill)",
-      "Bash(xargs -I{} basename {})"
+      "Bash(xargs -I{} basename {})",
+      "Bash(cat > *)",
+      "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue63_image.bin \"https://github.com/user-attachments/assets/9a462ddb-4e38-4924-85b0-74c64c5d2abb\")",
+      "Bash(cd /Users/ryanparrish/Documents/GitHub/basketful_app *)",
+      "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue50_image.bin \"https://github.com/user-attachments/assets/6282a476-299e-4523-9970-3defdb8ff50b\")",
+      "Bash(git check-ignore *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
