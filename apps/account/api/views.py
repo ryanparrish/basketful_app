@@ -25,9 +25,8 @@ from apps.account.models import (
     BulkCreateBatch,
 )
 from apps.account.utils.balance_utils import calculate_base_balance
-from apps.account.utils.user_utils import create_participant_user
+from apps.account.utils.user_utils import ensure_participant_user
 from apps.account.tasks.email import send_password_reset_email, send_new_user_onboarding_email
-from apps.pantry.utils.voucher_utils import setup_account_and_vouchers
 from .serializers import (
     UserSerializer,
     UserCreateSerializer,
@@ -300,23 +299,8 @@ class ParticipantViewSet(viewsets.ModelViewSet):
         return Response({'message': ' '.join(parts) or 'No participants selected.'})
 
     def _create_user_for_participant(self, participant, send_email=True):
-        """Create a user account for a participant without one."""
-        if participant.user:
-            return False, 'has_user'
-        if not participant.email:
-            return False, 'no_email'
-        user = create_participant_user(
-            first_name=participant.name,
-            email=participant.email,
-            participant_name=participant.name,
-        )
-        participant.user = user
-        participant.save(update_fields=['user'])
-        UserProfile.objects.get_or_create(user=user)
-        setup_account_and_vouchers(participant)
-        if send_email:
-            send_new_user_onboarding_email.delay(user_id=user.id)
-        return True, 'created'
+        """Create a user account for a participant without one. See ensure_participant_user."""
+        return ensure_participant_user(participant, send_email=send_email)
 
     @action(detail=False, methods=['post'], url_path='bulk-create-user-accounts')
     def bulk_create_user_accounts(self, request):

@@ -52,7 +52,7 @@ class Participant(BaseModel):
         null=True, blank=True
     )
     create_user = models.BooleanField(
-        default=False, help_text="If checked this will create a user account."
+        default=True, help_text="If checked this will create a user account."
     )
     user = models.OneToOneField(
         User, null=True, blank=True, on_delete=models.CASCADE

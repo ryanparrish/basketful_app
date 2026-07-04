@@ -121,6 +121,48 @@ def create_participant_user(
     )
 
 
+def ensure_participant_user(participant, send_email: bool = True) -> tuple:
+    """
+    Create a linked User for a participant that doesn't have one yet.
+
+    Shared by the Django admin bulk actions and the Participant API's
+    bulk-create-user-accounts endpoints — the two previously duplicated
+    this logic independently.
+
+    Args:
+        participant: The Participant instance.
+        send_email:  Whether to queue the onboarding email for the new user.
+
+    Returns:
+        (success, reason) where reason is one of:
+            'created'   — user was created
+            'has_user'  — participant already has a linked user
+            'no_email'  — participant has no email address on file
+    """
+    from apps.pantry.utils.voucher_utils import setup_account_and_vouchers
+    from apps.account.tasks.email import send_new_user_onboarding_email
+
+    if participant.user:
+        return False, 'has_user'
+    if not participant.email:
+        return False, 'no_email'
+
+    user = create_participant_user(
+        first_name=participant.name,
+        email=participant.email,
+        participant_name=participant.name,
+    )
+    participant.user = user
+    participant.save(update_fields=['user'])
+    UserProfile.objects.get_or_create(user=user)
+    setup_account_and_vouchers(participant)
+
+    if send_email:
+        send_new_user_onboarding_email.delay(user_id=user.id)
+
+    return True, 'created'
+
+
 def create_admin_user(
     username: str, full_name: str, email: str, password: str = None
 ) -> AbstractUser:

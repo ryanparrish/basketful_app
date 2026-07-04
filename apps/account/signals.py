@@ -86,10 +86,11 @@ def initialize_participant(instance: Participant, created, **kwargs):
     - Trigger onboarding email
     """
     create_user_flag = getattr(instance, "create_user", False)
+    user_created_here = False
 
     if not created:
         return
-    elif create_user_flag is True:
+    elif create_user_flag is True and not instance.user:
         user = create_participant_user(
             first_name=instance.name,
             email=instance.email,
@@ -97,13 +98,16 @@ def initialize_participant(instance: Participant, created, **kwargs):
         )
         instance.user = user
         instance.save(update_fields=['user'])
-       
+        user_created_here = True
+
     # Ensure UserProfile exists
     if instance.user:
         UserProfile.objects.get_or_create(user=instance.user)
         setup_account_and_vouchers(instance)
-    # Trigger onboarding email if a user was created via participant flow
-    if instance.user and create_user_flag:
+    # Trigger onboarding email only for a user actually created by this signal —
+    # a pre-existing user passed in explicitly (e.g. by tests or bulk tooling)
+    # didn't just get created and shouldn't be onboarded again.
+    if user_created_here:
         # When bulk_create sets _skip_onboarding_signal=True it handles the
         # email itself (with an optional grace-period countdown).
         if getattr(instance, '_skip_onboarding_signal', False):

@@ -31,7 +31,7 @@ class CustomUserCreationForm(forms.ModelForm):
 
 class ParticipantAdminForm(forms.ModelForm):
     """Admin form for Participant with option to create linked user."""
-    create_user = forms.BooleanField(required=False, label="Create linked user?")
+    create_user = forms.BooleanField(required=False, initial=True, label="Create linked user?")
 
     class Meta:
         model = Participant

@@ -275,6 +275,7 @@ def test_participant_without_user_is_skipped(monday_program, email_type):
         program=monday_program,
         active=True,
         adults=1,
+        create_user=False,
     )
     p._skip_onboarding_signal = True
     p.save()

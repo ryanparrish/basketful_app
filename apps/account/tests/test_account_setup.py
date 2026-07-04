@@ -585,6 +585,7 @@ class TestParticipantAdminActions:
             name="No User Participant",
             email="nouser@test.com",
             user=None,
+            create_user=False,
             program=program
         )
         

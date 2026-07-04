@@ -13,10 +13,9 @@ from django.apps import apps
 from .models import Participant
 from .forms import CustomUserCreationForm, ParticipantAdminForm
 from .models import UserProfile, AccountBalance, GoFreshSettings, HygieneSettings, BulkCreateBatch
-from .utils.user_utils import _generate_admin_username, create_participant_user
+from .utils.user_utils import _generate_admin_username, ensure_participant_user
 from .utils.balance_utils import calculate_base_balance
 from .tasks.email import send_password_reset_email, send_new_user_onboarding_email
-from apps.pantry.utils.voucher_utils import setup_account_and_vouchers
 User = get_user_model()
 
 # Lazily load the Product model to avoid circular import issues
@@ -277,47 +276,8 @@ class ParticipantAdmin(admin.ModelAdmin):
     resend_password_reset_email.short_description = "Resend password reset email"
 
     def _create_user_for_participant(self, participant, send_email=True):
-        """
-        Create a user account for a participant without one.
-        
-        Args:
-            participant: The Participant instance
-            send_email: Whether to send the onboarding email
-            
-        Returns:
-            tuple: (success: bool, reason: str)
-                - (True, 'created') if user was created
-                - (False, 'has_user') if participant already has a user
-                - (False, 'no_email') if participant has no email address
-        """
-        # Skip if already has a user
-        if participant.user:
-            return (False, 'has_user')
-        
-        # Skip if no email (required for user account)
-        if not participant.email:
-            return (False, 'no_email')
-        
-        # Create user account
-        user = create_participant_user(
-            first_name=participant.name,
-            email=participant.email,
-            participant_name=participant.name,
-        )
-        participant.user = user
-        participant.save(update_fields=['user'])
-        
-        # Ensure UserProfile exists
-        UserProfile.objects.get_or_create(user=user)
-        
-        # Setup account and vouchers (idempotent)
-        setup_account_and_vouchers(participant)
-        
-        # Send onboarding email if requested
-        if send_email:
-            send_new_user_onboarding_email.delay(user_id=user.id)
-        
-        return (True, 'created')
+        """Create a user account for a participant without one. See ensure_participant_user."""
+        return ensure_participant_user(participant, send_email=send_email)
 
     def create_user_accounts(self, request, queryset):
         """
