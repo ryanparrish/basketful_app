@@ -16,6 +16,9 @@ on:
       - "participant-frontend/**"
       - ".github/workflows/frontend-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
   frontend-build-check:
     name: Build Check (${{ matrix.name }})
