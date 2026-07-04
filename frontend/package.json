@@ -58,5 +58,8 @@
     "setupFilesAfterEnv": [
       "<rootDir>/setupTests.js"
     ]
+  },
+  "overrides": {
+    "dompurify": "^3.4.11"
   }
 }
