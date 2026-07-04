@@ -44,7 +44,7 @@ const BALANCE_CARDS: {
   {
     key: 'full_balance',
     label: 'Full Balance',
-    subtitle: 'Your total available spending power',
+    subtitle: 'Total value of all your active vouchers',
     bg: '#00BCD4',
   },
   {
@@ -56,13 +56,13 @@ const BALANCE_CARDS: {
   {
     key: 'hygiene_balance',
     label: 'Hygiene Balance',
-    subtitle: 'For personal care & hygiene items',
+    subtitle: 'A portion of your available balance, reserved for hygiene items',
     bg: '#F59E0B',
   },
   {
     key: 'go_fresh_balance',
     label: 'Go Fresh Balance',
-    subtitle: 'For fresh produce & perishables',
+    subtitle: 'A separate per-order allowance based on household size',
     bg: '#4CAF50',
   },
 ];

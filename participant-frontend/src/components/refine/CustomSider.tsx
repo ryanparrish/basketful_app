@@ -151,7 +151,7 @@ export const CustomSider: React.FC = () => {
           >
             {!collapsed && (
               <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                Budget: ${Number(remainingBudget ?? 0).toFixed(2)}
+                Available: ${Number(remainingBudget ?? 0).toFixed(2)}
               </Typography>
             )}
             <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
