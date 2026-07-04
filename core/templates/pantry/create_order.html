@@ -194,6 +194,12 @@
   }
 
   // ---------- Cart Rendering ----------
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = String(value);
+    return div.innerHTML;
+  }
+
   function renderCart() {
     const mobileCartList = document.getElementById('mobile-cart-items');
     if (!mobileCartList) return;
@@ -212,7 +218,7 @@
       li.className = 'list-group-item d-flex justify-content-between align-items-center';
       li.innerHTML = `
         <div>
-          <strong>${product.name}</strong><br>
+          <strong>${escapeHtml(product.name)}</strong><br>
           <small>$${product.price.toFixed(2)} * ${quantity} = $${subtotal.toFixed(2)}</small>
         </div>
         <button class="btn btn-sm btn-outline-danger ms-2 remove-item" data-product-id="${productId}">
