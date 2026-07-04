@@ -11,6 +11,7 @@ from apps.orders.models import (
     CombinedOrder,
     PackingSplitRule,
     PackingList,
+    WarehouseInventoryList,
 )
 from apps.log.models import OrderValidationLog
 from apps.pantry.api.serializers import ProductListSerializer
@@ -361,3 +362,24 @@ class PackingListSerializer(serializers.ModelSerializer):
                 'customer_number': getattr(participant, 'customer_number', 'N/A'),
             })
         return result
+
+
+class WarehouseInventoryListSerializer(serializers.ModelSerializer):
+    """Serializer for WarehouseInventoryList model."""
+    combined_order_count = serializers.SerializerMethodField()
+    combined_order_names = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = WarehouseInventoryList
+        fields = [
+            'id', 'name', 'combined_orders', 'combined_order_count',
+            'combined_order_names', 'summarized_data',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'summarized_data', 'created_at', 'updated_at']
+    
+    def get_combined_order_count(self, obj) -> int:
+        return obj.combined_orders.count()
+    
+    def get_combined_order_names(self, obj) -> list:
+        return list(obj.combined_orders.values_list('name', flat=True))

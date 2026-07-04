@@ -7,6 +7,7 @@ export * from './vouchers';
 export * from './categories';
 export * from './combinedOrders';
 export * from './packingLists';
+export * from './warehouseInventoryLists';
 export * from './orderPackers';
 export * from './failedOrderAttempts';
 export * from './tags';

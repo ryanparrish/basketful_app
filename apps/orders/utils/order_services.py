@@ -524,3 +524,129 @@ def generate_packing_list_pdf(packing_list) -> BytesIO:
     p.save()
     buffer.seek(0)
     return buffer
+
+
+def generate_warehouse_inventory_pdf(warehouse_list) -> BytesIO:
+    """
+    Generate a PDF for multi-program warehouse inventory list.
+    
+    Simple aggregated shopping list format:
+    - Header with list name and programs
+    - Products grouped by category
+    - Total quantities across all programs
+    - No individual order details
+    
+    Args:
+        warehouse_list: WarehouseInventoryList instance
+        
+    Returns:
+        BytesIO buffer containing the PDF
+    """
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    # Get data
+    summarized_data = warehouse_list.summarized_data or warehouse_list.calculate_summary()
+    combined_orders = list(warehouse_list.combined_orders.all().select_related('program'))
+    
+    # Calculate total pages
+    total_pages = _count_summary_pages(summarized_data, USABLE_HEIGHT - 150)  # Account for header
+    current_page = 1
+    
+    # Header section
+    y = height - TOP_MARGIN
+    p.setFont("Helvetica-Bold", 20)
+    p.drawString(50, y, "WAREHOUSE INVENTORY LIST")
+    y -= 30
+    
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, y, warehouse_list.name)
+    y -= 25
+    
+    # Programs included
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, y, "Programs:")
+    y -= 18
+    
+    p.setFont("Helvetica", 11)
+    for co in combined_orders:
+        p.drawString(70, y, f"• {co.program.name} ({co.name})")
+        y -= 15
+        if y < BOTTOM_MARGIN + 200:  # Header continuation
+            _draw_page_number(p, current_page, total_pages, width)
+            p.showPage()
+            current_page += 1
+            y = height - TOP_MARGIN
+            p.setFont("Helvetica-Bold", 14)
+            p.drawString(50, y, "Programs (continued):")
+            y -= 20
+            p.setFont("Helvetica", 11)
+    
+    y -= 10
+    
+    # Metadata
+    p.setFont("Helvetica", 10)
+    p.drawString(50, y, f"Generated: {warehouse_list.created_at.strftime('%Y-%m-%d %H:%M')}")
+    y -= 12
+    p.drawString(50, y, f"Total Programs: {len(combined_orders)}")
+    y -= 20
+    
+    # Separator
+    p.line(50, y, width - 50, y)
+    y -= 25
+    
+    # Shopping list section
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, y, "SHOPPING LIST")
+    y -= 30
+    
+    for category, products in summarized_data.items():
+        # Check for page break
+        if y < BOTTOM_MARGIN + 50:
+            _draw_page_number(p, current_page, total_pages, width)
+            p.showPage()
+            current_page += 1
+            y = height - TOP_MARGIN
+            
+            p.setFont("Helvetica-Bold", 16)
+            p.drawString(50, y, "SHOPPING LIST (continued)")
+            y -= 30
+        
+        # Category header
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, f"{category}:")
+        y -= 20
+        
+        # Products
+        p.setFont("Helvetica", 12)
+        for product_name, qty in products.items():
+            if y < BOTTOM_MARGIN + 50:
+                _draw_page_number(p, current_page, total_pages, width)
+                p.showPage()
+                current_page += 1
+                y = height - TOP_MARGIN
+                
+                p.setFont("Helvetica-Bold", 14)
+                p.drawString(50, y, f"{category} (continued):")
+                y -= 20
+                p.setFont("Helvetica", 12)
+            
+            # Checkbox + quantity + product name
+            checkbox_size = 10
+            p.rect(60, y - 3, checkbox_size, checkbox_size)
+            p.setFont("Helvetica-Bold", 12)
+            p.drawString(75, y, f"x{qty}")
+            p.setFont("Helvetica", 12)
+            p.drawString(110, y, product_name)
+            y -= 18
+        
+        y -= 10  # Space between categories
+    
+    # Final page number
+    _draw_page_number(p, current_page, total_pages, width)
+    
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer

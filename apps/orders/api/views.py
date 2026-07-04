@@ -28,6 +28,7 @@ from apps.orders.models import (
     CombinedOrder,
     PackingSplitRule,
     PackingList,
+    WarehouseInventoryList,
 )
 from apps.log.models import OrderValidationLog
 from apps.orders.api.serializers import (
@@ -42,6 +43,7 @@ from apps.orders.api.serializers import (
     CombinedOrderListSerializer,
     PackingSplitRuleSerializer,
     PackingListSerializer,
+    WarehouseInventoryListSerializer,
 )
 from apps.orders.api.filters import OrderFilter
 from apps.orders.api.throttles import OrderSubmissionThrottle
@@ -1412,6 +1414,38 @@ class PackingListViewSet(viewsets.ModelViewSet):
         pdf_buffer = generate_packing_list_pdf(packing_list)
         pdf_buffer.seek(0)
         filename = f"packing_list_{packing_list.packer.name.replace(' ', '_')}_{packing_list.combined_order.id}.pdf"
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+class WarehouseInventoryListViewSet(viewsets.ModelViewSet):
+    """ViewSet for multi-program warehouse inventory lists."""
+    queryset = WarehouseInventoryList.objects.all().prefetch_related('combined_orders')
+    serializer_class = WarehouseInventoryListSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'combined_orders__name']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    
+    @action(detail=True, methods=['post'], url_path='refresh-summary')
+    def refresh_summary(self, request, pk=None):
+        """Recalculate and cache the aggregated product summary."""
+        warehouse_list = self.get_object()
+        warehouse_list.summarized_data = warehouse_list.calculate_summary()
+        warehouse_list.save(update_fields=['summarized_data', 'updated_at'])
+        return Response(WarehouseInventoryListSerializer(warehouse_list).data)
+    
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Download printable warehouse inventory list as PDF."""
+        from apps.orders.utils.order_services import generate_warehouse_inventory_pdf
+        warehouse_list = self.get_object()
+        pdf_buffer = generate_warehouse_inventory_pdf(warehouse_list)
+        pdf_buffer.seek(0)
+        filename = f"warehouse_inventory_{warehouse_list.id}_{warehouse_list.name.replace(' ', '_')}.pdf"
         response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response

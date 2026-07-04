@@ -873,3 +873,87 @@ class PackingList(models.Model):
             )
         
         return sorted_result
+
+
+class WarehouseInventoryList(models.Model):
+    """
+    Aggregated inventory list across multiple programs for bulk warehouse ordering.
+    
+    Use case: Consolidate combined orders from multiple programs (e.g., "Tuesday ENG + 
+    Tuesday SPN + Wednesday AM") into one master shopping list for warehouse ordering.
+    
+    This is a lightweight aggregation layer on top of existing CombinedOrder instances.
+    """
+    name = models.CharField(
+        max_length=255,
+        help_text="E.g., 'Tuesday/Wednesday Packing Run' or 'Week 12 Bulk Order'"
+    )
+    combined_orders = models.ManyToManyField(
+        "CombinedOrder",
+        related_name="warehouse_lists",
+        help_text="Which combined orders are included in this bulk list"
+    )
+    summarized_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Cached aggregated quantities: {category: {product: total_qty}}"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Warehouse Inventory List"
+        verbose_name_plural = "Warehouse Inventory Lists"
+    
+    def __str__(self):
+        count = self.combined_orders.count()
+        return f"{self.name} ({count} programs)"
+    
+    def calculate_summary(self) -> dict:
+        """
+        Aggregate product quantities across all included combined orders.
+        
+        Returns:
+            {
+                "Produce": {"Chicken": 9, "Apples": 12},
+                "Dairy": {"Milk": 15},
+                ...
+            }
+        
+        Sorted by: category sort_order → subcategory sort_order (9999 for none) → 
+        product sort_order (warehouse pick sequence).
+        """
+        summary = defaultdict(lambda: defaultdict(int))
+        category_sort = {}
+        product_sort = {}
+        
+        # Aggregate across all combined orders
+        for co in self.combined_orders.prefetch_related(
+            'orders__items__product__category',
+            'orders__items__product__subcategory'
+        ):
+            for order in co.orders.all():
+                for item in order.items.all():
+                    product = item.product
+                    cat_name = product.category.name if product.category else "Uncategorized"
+                    
+                    # Accumulate quantities
+                    summary[cat_name][product.name] += item.quantity
+                    
+                    # Track sort metadata
+                    if product.category:
+                        category_sort[cat_name] = product.category.sort_order
+                    sub_order = product.subcategory.sort_order if product.subcategory else 9999
+                    product_sort[(cat_name, product.name)] = (sub_order, product.sort_order)
+        
+        # Sort output by warehouse pick sequence
+        sorted_summary = {}
+        for cat_name in sorted(summary.keys(), key=lambda c: (category_sort.get(c, 9999), c)):
+            sorted_summary[cat_name] = dict(
+                sorted(
+                    summary[cat_name].items(),
+                    key=lambda kv: (*product_sort.get((cat_name, kv[0]), (9999, 9999)), kv[0])
+                )
+            )
+        return sorted_summary

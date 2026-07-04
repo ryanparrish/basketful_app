@@ -45,6 +45,9 @@ import {
   CombinedOrderEdit,
   PackingListList,
   PackingListShow,
+  WarehouseInventoryListList,
+  WarehouseInventoryListShow,
+  WarehouseInventoryListCreate,
   TagList,
   TagShow,
   TagEdit,
@@ -141,6 +144,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="categories" />
     <Menu.ResourceItem name="combined-orders" />
     <Menu.ResourceItem name="packing-lists" />
+    <Menu.ResourceItem name="warehouse-inventory-lists" />
     <Menu.ResourceItem name="tags" />
     <Menu.ResourceItem name="product-limits" />
     <Menu.ResourceItem name="order-packers" />
@@ -261,6 +265,14 @@ const App = () => (
       show={PackingListShow}
       icon={ViewListIcon}
       options={{ label: 'Packing Lists' }}
+    />
+    <Resource
+      name="warehouse-inventory-lists"
+      list={WarehouseInventoryListList}
+      show={WarehouseInventoryListShow}
+      create={WarehouseInventoryListCreate}
+      icon={ViewListIcon}
+      options={{ label: 'Warehouse Inventory' }}
     />
     <Resource
       name="tags"
