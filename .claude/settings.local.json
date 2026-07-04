@@ -66,7 +66,11 @@
       "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue63_image.bin \"https://github.com/user-attachments/assets/9a462ddb-4e38-4924-85b0-74c64c5d2abb\")",
       "Bash(cd /Users/ryanparrish/Documents/GitHub/basketful_app *)",
       "Bash(curl -sL -o /private/tmp/claude-501/-Users-ryanparrish-Documents-GitHub-basketful-app/2a406ed9-2918-4dc6-9120-77ec9836bcd0/scratchpad/issue50_image.bin \"https://github.com/user-attachments/assets/6282a476-299e-4523-9970-3defdb8ff50b\")",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(awk 'NR==133{print NR\": \"$0} NR==198{print NR\": \"$0} NR==688{print NR\": \"$0} NR==1300{print NR\": \"$0} NR==1382{print NR\": \"$0}' apps/orders/api/views.py)",
+      "Bash(awk 'NR==492{print NR\": \"$0} NR==508{print NR\": \"$0}' apps/account/api/views.py)",
+      "Bash(awk 'NR==104{print NR\": \"$0}' core/middleware.py)",
+      "Bash(awk '/_ValidationDone/{print NR\": \"$0}' apps/orders/api/views.py)"
     ],
     "additionalDirectories": [
       "/tmp"
