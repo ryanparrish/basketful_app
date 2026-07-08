@@ -1,6 +1,6 @@
-"""Orders tasks package.
+"""Log tasks package.
 
 Celery's ``autodiscover_tasks()`` only imports this package, not its
 submodules — each must be imported here or its tasks never register.
 """
-from apps.orders.tasks import weekly_orders  # noqa: F401
+from apps.log.tasks import logs  # noqa: F401
