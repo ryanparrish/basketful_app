@@ -640,7 +640,9 @@ function CategoryShowSubcategoriesTab() {
 export const CategoryEdit = () => (
   <Edit title={<CategoryTitle />}>
     <SimpleForm>
-      <TextInput source="name" validate={required()} />
+      {/* Edit name_en, not the resolved base name — see dataProvider's
+          translated-field handling. */}
+      <TextInput source="name_en" label="Name" validate={required()} />
       <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <NumberInput
         source="sort_order"
@@ -684,7 +686,7 @@ export const SubcategoryList = () => (
 export const SubcategoryEdit = () => (
   <Edit>
     <SimpleForm>
-      <TextInput source="name" validate={required()} />
+      <TextInput source="name_en" label="Name" validate={required()} />
       <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <ReferenceInput source="category" reference="categories">
         <SelectInput optionText="name" label="Category" validate={required()} />

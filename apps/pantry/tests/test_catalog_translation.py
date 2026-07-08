@@ -114,3 +114,45 @@ class TestCatalogTranslationAPI:
         assert create_response.data['name_es'] == 'Pan'
         # Staff requests are pinned to English, so the plain field reads English
         assert create_response.data['name'] == 'Bread'
+
+    def test_staff_patch_of_explicit_language_columns_updates_resolved_name(self):
+        """The admin edit forms PATCH name_en/name_es (never the resolved base
+        `name`, which the dataProvider strips) — those writes must stick."""
+        staff_user = UserFactory(is_staff=True)
+        product = ProductFactory(name='Apple')
+        client = jwt_client_for(staff_user)
+
+        response = client.patch(
+            f'/api/v1/products/{product.id}/',
+            {'name_en': 'Green Apple', 'name_es': 'Manzana verde'},
+            format='json',
+        )
+
+        assert response.status_code == 200, response.data
+        assert response.data['name_en'] == 'Green Apple'
+        assert response.data['name_es'] == 'Manzana verde'
+        assert response.data['name'] == 'Green Apple'
+
+        product.refresh_from_db()
+        assert product.name_en == 'Green Apple'
+
+    def test_staff_patch_clears_spanish_translation_with_null(self):
+        """Clearing a translation in the admin sends null — the stored value
+        must clear so the participant view falls back to English."""
+        staff_user = UserFactory(is_staff=True)
+        product = ProductFactory(name='Rice')
+        product.name_es = 'Arroz'
+        product.save()
+        client = jwt_client_for(staff_user)
+
+        response = client.patch(
+            f'/api/v1/products/{product.id}/',
+            {'name_es': None},
+            format='json',
+        )
+
+        assert response.status_code == 200, response.data
+        product.refresh_from_db()
+        with translation.override('es'):
+            product.refresh_from_db()
+            assert product.name == 'Rice'

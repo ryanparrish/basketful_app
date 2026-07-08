@@ -122,9 +122,12 @@ export const ProductShow = () => (
 export const ProductEdit = () => (
   <Edit title={<ProductTitle />}>
     <SimpleForm>
-      <TextInput source="name" required />
+      {/* Edit the explicit language columns, not the resolved base fields —
+          the full-record submit would otherwise clobber name_en with the
+          stale base value (dataProvider strips the base twins). */}
+      <TextInput source="name_en" label="Name" required />
       <TextInput source="name_es" label="Name (Spanish)" helperText="Shown to Spanish-speaking participants; blank falls back to English" />
-      <TextInput source="description" multiline rows={3} />
+      <TextInput source="description_en" label="Description" multiline rows={3} />
       <TextInput source="description_es" label="Description (Spanish)" multiline rows={3} />
       <NumberInput source="price" min={0} step={0.01} required />
       <ReferenceInput source="category" reference="categories" required>

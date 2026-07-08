@@ -45,10 +45,12 @@ export const TagShow = () => (
 export const TagEdit = () => (
   <Edit>
     <SimpleForm>
-      <TextInput source="name" validate={required()} />
+      {/* Edit the explicit language columns, not the resolved base fields —
+          see dataProvider's translated-field handling. */}
+      <TextInput source="name_en" label="Name" validate={required()} />
       <TextInput source="name_es" label="Name (Spanish)" helperText="Blank falls back to English" />
       <TextInput source="slug" validate={required()} helperText="URL-friendly version of name (auto-generated from name)" />
-      <TextInput source="description" multiline rows={3} />
+      <TextInput source="description_en" label="Description" multiline rows={3} />
       <TextInput source="description_es" label="Description (Spanish)" multiline rows={3} />
     </SimpleForm>
   </Edit>

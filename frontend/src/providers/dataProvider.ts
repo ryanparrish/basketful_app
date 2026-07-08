@@ -19,6 +19,11 @@ export function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Re
   // Also strip empty strings so DRF field defaults (e.g. weight_lbs=0) can apply.
   const cleaned: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
+    // Translated catalog fields (modeltranslation): when the payload carries an
+    // explicit language column (name_en), the resolved base field (name) is a
+    // stale duplicate from the full-record submit — writing it would clobber
+    // the language column on the server. The explicit column is authoritative.
+    if (`${key}_en` in data) continue;
     if (
       value &&
       typeof value === 'object' &&
@@ -30,8 +35,13 @@ export function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Re
       // Skip it so we don't send { src: 'https://...' } as the image field value.
       continue;
     }
-    // Skip empty strings so DRF field defaults kick in instead of rejecting ""
-    if (value === '') continue;
+    // Cleared translation columns must reach the server as null to actually
+    // clear (omitting them would silently keep the old translation). Other
+    // empty strings are omitted so DRF field defaults kick in.
+    if (value === '') {
+      if (/_(en|es)$/.test(key)) cleaned[key] = null;
+      continue;
+    }
     // Skip existing file/image URL strings for upload fields. DRF's ImageField/FileField
     // expects an actual file upload, not a URL string. Omitting the field in PATCH leaves
     // the existing file untouched on the server.
@@ -51,7 +61,12 @@ export function toFormDataIfNeeded(data: Record<string, unknown>): FormData | Re
 
   const form = new FormData();
   for (const [key, value] of Object.entries(cleaned)) {
-    if (value === null || value === undefined) continue;
+    if (value === null || value === undefined) {
+      // A cleared translation column must still reach the server; DRF accepts
+      // blank ("") for these fields on the multipart path.
+      if (/_(en|es)$/.test(key)) form.append(key, '');
+      continue;
+    }
     if (value && typeof value === 'object' && (value as { rawFile?: unknown }).rawFile instanceof File) {
       form.append(key, (value as { rawFile: File }).rawFile);
     } else if (Array.isArray(value)) {

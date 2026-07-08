@@ -79,6 +79,62 @@ describe('toFormDataIfNeeded', () => {
       expect(result).not.toHaveProperty('description');
       expect(result.name).toBe('Butter');
     });
+
+    it('sends null for a cleared translation column instead of dropping it', () => {
+      const result = toFormDataIfNeeded({
+        name_en: 'Butter',
+        name_es: '',
+        description_es: '',
+      }) as Record<string, unknown>;
+
+      expect(result).toHaveProperty('name_es', null);
+      expect(result).toHaveProperty('description_es', null);
+    });
+  });
+
+  describe('translated field handling (modeltranslation)', () => {
+    it('strips the resolved base field when its explicit _en column is present', () => {
+      // React-Admin submits the full record, so an edit to name_en arrives
+      // alongside the stale resolved `name` — the base write would clobber
+      // the name_en column on the server.
+      const result = toFormDataIfNeeded({
+        name: 'Apple',
+        name_en: 'Green Apple',
+        name_es: 'Manzana',
+        description: 'Old',
+        description_en: 'New description',
+      }) as Record<string, unknown>;
+
+      expect(result).not.toHaveProperty('name');
+      expect(result).not.toHaveProperty('description');
+      expect(result.name_en).toBe('Green Apple');
+      expect(result.name_es).toBe('Manzana');
+      expect(result.description_en).toBe('New description');
+    });
+
+    it('keeps the base field when no explicit _en column is present (create forms)', () => {
+      const result = toFormDataIfNeeded({
+        name: 'Bread',
+        name_es: 'Pan',
+      }) as Record<string, unknown>;
+
+      expect(result.name).toBe('Bread');
+      expect(result.name_es).toBe('Pan');
+    });
+
+    it('sends a cleared translation as blank on the multipart path', () => {
+      const mockFile = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
+      const result = toFormDataIfNeeded({
+        name_en: 'Carrots',
+        name_es: '',
+        image: { rawFile: mockFile, src: 'blob:...' },
+      });
+
+      expect(result).toBeInstanceOf(FormData);
+      const fd = result as FormData;
+      expect(fd.get('name_en')).toBe('Carrots');
+      expect(fd.get('name_es')).toBe('');
+    });
   });
 
   describe('plain JSON path (no file upload)', () => {
