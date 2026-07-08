@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
 from apps.api.pagination import StandardResultsSetPagination
@@ -198,7 +199,20 @@ class LifeskillsCoachViewSet(viewsets.ModelViewSet):
                 {'detail': 'Only staff can delete coach profiles.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return super().destroy(request, *args, **kwargs)
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            # Blocked by protected financial records somewhere in the
+            # delete graph — surface a clear conflict instead of a 500
+            return Response(
+                {
+                    'detail': (
+                        'This coach cannot be deleted because related records '
+                        'are protected. Reassign their participants first.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
     @action(detail=False, methods=['get'], url_path='my-dashboard')
     def my_dashboard(self, request):

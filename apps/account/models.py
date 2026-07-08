@@ -47,8 +47,10 @@ class Participant(BaseModel):
     program = models.ForeignKey(
         Program, on_delete=models.CASCADE, null=True, blank=True
     )
+    # SET_NULL, not CASCADE: deleting a coach must never delete the people
+    # assigned to them — it just leaves those participants unassigned.
     assigned_coach = models.ForeignKey(
-        LifeskillsCoach, on_delete=models.CASCADE, related_name='customers',
+        LifeskillsCoach, on_delete=models.SET_NULL, related_name='customers',
         null=True, blank=True
     )
     user = models.OneToOneField(
