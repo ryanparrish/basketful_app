@@ -117,6 +117,7 @@
       "windowForceClosed": "Order window is temporarily closed",
       "windowDisabled": "Order window is not enabled",
       "windowNoSchedule": "No class schedule found",
+      "windowPaused": "The program is on pause this week",
       "windowClosed": "Order window is closed",
       "fixCartErrors": "Please fix cart errors",
       "cartInvalid": "Cart is not valid"
@@ -133,6 +134,7 @@
     "emptySubtitle": "Add some products before checking out.",
     "windowForceClosed": "Orders are temporarily paused. Please try again later.",
     "windowNoSchedule": "No class schedule found for your program. Please contact staff.",
+    "windowPaused": "The program is on pause this week. Ordering will reopen after the break.",
     "windowClosed": "The order window is currently closed. You cannot submit orders at this time.",
     "orderSummary": "Order Summary",
     "quantity": "Qty: {{count}}",

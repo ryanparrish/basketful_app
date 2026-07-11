@@ -117,6 +117,7 @@
       "windowForceClosed": "El período de pedidos está cerrado temporalmente",
       "windowDisabled": "El período de pedidos no está habilitado",
       "windowNoSchedule": "No se encontró un horario de clases",
+      "windowPaused": "El programa está en pausa esta semana",
       "windowClosed": "El período de pedidos está cerrado",
       "fixCartErrors": "Por favor, corrija los errores del carrito",
       "cartInvalid": "El carrito no es válido"
@@ -133,6 +134,7 @@
     "emptySubtitle": "Agregue algunos productos antes de finalizar el pedido.",
     "windowForceClosed": "Los pedidos están pausados temporalmente. Intente de nuevo más tarde.",
     "windowNoSchedule": "No se encontró un horario de clases para su programa. Comuníquese con el personal.",
+    "windowPaused": "El programa está en pausa esta semana. Los pedidos se reabrirán después del receso.",
     "windowClosed": "El período de pedidos está cerrado. No puede enviar pedidos en este momento.",
     "orderSummary": "Resumen del pedido",
     "quantity": "Cant.: {{count}}",

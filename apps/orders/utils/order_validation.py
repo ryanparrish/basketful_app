@@ -46,7 +46,46 @@ class OrderValidation:
                 'balance': f"{hygiene_balance:.2f}",
             }
             raise ValidationError(f"[{participant}] {msg}")
-        
+
+    @staticmethod
+    def enforce_program_pause(participant):
+        """Block ordering while a program pause is in progress (Issue #78).
+
+        The pause week is a no-order week for all programs. An unexpired
+        force-open ProgramWindowOverride on the participant's program is
+        the staff escape hatch — it lets orders through even mid-pause.
+        """
+        from core.utils import get_active_window_override, get_in_progress_pause
+
+        in_progress_pause = get_in_progress_pause()
+        if not in_progress_pause:
+            return
+
+        program = getattr(participant, 'program', None)
+        if program is not None:
+            override = get_active_window_override(program)
+            if override and override.force_status == 'open':
+                logger.info(
+                    "[Validator] %s - pause in progress but force-open "
+                    "override active for program %s; allowing order",
+                    participant, program,
+                )
+                return
+
+        from django.utils import formats
+        msg = _(
+            "Ordering is unavailable during the program pause. "
+            "Orders reopen after %(pause_end)s."
+        ) % {'pause_end': formats.date_format(in_progress_pause.pause_end, 'DATE_FORMAT')}
+        logger.warning(
+            "[Validator] %s - order blocked: program pause in progress "
+            "(%s to %s)",
+            participant,
+            in_progress_pause.pause_start,
+            in_progress_pause.pause_end,
+        )
+        raise ValidationError(msg)
+
     # ----------------------------
     # Order items validation
     # ----------------------------
@@ -60,6 +99,7 @@ class OrderValidation:
     ):
         """
         Validate order items in the correct sequence:
+        0. Program pause (ordering blocked during the off week)
         1. Category-level limits
         2. Hygiene balance
         3. Voucher balance
@@ -69,6 +109,9 @@ class OrderValidation:
             return
 
         logger.debug("[Validator] Validating for Participant: %s", participant)
+
+        # Step 0: Block ordering entirely while a program pause is in progress
+        OrderValidation.enforce_program_pause(participant)
 
         # Step 1: Validate category-level limits using CategoryLimitValidator
         CategoryLimitValidator.validate_category_limits(items, participant)

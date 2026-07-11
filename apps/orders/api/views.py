@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import Count, Sum, Q
 from django.http import HttpResponse
-from django.utils import timezone
+from django.utils import formats, timezone
 from django.utils.translation import gettext as _
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, filters, status, mixins
@@ -549,6 +549,27 @@ class OrderViewSet(viewsets.ModelViewSet):
 
                 # Now run validation
                 violations = []
+
+                # Program pause blocks all ordering during the off week
+                # (Issue #78), unless staff force-opened the program's window.
+                from core.utils import get_active_window_override, get_in_progress_pause
+                in_progress_pause = get_in_progress_pause()
+                if in_progress_pause:
+                    program = getattr(participant, 'program', None)
+                    pause_override = (
+                        get_active_window_override(program) if program else None
+                    )
+                    if not (pause_override and pause_override.force_status == 'open'):
+                        violations.append({
+                            'type': 'window',
+                            'severity': 'error',
+                            'message': _(
+                                "Ordering is unavailable during the program pause. "
+                                "Orders reopen after %(pause_end)s."
+                            ) % {'pause_end': formats.date_format(in_progress_pause.pause_end, 'DATE_FORMAT')},
+                            'amount_over': 0,
+                            'grace_allowed': False,
+                        })
 
                 # Separate items by category
                 food_items = []

@@ -70,6 +70,7 @@ export interface LowInventoryAlertSettings {
 export type WindowStatus =
   | 'open'
   | 'closed'
+  | 'paused'
   | 'force_open'
   | 'force_closed'
   | 'disabled'

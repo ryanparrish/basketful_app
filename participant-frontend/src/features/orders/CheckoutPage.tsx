@@ -184,6 +184,8 @@ export const CheckoutPage: React.FC = () => {
             ? t('checkout.windowForceClosed')
             : windowStatus === 'no_schedule'
             ? t('checkout.windowNoSchedule')
+            : windowStatus === 'paused'
+            ? t('checkout.windowPaused')
             : t('checkout.windowClosed')}
         </Alert>
       )}

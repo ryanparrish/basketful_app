@@ -155,6 +155,7 @@ export interface OrderWindowStatus {
 export type WindowStatusCode =
   | 'open'
   | 'closed'
+  | 'paused'
   | 'force_open'
   | 'force_closed'
   | 'disabled'

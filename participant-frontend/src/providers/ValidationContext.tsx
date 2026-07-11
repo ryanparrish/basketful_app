@@ -223,6 +223,7 @@ export type CheckoutBlockedReasonKey =
   | 'validation.blocked.windowForceClosed'
   | 'validation.blocked.windowDisabled'
   | 'validation.blocked.windowNoSchedule'
+  | 'validation.blocked.windowPaused'
   | 'validation.blocked.windowClosed'
   | 'validation.blocked.fixCartErrors'
   | 'validation.blocked.cartInvalid';
@@ -251,6 +252,7 @@ export const useCanCheckout = () => {
       if (windowStatus === 'force_closed') return 'validation.blocked.windowForceClosed';
       if (windowStatus === 'disabled') return 'validation.blocked.windowDisabled';
       if (windowStatus === 'no_schedule') return 'validation.blocked.windowNoSchedule';
+      if (windowStatus === 'paused') return 'validation.blocked.windowPaused';
       return 'validation.blocked.windowClosed';
     }
     if (errors.length > 0) return 'validation.blocked.fixCartErrors';

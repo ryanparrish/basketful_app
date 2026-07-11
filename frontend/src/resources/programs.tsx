@@ -69,7 +69,7 @@ export const ProgramList = () => (
 // OrderWindowTab — per-program order window status and config inside ProgramShow
 // ---------------------------------------------------------------------------
 
-type WindowStatus = 'open' | 'closed' | 'force_open' | 'force_closed' | 'disabled' | 'no_schedule';
+type WindowStatus = 'open' | 'closed' | 'paused' | 'force_open' | 'force_closed' | 'disabled' | 'no_schedule';
 
 interface WindowCycle { meeting_at: string; opens_at: string; closes_at: string; }
 interface ActiveOverride { id: number; force_status: 'open' | 'closed'; expires_at: string; reason: string; created_by_username: string | null; is_active: boolean; }
@@ -77,10 +77,10 @@ interface EffectiveConfig { hours_before_class: number; hours_before_close: numb
 interface ProgramWindowStatus { program_id: number; program_name: string; meeting_day: string; meeting_time: string; window_status: WindowStatus; cycles: WindowCycle[]; seconds_until_change: number | null; active_order_count: number; override: ActiveOverride | null; config: EffectiveConfig; }
 
 const STATUS_COLORS: Record<WindowStatus, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
-  open: 'success', closed: 'default', force_open: 'warning', force_closed: 'error', disabled: 'info', no_schedule: 'default',
+  open: 'success', closed: 'default', paused: 'error', force_open: 'warning', force_closed: 'error', disabled: 'info', no_schedule: 'default',
 };
 const STATUS_LABELS: Record<WindowStatus, string> = {
-  open: 'OPEN', closed: 'CLOSED', force_open: 'FORCE OPEN', force_closed: 'FORCE CLOSED', disabled: 'DISABLED', no_schedule: 'NO SCHEDULE',
+  open: 'OPEN', closed: 'CLOSED', paused: 'PAUSED', force_open: 'FORCE OPEN', force_closed: 'FORCE CLOSED', disabled: 'DISABLED', no_schedule: 'NO SCHEDULE',
 };
 const fmt = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
