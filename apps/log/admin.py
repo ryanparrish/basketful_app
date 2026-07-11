@@ -99,7 +99,7 @@ class EmailTypeAdmin(TranslationAdmin):
         """Return rendered email preview as JSON."""
         try:
             email_type = EmailType.objects.get(pk=pk)
-            context = EmailType.get_sample_context()
+            context = email_type.get_sample_context_for_type()
             
             html_content = email_type.render_html(context)
             text_content = email_type.render_text(context)

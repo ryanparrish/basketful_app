@@ -43,16 +43,58 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
             return EmailTypeListSerializer
         return EmailTypeSerializer
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get', 'post'])
     def preview(self, request, pk=None):
-        """Preview email with sample context."""
+        """Render this email type with realistic sample data.
+
+        GET  ?language=en|es      — render the saved content.
+        POST {subject?, html_content?, text_content?, language?}
+                                  — render draft content without saving;
+                                    omitted fields fall back to saved values.
+
+        Returns {subject, html, text, language}. A template syntax error
+        returns 400 with {detail, field} naming the offending field.
+        """
+        from django.template import Context, Template, TemplateSyntaxError
+        from django.utils import translation
+
         email_type = self.get_object()
-        context = EmailType.get_sample_context()
-        return Response({
-            'subject': email_type.render_subject(context),
-            'html': email_type.render_html(context),
-            'text': email_type.render_text(context),
-        })
+        data = request.data if request.method == 'POST' else request.query_params
+        language = data.get('language') or 'en'
+        if language not in ('en', 'es'):
+            return Response(
+                {'detail': f"Unsupported language '{language}'.", 'field': 'language'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        context = email_type.get_sample_context_for_type()
+        rendered = {}
+        with translation.override(language):
+            drafts = {
+                'subject': request.data.get('subject') if request.method == 'POST' else None,
+                'html': request.data.get('html_content') if request.method == 'POST' else None,
+                'text': request.data.get('text_content') if request.method == 'POST' else None,
+            }
+            saved_renderers = {
+                'subject': lambda: email_type.render_subject(context),
+                'html': lambda: email_type.render_html(context),
+                'text': lambda: email_type.render_text(context),
+            }
+            for key in ('subject', 'html', 'text'):
+                try:
+                    if drafts[key] is not None:
+                        rendered[key] = Template(drafts[key]).render(Context(context))
+                    else:
+                        rendered[key] = saved_renderers[key]()
+                except TemplateSyntaxError as exc:
+                    field = 'subject' if key == 'subject' else f'{key}_content'
+                    return Response(
+                        {'detail': str(exc), 'field': field},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        rendered['language'] = language
+        return Response(rendered)
 
     @action(detail=False, methods=['get'])
     def active(self, request):

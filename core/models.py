@@ -197,17 +197,34 @@ class EmailSettings(models.Model):
         default="it@loveyourneighbor.org",
         help_text="Default reply-to email address for all emails"
     )
-    
+    participant_frontend_url = models.URLField(
+        blank=True,
+        help_text=(
+            "Participant app URL used in emails (e.g. "
+            "https://shop.example.org). Leave blank to use the "
+            "PARTICIPANT_FRONTEND_URL environment setting."
+        )
+    )
+    backend_domain = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Domain for backend links such as password reset (e.g. "
+            "api.example.org). Leave blank to use the DOMAIN_NAME "
+            "environment setting."
+        )
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = "Email Setting"
         verbose_name_plural = "Email Settings"
-    
+
     def __str__(self):
         return "Email Settings"
-    
+
     def save(self, *args, **kwargs):
         """Ensure only one instance exists (singleton pattern)."""
         if not self.pk and EmailSettings.objects.exists():
@@ -215,6 +232,8 @@ class EmailSettings(models.Model):
             existing = EmailSettings.objects.first()
             existing.from_email_default = self.from_email_default
             existing.reply_to_default = self.reply_to_default
+            existing.participant_frontend_url = self.participant_frontend_url
+            existing.backend_domain = self.backend_domain
             existing.save()
             return existing
         return super().save(*args, **kwargs)
@@ -237,6 +256,14 @@ class EmailSettings(models.Model):
     def get_reply_to(self):
         """Get the default reply-to address."""
         return self.reply_to_default
+
+    def get_participant_frontend_url(self):
+        """Participant app URL for email links, falling back to settings."""
+        return self.participant_frontend_url or settings.PARTICIPANT_FRONTEND_URL
+
+    def get_backend_domain(self):
+        """Backend domain for email links, falling back to settings."""
+        return self.backend_domain or settings.DOMAIN_NAME
 
 
 class BrandingSettings(models.Model):

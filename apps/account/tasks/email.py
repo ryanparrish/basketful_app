@@ -35,7 +35,10 @@ def build_email_context(user):
     else:
         protocol = "http" if getattr(settings, "DEBUG", True) else "https"
 
-    domain = settings.DOMAIN_NAME
+    # Staff-editable override (EmailSettings singleton) wins over the
+    # DOMAIN_NAME environment setting — fixes dead password-reset links
+    # when the env var is unset in production (Issue #83).
+    domain = get_email_settings().get_backend_domain()
 
     return {
         "user": user,
@@ -251,7 +254,7 @@ def send_new_user_onboarding_email(user_id, force=False):
 
     # Build extra context: participant customer number + frontend URL
     extra_context: dict = {
-        'participant_frontend_url': getattr(settings, 'PARTICIPANT_FRONTEND_URL', 'https://app.basketful.org'),
+        'participant_frontend_url': get_email_settings().get_participant_frontend_url(),
     }
     try:
         participant = user.participant
@@ -290,9 +293,7 @@ def send_order_window_opened_notification(user_id, program_name, closes_at_str, 
     extra_context = {
         'program_name': program_name,
         'closes_at': closes_at_str,
-        'participant_frontend_url': getattr(
-            settings, 'PARTICIPANT_FRONTEND_URL', 'https://app.basketful.org'
-        ),
+        'participant_frontend_url': get_email_settings().get_participant_frontend_url(),
     }
     try:
         participant = user.participant

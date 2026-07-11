@@ -18,7 +18,11 @@ export interface EmailSettings {
   id: number;
   from_email_default: string;
   reply_to_default: string;
+  participant_frontend_url: string;
+  backend_domain: string;
   effective_from_email: string;
+  effective_participant_frontend_url: string;
+  effective_backend_domain: string;
 }
 
 export interface BrandingSettings {

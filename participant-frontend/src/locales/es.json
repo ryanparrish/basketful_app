@@ -35,7 +35,7 @@
   "login": {
     "subtitle": "Inicie sesión en su cuenta",
     "sessionExpired": "Su sesión ha expirado. Por favor, inicie sesión de nuevo.",
-    "customerNumber": "Número de cliente",
+    "customerNumber": "Usuario o número de cliente",
     "password": "Contraseña",
     "showPassword": "Mostrar contraseña",
     "hidePassword": "Ocultar contraseña",
