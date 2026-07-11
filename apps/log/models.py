@@ -73,10 +73,35 @@ class EmailType(models.Model):
         default=True,
         help_text="Enable/disable sending of this email type"
     )
-    
+
+    # --- Email design studio (per-language via modeltranslation) ---
+    CONTENT_SOURCE_CHOICES = [
+        ('code', 'Code'),
+        ('design', 'Design'),
+    ]
+    design_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Block-editor document from the email design studio. The "
+            "studio compiles it to html_content on save; the send path "
+            "always renders html_content."
+        ),
+    )
+    content_source = models.CharField(
+        max_length=10,
+        choices=CONTENT_SOURCE_CHOICES,
+        default='code',
+        help_text=(
+            "Whether html_content was last authored in the visual "
+            "designer or code mode. Code edits mark the stored design "
+            "as stale for that language."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         verbose_name = "Email Type"
         verbose_name_plural = "Email Types"
@@ -184,6 +209,14 @@ class EmailLog(models.Model):
     retry_count = models.PositiveSmallIntegerField(
         default=0,
         help_text="Number of times a failed send has been re-dispatched by the DLQ beat task",
+    )
+    is_test = models.BooleanField(
+        default=False,
+        help_text=(
+            "Test send from the email design studio. Excluded from the "
+            "already-sent dedup guard and from DLQ retries — a failed "
+            "test must never be re-dispatched as a real email."
+        ),
     )
 
     class Meta:

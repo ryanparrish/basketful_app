@@ -96,6 +96,91 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
         rendered['language'] = language
         return Response(rendered)
 
+    @action(detail=True, methods=['post'], url_path='send-test')
+    def send_test(self, request, pk=None):
+        """Send a rendered draft of this email to the requesting staff user.
+
+        Body: {subject?, html_content?, text_content?, language?} — same
+        draft semantics as POST preview. The send is synchronous, goes to
+        request.user.email, and is logged as EmailLog(is_test=True) so it
+        never interferes with dedup or DLQ retries.
+        """
+        from django.template import Context, Template, TemplateSyntaxError
+        from django.utils import translation
+
+        from apps.account.tasks.email import (
+            create_email_log,
+            get_email_settings,
+            send_email_message,
+        )
+
+        if not request.user.email:
+            return Response(
+                {'detail': 'Your account has no email address to send the test to.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email_type = self.get_object()
+        language = request.data.get('language') or 'en'
+        if language not in ('en', 'es'):
+            return Response(
+                {'detail': f"Unsupported language '{language}'.", 'field': 'language'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        context = email_type.get_sample_context_for_type()
+        with translation.override(language):
+            try:
+                subject_draft = request.data.get('subject')
+                html_draft = request.data.get('html_content')
+                text_draft = request.data.get('text_content')
+                subject = (
+                    Template(subject_draft).render(Context(context))
+                    if subject_draft is not None
+                    else email_type.render_subject(context)
+                )
+                html = (
+                    Template(html_draft).render(Context(context))
+                    if html_draft is not None
+                    else email_type.render_html(context)
+                )
+                text = (
+                    Template(text_draft).render(Context(context))
+                    if text_draft is not None
+                    else email_type.render_text(context)
+                )
+            except TemplateSyntaxError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        email_settings = get_email_settings()
+        from_email = email_type.from_email or email_settings.get_from_email()
+        reply_to = email_type.reply_to or email_settings.get_reply_to()
+        subject = f"[TEST] {subject}"
+
+        try:
+            message_id = send_email_message(
+                subject, html, text or html, request.user.email,
+                from_email=from_email, reply_to=reply_to,
+            )
+        except Exception as exc:
+            return Response(
+                {'detail': f'Send failed: {exc}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        create_email_log(
+            request.user, email_type, subject, message_id=message_id,
+            is_test=True,
+        )
+
+        return Response({
+            'detail': f'Test email sent to {request.user.email}',
+            'message_id': message_id,
+        })
+
     @action(detail=False, methods=['get'])
     def active(self, request):
         """Return only active email types."""
@@ -113,7 +198,7 @@ class EmailLogViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [
         DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
     ]
-    filterset_fields = ['user', 'email_type', 'status']
+    filterset_fields = ['user', 'email_type', 'status', 'is_test']
     search_fields = ['subject', 'user__email']
     ordering_fields = ['sent_at', 'status']
     ordering = ['-sent_at']

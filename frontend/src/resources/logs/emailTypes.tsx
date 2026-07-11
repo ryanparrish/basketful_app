@@ -23,10 +23,15 @@ import {
   SearchInput,
   useRecordContext,
 } from 'react-admin';
-import { Typography } from '@mui/material';
+import { lazy, Suspense, useState } from 'react';
+import { CircularProgress, Tab, Tabs, Typography } from '@mui/material';
 import { ActiveChip } from './shared';
-import { TinyMCEInput } from '../../components/TinyMCEInput';
+import { MonacoHtmlInput } from '../../components/MonacoHtmlInput';
 import { EmailServerPreview } from './EmailServerPreview';
+
+// The design studio (block editor + Monaco + preview) is a heavy chunk —
+// load it only when someone actually opens the Edit view.
+const EmailStudioPage = lazy(() => import('../../emailStudio/EmailStudioPage'));
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 
@@ -104,8 +109,38 @@ export const EmailTypeShow = () => (
 
 // ─── Edit ─────────────────────────────────────────────────────────────────────
 
+const EmailTypeEditBody = () => {
+  const [tab, setTab] = useState<'studio' | 'settings'>('studio');
+  return (
+    <>
+      <Tabs value={tab} onChange={(_, next) => setTab(next)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Design Studio" value="studio" />
+        <Tab label="Settings" value="settings" />
+      </Tabs>
+      {tab === 'studio' ? (
+        <Suspense fallback={<CircularProgress sx={{ m: 4 }} />}>
+          <EmailStudioPage />
+        </Suspense>
+      ) : (
+        <SimpleForm>
+          <TextInput source="display_name" label="Name" fullWidth required />
+          <TextInput source="name" label="Slug (internal ID)" fullWidth required />
+          <BooleanInput source="is_active" />
+          <TextInput source="from_email" label="From Email" fullWidth helperText="Leave blank for global default" />
+          <TextInput source="reply_to" label="Reply-To" fullWidth helperText="Leave blank for global default" />
+          <TextInput source="html_template" label="HTML Template File Path" fullWidth />
+          <TextInput source="text_template" label="Text Template File Path" fullWidth />
+          <TextInput source="description" multiline minRows={3} fullWidth />
+          <TextInput source="available_variables" label="Available Variables (docs)" multiline minRows={3} fullWidth />
+        </SimpleForm>
+      )}
+    </>
+  );
+};
+
 export const EmailTypeEdit = () => (
   <Edit
+    component="div"
     actions={
       <TopToolbar>
         <ListButton />
@@ -113,53 +148,7 @@ export const EmailTypeEdit = () => (
       </TopToolbar>
     }
   >
-    <SimpleForm>
-      <TextInput source="display_name" label="Name" fullWidth required />
-      <TextInput source="name" label="Slug (internal ID)" fullWidth required />
-      <BooleanInput source="is_active" />
-
-      <Typography variant="h6" sx={{ mt: 2 }}>English Content</Typography>
-      <TextInput source="subject_en" label="Subject (English)" fullWidth helperText="Supports {{ variable }} template syntax" />
-      <TinyMCEInput
-        source="html_content_en"
-        label="HTML Content (English)"
-        height={500}
-        helperText="Full HTML document. Overrides template file. Supports Django template syntax."
-      />
-      <TextInput
-        source="text_content_en"
-        label="Plain Text Content (English)"
-        multiline
-        minRows={5}
-        fullWidth
-      />
-
-      <Typography variant="h6" sx={{ mt: 2 }}>Spanish Content</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Leave blank to fall back to the English version.
-      </Typography>
-      <TextInput source="subject_es" label="Subject (Spanish)" fullWidth />
-      <TinyMCEInput
-        source="html_content_es"
-        label="HTML Content (Spanish)"
-        height={400}
-      />
-      <TextInput
-        source="text_content_es"
-        label="Plain Text Content (Spanish)"
-        multiline
-        minRows={5}
-        fullWidth
-      />
-
-      <Typography variant="h6" sx={{ mt: 2 }}>Settings</Typography>
-      <TextInput source="from_email" label="From Email" fullWidth helperText="Leave blank for global default" />
-      <TextInput source="reply_to" label="Reply-To" fullWidth helperText="Leave blank for global default" />
-      <TextInput source="html_template" label="HTML Template File Path" fullWidth />
-      <TextInput source="text_template" label="Text Template File Path" fullWidth />
-      <TextInput source="description" multiline minRows={3} fullWidth />
-      <TextInput source="available_variables" label="Available Variables (docs)" multiline minRows={3} fullWidth />
-    </SimpleForm>
+    <EmailTypeEditBody />
   </Edit>
 );
 
@@ -172,7 +161,7 @@ export const EmailTypeCreate = () => (
       <TextInput source="name" label="Slug (internal ID)" fullWidth required />
       <TextInput source="subject" fullWidth required helperText="Supports {{ variable }} template syntax" />
       <BooleanInput source="is_active" defaultValue={true} />
-      <TinyMCEInput
+      <MonacoHtmlInput
         source="html_content"
         label="HTML Content"
         height={500}

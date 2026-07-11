@@ -5,19 +5,17 @@
  * including <!DOCTYPE>, <head>, <style>, and Django template syntax.
  * Zero content stripping — what you paste is what gets saved.
  *
- * The old TinyMCEInput is replaced by this component. The export name
- * TinyMCEInput is kept as an alias so no other import sites need updating.
  */
 import MonacoEditor from '@monaco-editor/react';
 import { useInput, type InputProps } from 'react-admin';
 import { FormControl, FormHelperText, FormLabel, Box } from '@mui/material';
 
-export interface TinyMCEInputProps extends InputProps {
+export interface MonacoHtmlInputProps extends InputProps {
   /** Editor height in pixels. Defaults to 500. */
   height?: number;
 }
 
-export const TinyMCEInput = ({ height = 500, label, ...props }: TinyMCEInputProps) => {
+export const MonacoHtmlInput = ({ height = 500, label, ...props }: MonacoHtmlInputProps) => {
   const { field, fieldState, isRequired } = useInput(props);
 
   return (

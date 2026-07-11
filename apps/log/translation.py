@@ -18,4 +18,10 @@ from .models import EmailType
 
 @register(EmailType)
 class EmailTypeTranslationOptions(TranslationOptions):
-    fields = ('subject', 'html_content', 'text_content')
+    # design_json/content_source are the email studio's per-language
+    # editor state: each language has its own block design, and code
+    # edits mark only that language's design stale.
+    fields = (
+        'subject', 'html_content', 'text_content',
+        'design_json', 'content_source',
+    )
