@@ -23,6 +23,7 @@ pytestmark = pytest.mark.django_db
 def _email_types(seeded_email_types):
     """Migration-seeded EmailTypes, resilient to DB flushes (see conftest)."""
 
+
 SAMPLE_DESIGN = {
     'root': {
         'type': 'EmailLayout',
