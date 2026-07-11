@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.api.pagination import StandardResultsSetPagination
-from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser
+from apps.api.permissions import IsAdminOrReadOnly, IsSingletonAdmin, IsStaffUser
 from apps.pantry.models import (
     Category,
     Subcategory,
@@ -16,6 +16,7 @@ from apps.pantry.models import (
     Product,
     ProductLimit,
     OrderPacker,
+    LowInventoryAlertSettings,
 )
 from apps.pantry.api.serializers import (
     CategorySerializer,
@@ -26,6 +27,7 @@ from apps.pantry.api.serializers import (
     ProductListSerializer,
     ProductLimitSerializer,
     OrderPackerSerializer,
+    LowInventoryAlertSettingsSerializer,
 )
 
 
@@ -144,3 +146,33 @@ class OrderPackerViewSet(viewsets.ModelViewSet):
     search_fields = ['name']
     ordering_fields = ['name']
     ordering = ['name']
+
+
+class LowInventoryAlertSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for LowInventoryAlertSettings singleton.
+
+    Only one instance exists - use list/retrieve to get settings,
+    update/partial_update to modify.
+    """
+    queryset = LowInventoryAlertSettings.objects.all()
+    serializer_class = LowInventoryAlertSettingsSerializer
+    permission_classes = [IsAuthenticated, IsSingletonAdmin]
+
+    def get_object(self):
+        """Always return the singleton instance."""
+        return LowInventoryAlertSettings.get_settings()
+
+    def list(self, request, *args, **kwargs):
+        """Return the singleton as a single object."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """Create/update the singleton."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
