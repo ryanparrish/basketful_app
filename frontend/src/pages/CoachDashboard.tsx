@@ -53,7 +53,7 @@ interface Summary {
 }
 
 interface WindowStatus {
-  window_status: 'open' | 'closed' | 'force_open' | 'force_closed' | 'disabled' | 'no_schedule';
+  window_status: 'open' | 'closed' | 'paused' | 'force_open' | 'force_closed' | 'disabled' | 'no_schedule';
   program_name: string;
   meeting_day: string;
   meeting_time: string;
@@ -71,6 +71,7 @@ interface DashboardData {
 const WINDOW_LABELS: Record<string, string> = {
   open: 'Open',
   closed: 'Closed',
+  paused: 'Paused',
   force_open: 'Force Open',
   force_closed: 'Force Closed',
   disabled: 'Disabled',
@@ -80,6 +81,7 @@ const WINDOW_LABELS: Record<string, string> = {
 const WINDOW_COLORS: Record<string, 'success' | 'default' | 'warning' | 'error' | 'info'> = {
   open: 'success',
   closed: 'default',
+  paused: 'error',
   force_open: 'warning',
   force_closed: 'error',
   disabled: 'info',

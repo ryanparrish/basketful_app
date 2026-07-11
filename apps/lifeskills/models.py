@@ -19,7 +19,18 @@ class ProgramPauseQuerySet(models.QuerySet):
     def active(self):
         """Filter queryset to only active pauses."""
         return self.with_annotations().filter(is_active_gate=True)
-    
+
+    def in_progress(self, at=None):
+        """Pauses whose off-week is underway at `at` (default: now).
+
+        Distinct from .active(): the "active gate" matches the pre-pause
+        double-order week (10-14 days before pause_start) and is False
+        during the pause itself. This matches the pause week proper —
+        the no-order week.
+        """
+        at = at or timezone.now()
+        return self.filter(pause_start__lte=at, pause_end__gte=at)
+
     def all_pauses(self):
         """Return all pauses including archived ones."""
         return self.all()

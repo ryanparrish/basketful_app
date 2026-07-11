@@ -9,6 +9,7 @@ export const STATUS_META: Record<
 > = {
   open: { label: 'OPEN', color: 'success' },
   closed: { label: 'CLOSED', color: 'default' },
+  paused: { label: 'PAUSED', color: 'error' },
   force_open: { label: 'FORCE OPEN', color: 'warning' },
   force_closed: { label: 'FORCE CLOSED', color: 'error' },
   disabled: { label: 'DISABLED', color: 'info' },

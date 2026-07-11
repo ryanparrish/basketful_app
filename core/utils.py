@@ -25,6 +25,38 @@ def _parse_meeting_time(meeting_time):
     return meeting_time
 
 
+def get_active_window_override(program, now=None):
+    """Return the program's unexpired ProgramWindowOverride, or None.
+
+    Expired overrides are lazily deleted here (the Celery nightly task
+    handles bulk cleanup).
+    """
+    from core.models import ProgramWindowOverride
+
+    now = now or timezone.now()
+    try:
+        override = program.window_override
+    except ProgramWindowOverride.DoesNotExist:
+        return None
+    if override.expires_at > now:
+        return override
+    override.delete()
+    return None
+
+
+def get_in_progress_pause(now=None):
+    """Return the ProgramPause currently underway, or None.
+
+    ProgramPause is global — during the pause week itself, ordering is
+    blocked for all programs (Issue #78). Uses the raw date range, NOT
+    ProgramPause.is_active_gate/multiplier, which match the pre-pause
+    double-order week and are falsy during the pause proper.
+    """
+    from apps.lifeskills.models import ProgramPause
+
+    return ProgramPause.objects.in_progress(at=now).first()
+
+
 # ---------------------------------------------------------------------------
 # Effective config (COALESCE: per-program override → global singleton)
 # ---------------------------------------------------------------------------
@@ -155,28 +187,26 @@ def get_program_window_status(program) -> dict:
     Compute the complete order-window status for a single program.
 
     Checks for an active ProgramWindowOverride first; if one exists and
-    has not expired it governs the status.  Expired overrides are lazily
-    deleted here (Celery nightly task handles bulk cleanup).
+    has not expired it governs the status — an explicit force-open is the
+    staff escape hatch that beats even a program pause. Otherwise an
+    in-progress ProgramPause closes the window for every program
+    (Issue #78: the pause week is a no-order week).
     """
-    from core.models import ProgramWindowOverride
-
     config = get_effective_config(program)
     now = timezone.now()
 
-    active_override = None
-    try:
-        ov = program.window_override
-        if ov.expires_at > now:
-            active_override = ov
-        else:
-            ov.delete()
-    except ProgramWindowOverride.DoesNotExist:
-        pass
+    active_override = get_active_window_override(program, now)
+    in_progress_pause = get_in_progress_pause(now)
 
     if active_override:
         window_status = f'force_{active_override.force_status}'
         seconds_until_change = max(
             0, int((active_override.expires_at - now).total_seconds())
+        )
+    elif in_progress_pause:
+        window_status = 'paused'
+        seconds_until_change = max(
+            0, int((in_progress_pause.pause_end - now).total_seconds())
         )
     elif not config['enabled']:
         window_status = 'disabled'
@@ -296,17 +326,7 @@ def can_place_order(participant):
     now = timezone.now()
 
     # --- Check for active manual override first ---
-    from core.models import ProgramWindowOverride
-    active_override = None
-    try:
-        ov = program.window_override
-        if ov.expires_at > now:
-            active_override = ov
-        else:
-            ov.delete()
-    except ProgramWindowOverride.DoesNotExist:
-        pass
-
+    active_override = get_active_window_override(program, now)
     if active_override:
         can_order = active_override.force_status == 'open'
         return can_order, {
@@ -320,6 +340,23 @@ def can_place_order(participant):
             'hours_before_close': config['hours_before_close'],
             'can_order': can_order,
             'force_override': active_override.force_status,
+        }
+
+    # --- No override: an in-progress program pause blocks all ordering ---
+    in_progress_pause = get_in_progress_pause(now)
+    if in_progress_pause:
+        return False, {
+            'window_enabled': True,
+            'next_class': get_next_class_datetime(participant),
+            'window_opens': None,
+            'window_closes': None,
+            'hours_until_open': None,
+            'hours_until_close': None,
+            'hours_before_class': config['hours_before_class'],
+            'hours_before_close': config['hours_before_close'],
+            'can_order': False,
+            'reason': 'Program pause in progress',
+            'pause_ends_at': in_progress_pause.pause_end,
         }
 
     # --- No override: check schedule-based window ---

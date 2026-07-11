@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: basketful\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-04 14:13-0400\n"
+"POT-Creation-Date: 2026-07-11 12:18-0400\n"
 "PO-Revision-Date: 2026-07-04 14:13-0400\n"
 "Last-Translator: Basketful Team\n"
 "Language-Team: Spanish\n"
@@ -43,17 +43,26 @@ msgstr "No se encontró el saldo de cuenta de este participante."
 msgid "Product %(product_id)s not found"
 msgstr "No se encontró el producto %(product_id)s"
 
-#: apps/orders/api/views.py:587
+#: apps/orders/api/views.py:567 apps/orders/utils/order_validation.py:76
+#, python-format
+msgid ""
+"Ordering is unavailable during the program pause. Orders reopen after "
+"%(pause_end)s."
+msgstr ""
+"Los pedidos no están disponibles durante la pausa del programa. Los pedidos "
+"se reabren después del %(pause_end)s."
+
+#: apps/orders/api/views.py:608
 #, python-format
 msgid "Food balance exceeded by $%(amount)s"
 msgstr "El saldo de alimentos se excedió por $%(amount)s"
 
-#: apps/orders/api/views.py:602
+#: apps/orders/api/views.py:623
 #, python-format
 msgid "Hygiene balance exceeded by $%(amount)s"
 msgstr "El saldo de higiene se excedió por $%(amount)s"
 
-#: apps/orders/api/views.py:617
+#: apps/orders/api/views.py:638
 #, python-format
 msgid "Go Fresh balance exceeded by $%(amount)s"
 msgstr "El saldo Go Fresh se excedió por $%(amount)s"
@@ -87,8 +96,8 @@ msgid ""
 "Order total $%(total)s exceeds available voucher balance $%(balance)s for "
 "%(participant)s"
 msgstr ""
-"El total del pedido $%(total)s supera el saldo de vales disponible "
-"$%(balance)s de %(participant)s"
+"El total del pedido $%(total)s supera el saldo de vales disponible $"
+"%(balance)s de %(participant)s"
 
 #: apps/orders/utils/order_utils.py:68
 msgid "Cannot create an order with no items."
@@ -102,8 +111,7 @@ msgstr ""
 
 #: apps/orders/utils/order_utils.py:126
 msgid "Another order is being processed. Please wait a moment and try again."
-msgstr ""
-"Se está procesando otro pedido. Espere un momento e intente de nuevo."
+msgstr "Se está procesando otro pedido. Espere un momento e intente de nuevo."
 
 #: apps/orders/utils/order_utils.py:173
 msgid "Order must have at least one valid item."
@@ -113,10 +121,10 @@ msgstr "El pedido debe tener al menos un artículo válido."
 #, python-format
 msgid "Hygiene items total $%(total)s, exceeds hygiene balance $%(balance)s."
 msgstr ""
-"Los artículos de higiene suman $%(total)s, lo que supera el saldo de "
-"higiene de $%(balance)s."
+"Los artículos de higiene suman $%(total)s, lo que supera el saldo de higiene "
+"de $%(balance)s."
 
-#: apps/orders/utils/order_validation.py:89
+#: apps/orders/utils/order_validation.py:131
 #, python-format
 msgid ""
 "Food items total $%(total)s exceeds available voucher balance $%(balance)s."
@@ -124,7 +132,7 @@ msgstr ""
 "Los alimentos suman $%(total)s, lo que supera el saldo de vales disponible "
 "de $%(balance)s."
 
-#: apps/orders/utils/order_validation.py:110
+#: apps/orders/utils/order_validation.py:152
 #, python-format
 msgid ""
 "Food and hygiene items total $%(total)s exceeds available voucher balance $"
@@ -133,21 +141,20 @@ msgstr ""
 "Los alimentos y artículos de higiene suman $%(total)s, lo que supera el "
 "saldo de vales disponible de $%(balance)s."
 
-#: apps/orders/utils/order_validation.py:130
+#: apps/orders/utils/order_validation.py:172
 #, python-format
 msgid "Go Fresh items total $%(total)s exceeds Go Fresh balance $%(balance)s."
 msgstr ""
-"Los artículos Go Fresh suman $%(total)s, lo que supera el saldo Go Fresh "
-"de $%(balance)s."
+"Los artículos Go Fresh suman $%(total)s, lo que supera el saldo Go Fresh de $"
+"%(balance)s."
 
-#: apps/orders/utils/order_validation.py:145
+#: apps/orders/utils/order_validation.py:187
 #, python-format
 msgid "%(product)s: requested %(requested)d, only %(available)d in stock"
 msgstr ""
-"%(product)s: se pidieron %(requested)d, solo hay %(available)d en "
-"existencia"
+"%(product)s: se pidieron %(requested)d, solo hay %(available)d en existencia"
 
-#: apps/orders/utils/order_validation.py:155
+#: apps/orders/utils/order_validation.py:197
 #, python-format
 msgid "Insufficient stock: %(detail)s"
 msgstr "Existencias insuficientes: %(detail)s"
@@ -168,55 +175,55 @@ msgstr ""
 msgid "View on site"
 msgstr ""
 
-#: apps/pantry/models.py:393
+#: apps/pantry/models.py:440
 msgid "Subcategory"
 msgstr "Subcategoría"
 
-#: apps/pantry/models.py:394
+#: apps/pantry/models.py:441
 msgid "Category"
 msgstr "Categoría"
 
-#: apps/pantry/models.py:406
+#: apps/pantry/models.py:453
 #, python-format
 msgid "%(product)s (qty: %(quantity)d)"
 msgstr "%(product)s (cant.: %(quantity)d)"
 
-#: apps/pantry/models.py:420
+#: apps/pantry/models.py:467
 #, python-format
 msgid "%(count)d adult"
 msgid_plural "%(count)d adults"
 msgstr[0] "%(count)d adulto"
 msgstr[1] "%(count)d adultos"
 
-#: apps/pantry/models.py:423
+#: apps/pantry/models.py:470
 #, python-format
 msgid "%(count)d child"
 msgid_plural "%(count)d children"
 msgstr[0] "%(count)d niño"
 msgstr[1] "%(count)d niños"
 
-#: apps/pantry/models.py:426
+#: apps/pantry/models.py:473
 #, python-format
 msgid "%(count)d infant"
 msgid_plural "%(count)d infants"
 msgstr[0] "%(count)d bebé"
 msgstr[1] "%(count)d bebés"
 
-#: apps/pantry/models.py:428
+#: apps/pantry/models.py:475
 #, python-format
 msgid "household of %(size)d"
 msgstr "hogar de %(size)d"
 
-#: apps/pantry/models.py:431
+#: apps/pantry/models.py:478
 msgid "per order"
 msgstr "por pedido"
 
-#: apps/pantry/models.py:436
+#: apps/pantry/models.py:483
 #, python-format
 msgid "%(limit)d (%(paused_limit)d with %(multiplier)dx pause)"
 msgstr "%(limit)d (%(paused_limit)d con pausa de %(multiplier)dx)"
 
-#: apps/pantry/models.py:445
+#: apps/pantry/models.py:492
 #, python-format
 msgid ""
 "Limit exceeded for %(category_type)s '%(category)s' (scope: %(scope)s, "
@@ -224,8 +231,8 @@ msgid ""
 "allowed %(allowed)d. Products: %(product_list)s"
 msgstr ""
 "Límite excedido para la %(category_type)s '%(category)s' (alcance: "
-"%(scope)s, límite: %(limit_description)s %(scope_description)s): Se "
-"pidieron %(ordered)d, se permiten %(allowed)d. Productos: %(product_list)s"
+"%(scope)s, límite: %(limit_description)s %(scope_description)s): Se pidieron "
+"%(ordered)d, se permiten %(allowed)d. Productos: %(product_list)s"
 
 #: apps/pantry/templates/admin/base_site.html:4
 msgid "Django site admin"

@@ -40,11 +40,7 @@ def notify_participants_order_window_opened():
 
     # ProgramPause is global — if any pause is active, no program should fire
     # order-window emails (the pause week is a no-order week for all programs).
-    pause_active = ProgramPause.objects.filter(
-        pause_start__lte=now,
-        pause_end__gte=now,
-        archived=False,
-    ).exists()
+    pause_active = ProgramPause.objects.in_progress(at=now).exists()
 
     if pause_active:
         logger.info(
