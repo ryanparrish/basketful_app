@@ -61,6 +61,12 @@ export interface HygieneSettings {
   enabled: boolean;
 }
 
+export interface LowInventoryAlertSettings {
+  id: number;
+  threshold: number;
+  enabled: boolean;
+}
+
 export type WindowStatus =
   | 'open'
   | 'closed'

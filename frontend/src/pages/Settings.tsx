@@ -14,10 +14,12 @@ import { BrandingTab } from './settings/components/tabs/BrandingTab';
 import { VoucherTab } from './settings/components/tabs/VoucherTab';
 import { ProgramPausesTab } from './settings/components/tabs/ProgramPausesTab';
 import { HygieneTab } from './settings/components/tabs/HygieneTab';
+import { InventoryAlertsTab } from './settings/components/tabs/InventoryAlertsTab';
 import type {
   BrandingSettings,
   EmailSettings,
   HygieneSettings,
+  LowInventoryAlertSettings,
   OrderWindowSettings,
   VoucherSettings,
 } from './settings/types';
@@ -34,22 +36,30 @@ export const Settings = () => {
   const [branding, setBranding] = useState<BrandingSettings | null>(null);
   const [voucher, setVoucher] = useState<VoucherSettings | null>(null);
   const [hygiene, setHygiene] = useState<HygieneSettings | null>(null);
+  const [inventoryAlerts, setInventoryAlerts] = useState<LowInventoryAlertSettings | null>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const [owResponse, emailResponse, brandingResponse, voucherResponse, hygieneResponse] =
-          await Promise.all([
-            dataProvider.getOne('settings/order-window-settings', { id: 'current' }),
-            dataProvider.getOne('settings/email-settings', { id: 'current' }),
-            dataProvider.getOne('settings/branding-settings', { id: 'current' }),
-            dataProvider.getList('voucher-settings', {
-              pagination: { page: 1, perPage: 1 },
-              filter: { active: true },
-              sort: { field: 'id', order: 'DESC' },
-            }),
-            dataProvider.getOne('hygiene-settings', { id: 'current' }),
-          ]);
+        const [
+          owResponse,
+          emailResponse,
+          brandingResponse,
+          voucherResponse,
+          hygieneResponse,
+          inventoryAlertsResponse,
+        ] = await Promise.all([
+          dataProvider.getOne('settings/order-window-settings', { id: 'current' }),
+          dataProvider.getOne('settings/email-settings', { id: 'current' }),
+          dataProvider.getOne('settings/branding-settings', { id: 'current' }),
+          dataProvider.getList('voucher-settings', {
+            pagination: { page: 1, perPage: 1 },
+            filter: { active: true },
+            sort: { field: 'id', order: 'DESC' },
+          }),
+          dataProvider.getOne('hygiene-settings', { id: 'current' }),
+          dataProvider.getOne('low-inventory-alert-settings', { id: 'current' }),
+        ]);
 
         setOrderWindow(owResponse.data as OrderWindowSettings);
         setEmail(emailResponse.data as EmailSettings);
@@ -58,6 +68,7 @@ export const Settings = () => {
           setVoucher(voucherResponse.data[0] as VoucherSettings);
         }
         setHygiene(hygieneResponse.data as HygieneSettings);
+        setInventoryAlerts(inventoryAlertsResponse.data as LowInventoryAlertSettings);
       } catch {
         notify('Error loading settings', { type: 'error' });
       }
@@ -149,6 +160,22 @@ export const Settings = () => {
     setSaving(false);
   };
 
+  const saveInventoryAlerts = async () => {
+    if (!inventoryAlerts) return;
+    setSaving(true);
+    try {
+      await dataProvider.update('low-inventory-alert-settings', {
+        id: 'current',
+        data: inventoryAlerts,
+        previousData: inventoryAlerts,
+      });
+      notify('Inventory alert settings saved', { type: 'success' });
+    } catch {
+      notify('Error saving settings', { type: 'error' });
+    }
+    setSaving(false);
+  };
+
   if (loading) return <Loading />;
 
   return (
@@ -164,6 +191,7 @@ export const Settings = () => {
             <Tab label="Vouchers" />
             <Tab label="Program Pauses" />
             <Tab label="Hygiene" />
+            <Tab label="Inventory Alerts" />
           </Tabs>
 
           <TabPanel value={tab} index={0}>
@@ -214,6 +242,17 @@ export const Settings = () => {
                 hygiene={hygiene}
                 setHygiene={setHygiene}
                 onSave={saveHygiene}
+                saving={saving}
+              />
+            )}
+          </TabPanel>
+
+          <TabPanel value={tab} index={6}>
+            {inventoryAlerts && (
+              <InventoryAlertsTab
+                settings={inventoryAlerts}
+                setSettings={setInventoryAlerts}
+                onSave={saveInventoryAlerts}
                 saving={saving}
               />
             )}

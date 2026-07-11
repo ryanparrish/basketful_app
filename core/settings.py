@@ -368,6 +368,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.account.tasks.email.retry_failed_emails',
         'schedule': crontab(hour='*/6', minute=0),  # Every 6 hours
     },
+    'check-low-inventory': {
+        'task': 'apps.pantry.tasks.low_inventory.check_low_inventory',
+        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']

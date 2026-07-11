@@ -10,6 +10,7 @@ from apps.pantry.models import (
     Product,
     ProductLimit,
     OrderPacker,
+    LowInventoryAlertSettings,
 )
 from apps.lifeskills.models import Program
 
@@ -193,3 +194,12 @@ class ProductLimitSerializer(serializers.ModelSerializer):
         from apps.pantry.models import CategoryLimitValidator
         _, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
         return pause_name
+
+
+class LowInventoryAlertSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for the LowInventoryAlertSettings singleton."""
+
+    class Meta:
+        model = LowInventoryAlertSettings
+        fields = ['id', 'threshold', 'enabled']
+        read_only_fields = ['id']

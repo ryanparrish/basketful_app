@@ -96,6 +96,14 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     active = models.BooleanField(default=True)
+    low_stock_alerted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text=(
+            "When the current low-stock episode was alerted. Set and cleared "
+            "by the low-inventory beat task; cleared once stock recovers "
+            "above the alert threshold."
+        ),
+    )
     tags = models.ManyToManyField(
         'pantry.Tag',
         related_name='products',
@@ -209,6 +217,45 @@ class OrderPacker(models.Model):
 
     class Meta:
         db_table = 'food_orders_order_packer'
+
+
+class LowInventoryAlertSettings(models.Model):
+    """Singleton configuration for the low-inventory email alert.
+
+    When enabled, a periodic task emails all members of the Inventory
+    Managers group whenever an active product's stock drops to or below
+    the threshold. Each product alerts once per low episode — it must
+    recover above the threshold before it can alert again.
+    """
+    threshold = models.PositiveIntegerField(
+        default=45,
+        help_text="Alert when a product's quantity in stock is at or below this value."
+    )
+    enabled = models.BooleanField(
+        default=True,
+        help_text="Enable low-inventory alert emails."
+    )
+
+    class Meta:
+        verbose_name = "Low Inventory Alert Settings"
+        verbose_name_plural = "Low Inventory Alert Settings"
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton pattern
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton settings instance."""
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={'threshold': 45, 'enabled': True}
+        )
+        return obj
+
+    def __str__(self) -> str:
+        return f"Low Inventory Alert Settings (Threshold: {self.threshold}, Enabled: {self.enabled})"
 
 
 class CategoryLimitValidator:
