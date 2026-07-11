@@ -31,6 +31,8 @@ class EmailTypeSerializer(serializers.ModelSerializer):
             'html_template', 'text_template',
             'html_content', 'html_content_en', 'html_content_es',
             'text_content', 'text_content_en', 'text_content_es',
+            'design_json', 'design_json_en', 'design_json_es',
+            'content_source', 'content_source_en', 'content_source_es',
             'from_email', 'reply_to',
             'available_variables', 'description', 'variables',
             'is_active', 'created_at', 'updated_at'
@@ -76,7 +78,7 @@ class EmailLogSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'user_email', 'email_type', 'email_type_name',
             'subject', 'status', 'error_message', 'sent_at', 'message_id',
-            'delivery_status', 'delivery_checked_at',
+            'delivery_status', 'delivery_checked_at', 'is_test',
         ]
         read_only_fields = ['id', 'sent_at', 'delivery_checked_at']
 

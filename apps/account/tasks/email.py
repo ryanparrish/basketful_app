@@ -62,7 +62,8 @@ def get_email_type(email_type_name):
     return EmailType.objects.filter(name=email_type_name, is_active=True).first()
 
 
-def create_email_log(user, email_type, subject, status="sent", error_message="", message_id=None):
+def create_email_log(user, email_type, subject, status="sent", error_message="",
+                     message_id=None, is_test=False):
     """Create a log entry for a sent email."""
     from apps.log.models import EmailLog
     logger.info(
@@ -76,16 +77,22 @@ def create_email_log(user, email_type, subject, status="sent", error_message="",
         status=status,
         error_message=error_message,
         message_id=message_id or "",
+        is_test=is_test,
     )
 
 
 def has_email_been_sent(user, email_type):
-    """Check if the email has already been sent to this user."""
+    """Check if the email has already been sent to this user.
+
+    Test sends from the email studio don't count — a staff member
+    previewing the onboarding email must not block the real one.
+    """
     from apps.log.models import EmailLog
     return EmailLog.objects.filter(
         user=user,
         email_type=email_type,
-        status="sent"
+        status="sent",
+        is_test=False,
     ).exists()
 
 
@@ -334,6 +341,7 @@ def retry_failed_emails():
         status="failed",
         retry_count__lt=3,
         sent_at__gte=cutoff,
+        is_test=False,  # a failed studio test send must never be re-sent for real
     ).select_related("email_type")
 
     dispatched = 0

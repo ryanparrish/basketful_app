@@ -1,7 +1,12 @@
-// Jest setup file
+// Vitest setup file
+
+// jest-dom matchers (toBeInTheDocument, ...) for vitest's expect
+import '@testing-library/jest-dom/vitest';
+
+import * as jestMock from 'jest-mock';
 
 // Mock global objects and functions
-global.jest = require('jest-mock');
+global.jest = jestMock;
 
 // Mock localStorage
 Object.defineProperty(window, 'localStorage', {
