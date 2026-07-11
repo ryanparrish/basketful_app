@@ -100,17 +100,27 @@ class OrderWindowSettingsSerializer(serializers.ModelSerializer):
 class EmailSettingsSerializer(serializers.ModelSerializer):
     """Serializer for EmailSettings model."""
     effective_from_email = serializers.SerializerMethodField()
+    effective_participant_frontend_url = serializers.SerializerMethodField()
+    effective_backend_domain = serializers.SerializerMethodField()
 
     class Meta:
         model = EmailSettings
         fields = [
             'id', 'from_email_default', 'reply_to_default',
-            'effective_from_email', 'created_at', 'updated_at'
+            'participant_frontend_url', 'backend_domain',
+            'effective_from_email', 'effective_participant_frontend_url',
+            'effective_backend_domain', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_effective_from_email(self, obj) -> str:
         return obj.get_from_email()
+
+    def get_effective_participant_frontend_url(self, obj) -> str:
+        return obj.get_participant_frontend_url()
+
+    def get_effective_backend_domain(self, obj) -> str:
+        return obj.get_backend_domain()
 
 
 class BrandingSettingsSerializer(serializers.ModelSerializer):

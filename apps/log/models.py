@@ -117,23 +117,18 @@ class EmailType(models.Model):
     
     @classmethod
     def get_sample_context(cls):
+        """Sample context for email preview (common variables only).
+
+        Prefer get_sample_context_for_type(), which also includes the
+        type-specific variables from the registry.
         """
-        Returns sample context data for email preview.
-        """
-        return {
-            'user': type('SampleUser', (), {
-                'first_name': 'John',
-                'last_name': 'Doe',
-                'username': 'john_doe',
-                'email': 'john.doe@example.com',
-                'get_username': lambda self: 'john_doe',
-            })(),
-            'domain': 'example.com',
-            'protocol': 'https',
-            'uid': 'sample-uid-123',
-            'token': 'sample-token-abc',
-            'site_name': 'Basketful',
-        }
+        from apps.log.variables import build_sample_context
+        return build_sample_context()
+
+    def get_sample_context_for_type(self):
+        """Sample context including this type's variables (see apps/log/variables.py)."""
+        from apps.log.variables import build_sample_context
+        return build_sample_context(self.name)
 
 
 class EmailLog(models.Model):

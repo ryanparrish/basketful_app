@@ -35,7 +35,7 @@
   "login": {
     "subtitle": "Sign in to your account",
     "sessionExpired": "Your session has expired. Please sign in again.",
-    "customerNumber": "Customer Number",
+    "customerNumber": "Username or Customer Number",
     "password": "Password",
     "showPassword": "Show password",
     "hidePassword": "Hide password",

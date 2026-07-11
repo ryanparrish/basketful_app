@@ -14,19 +14,43 @@ from apps.log.models import (
 
 
 class EmailTypeSerializer(serializers.ModelSerializer):
-    """Serializer for EmailType model."""
+    """Serializer for EmailType model.
+
+    Exposes the per-language modeltranslation columns explicitly so the
+    email studio can edit English and Spanish side by side. The base
+    columns stay writable for back-compat, but writing them writes the
+    active-language column — prefer the explicit ``_en``/``_es`` fields.
+    """
+    variables = serializers.SerializerMethodField()
 
     class Meta:
         model = EmailType
         fields = [
             'id', 'name', 'display_name', 'subject',
+            'subject_en', 'subject_es',
             'html_template', 'text_template',
-            'html_content', 'text_content',
+            'html_content', 'html_content_en', 'html_content_es',
+            'text_content', 'text_content_en', 'text_content_es',
             'from_email', 'reply_to',
-            'available_variables', 'description',
+            'available_variables', 'description', 'variables',
             'is_active', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'variables', 'created_at', 'updated_at']
+
+    def get_variables(self, obj) -> list:
+        """Template variables available to this email type (see apps/log/variables.py)."""
+        from apps.log.variables import get_variables
+        return [
+            {
+                'token': variable.token,
+                'label': variable.label,
+                'description': variable.description,
+                'sample_value': variable.sample_value,
+                'kind': variable.kind,
+                'item_attributes': list(variable.item_attributes),
+            }
+            for variable in get_variables(obj.name)
+        ]
 
 
 class EmailTypeListSerializer(serializers.ModelSerializer):
