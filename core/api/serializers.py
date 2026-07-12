@@ -103,6 +103,15 @@ class EmailSettingsSerializer(serializers.ModelSerializer):
     effective_participant_frontend_url = serializers.SerializerMethodField()
     effective_backend_domain = serializers.SerializerMethodField()
 
+    def to_internal_value(self, data):
+        # Staff type bare domains ("shop.example.org"); URLField would
+        # reject them with a 400. Assume https when no scheme is given.
+        data = data.copy()
+        url = data.get('participant_frontend_url')
+        if isinstance(url, str) and url and '://' not in url:
+            data['participant_frontend_url'] = f'https://{url}'
+        return super().to_internal_value(data)
+
     class Meta:
         model = EmailSettings
         fields = [

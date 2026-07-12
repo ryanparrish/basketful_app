@@ -28,6 +28,7 @@ import {
 } from './vendor/documents/editor/EditorContext';
 import type { TEditorConfiguration } from './vendor/documents/editor/core';
 import InspectorDrawer from './vendor/App/InspectorDrawer';
+import ToggleInspectorPanelButton from './vendor/App/InspectorDrawer/ToggleInspectorPanelButton';
 
 export type { TEditorConfiguration };
 export { EMPTY_EMAIL_MESSAGE };
@@ -102,6 +103,7 @@ export const EmailStudioEditor = ({
               </Tooltip>
             </ToggleButton>
           </ToggleButtonGroup>
+          <ToggleInspectorPanelButton />
         </Stack>
         <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f5f5f5' }}>
           <Box sx={canvasSx}>

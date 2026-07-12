@@ -39,7 +39,8 @@ SAMPLE_DESIGN = {
 @pytest.fixture
 def staff_user():
     return User.objects.create_user(
-        username='studio-staff', email='studio@example.com', is_staff=True
+        username='studio-staff', email='studio@example.com',
+        first_name='Studio', is_staff=True,
     )
 
 
@@ -98,7 +99,9 @@ class TestSendTest:
         assert len(mail.outbox) == 1
         message = mail.outbox[0]
         assert message.to == [staff_user.email]
-        assert message.subject == '[TEST] Draft subject for Maria'
+        # Test sends render with the requesting user's real details, not
+        # the sample participant.
+        assert message.subject == '[TEST] Draft subject for Studio'
         assert 'C-BKM-7' in message.alternatives[0][0]
 
         log_entry = EmailLog.objects.get(user=staff_user, is_test=True)

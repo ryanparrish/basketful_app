@@ -19,6 +19,9 @@ import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DataObjectIcon from '@mui/icons-material/DataObject';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import CloseIcon from '@mui/icons-material/Close';
+import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import {
   Alert,
   Box,
@@ -45,6 +48,12 @@ import {
 import apiClient from '../lib/api/apiClient';
 import { EmailServerPreview } from '../resources/logs/EmailServerPreview';
 import { EmailStudioEditor } from './EmailStudioEditor';
+import {
+  LEFT_PANEL,
+  PREVIEW_PANEL,
+  startPanelDrag,
+  usePersistentState,
+} from './panelLayout';
 import { VariablesPanel, type EmailVariableInfo } from './VariablesPanel';
 import { TEMPLATE_PRESETS } from './templatePresets';
 import {
@@ -67,7 +76,10 @@ export const EmailStudioPage = () => {
   const [language, setLanguage] = useState<StudioLanguage>('en');
   const [drafts, setDrafts] = useState<Record<StudioLanguage, LanguageDraft> | null>(null);
   const [modes, setModes] = useState<Record<StudioLanguage, StudioMode> | null>(null);
-  const [showPreview, setShowPreview] = useState(true);
+  const [showPreview, setShowPreview] = usePersistentState('emailStudio.showPreview', true);
+  const [showLeftPanel, setShowLeftPanel] = usePersistentState('emailStudio.showLeftPanel', true);
+  const [leftWidth, setLeftWidth] = usePersistentState('emailStudio.leftWidth', LEFT_PANEL.initial);
+  const [previewWidth, setPreviewWidth] = usePersistentState('emailStudio.previewWidth', PREVIEW_PANEL.initial);
   const [confirmCodeSaveOpen, setConfirmCodeSaveOpen] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const [variableMenuAnchor, setVariableMenuAnchor] = useState<null | HTMLElement>(null);
@@ -266,8 +278,19 @@ export const EmailStudioPage = () => {
 
       {/* ── Main area ───────────────────────────────────────────────── */}
       <Stack direction="row" sx={{ flex: 1, minHeight: 0, border: 1, borderColor: 'divider' }}>
-        {/* Left panel: presets + variables */}
-        <Box sx={{ width: 280, flexShrink: 0, borderRight: 1, borderColor: 'divider', overflow: 'auto' }}>
+        {/* Left panel: presets + variables (dismissable, resizable) */}
+        {showLeftPanel ? (
+        <Box sx={{ width: leftWidth, flexShrink: 0, borderRight: 1, borderColor: 'divider', overflow: 'auto', position: 'relative' }}>
+          <Tooltip title="Hide panel">
+            <IconButton
+              size="small"
+              onClick={() => setShowLeftPanel(false)}
+              sx={{ position: 'absolute', top: 4, right: 4 }}
+              aria-label="Hide variables panel"
+            >
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Typography variant="subtitle2" sx={{ px: 2, pt: 2 }}>Start from…</Typography>
           <Stack spacing={1} sx={{ p: 2 }}>
             {TEMPLATE_PRESETS.map(preset => (
@@ -287,6 +310,29 @@ export const EmailStudioPage = () => {
           <Divider />
           <VariablesPanel variables={variables} />
         </Box>
+        ) : (
+          <Box sx={{ borderRight: 1, borderColor: 'divider', display: 'flex', alignItems: 'flex-start' }}>
+            <Tooltip title="Show templates & variables">
+              <IconButton size="small" onClick={() => setShowLeftPanel(true)} aria-label="Show variables panel">
+                <MenuOpenIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
+        {showLeftPanel && (
+          <Box
+            onMouseDown={e =>
+              startPanelDrag(e.clientX, leftWidth, 1, LEFT_PANEL, setLeftWidth)
+            }
+            sx={{
+              width: 6,
+              flexShrink: 0,
+              cursor: 'col-resize',
+              '&:hover': { bgcolor: 'primary.light' },
+            }}
+            data-testid="left-panel-resizer"
+          />
+        )}
 
         {/* Editor */}
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -316,11 +362,35 @@ export const EmailStudioPage = () => {
           )}
         </Box>
 
-        {/* Live preview */}
+        {/* Live preview (dismissable, resizable) */}
         {showPreview && (
-          <Box sx={{ width: '38%', flexShrink: 0, borderLeft: 1, borderColor: 'divider', overflow: 'auto', p: 1 }}>
-            <EmailServerPreview emailTypeId={record.id} draft={previewDraft} />
-          </Box>
+          <>
+            <Box
+              onMouseDown={e =>
+                startPanelDrag(e.clientX, previewWidth, -1, PREVIEW_PANEL, setPreviewWidth)
+              }
+              sx={{
+                width: 6,
+                flexShrink: 0,
+                cursor: 'col-resize',
+                '&:hover': { bgcolor: 'primary.light' },
+              }}
+              data-testid="preview-resizer"
+            />
+            <Box sx={{ width: previewWidth, flexShrink: 0, borderLeft: 1, borderColor: 'divider', overflow: 'auto', p: 1, position: 'relative' }}>
+              <Tooltip title="Hide preview">
+                <IconButton
+                  size="small"
+                  onClick={() => setShowPreview(false)}
+                  sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1 }}
+                  aria-label="Hide preview"
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <EmailServerPreview emailTypeId={record.id} draft={previewDraft} />
+            </Box>
+          </>
         )}
       </Stack>
 

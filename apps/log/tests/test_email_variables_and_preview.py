@@ -256,6 +256,25 @@ class TestEmailSettingsUrlOverrides:
         assert persisted.participant_frontend_url == 'https://shop.copied.org'
         assert persisted.backend_domain == 'api.copied.org'
 
+    def test_scheme_less_participant_url_is_normalized(self):
+        """Staff can type a bare domain — the serializer assumes https."""
+        client = APIClient()
+        client.force_authenticate(
+            user=User.objects.create_user(
+                username='url-staff', email='url@example.com', is_staff=True
+            )
+        )
+        response = client.patch(
+            '/api/v1/settings/email-settings/current/',
+            {'participant_frontend_url': 'shop.wedgwood.org'},
+            format='json',
+        )
+        assert response.status_code == 200
+        assert (
+            EmailSettings.get_settings().participant_frontend_url
+            == 'https://shop.wedgwood.org'
+        )
+
     def test_build_email_context_uses_backend_domain_override(self):
         email_settings = EmailSettings.get_settings()
         email_settings.backend_domain = 'emails.example.org'

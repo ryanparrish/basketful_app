@@ -129,6 +129,10 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
             )
 
         context = email_type.get_sample_context_for_type()
+        # Test sends render with the requesting user's real details (name,
+        # username, email) instead of the sample participant, so the email
+        # you receive reads as it would for you.
+        context['user'] = request.user
         with translation.override(language):
             try:
                 subject_draft = request.data.get('subject')

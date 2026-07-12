@@ -24,6 +24,17 @@ import type {
   VoucherSettings,
 } from './settings/types';
 
+/** Turn a DRF validation error into a readable message, e.g. "participant_frontend_url: Enter a valid URL." */
+const describeApiError = (err: unknown): string | null => {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (!data || typeof data !== 'object') return null;
+  const parts = Object.entries(data as Record<string, unknown>).map(
+    ([field, messages]) =>
+      `${field}: ${Array.isArray(messages) ? messages.join(' ') : String(messages)}`
+  );
+  return parts.length ? parts.join(' — ') : null;
+};
+
 export const Settings = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -90,8 +101,8 @@ export const Settings = () => {
       });
       setOrderWindow(data);
       notify('Order window settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
@@ -106,8 +117,8 @@ export const Settings = () => {
         previousData: email,
       });
       notify('Email settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
@@ -122,8 +133,8 @@ export const Settings = () => {
         previousData: branding,
       });
       notify('Branding settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
@@ -138,8 +149,8 @@ export const Settings = () => {
         previousData: voucher,
       });
       notify('Voucher settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
@@ -154,8 +165,8 @@ export const Settings = () => {
         previousData: hygiene,
       });
       notify('Hygiene settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
@@ -170,8 +181,8 @@ export const Settings = () => {
         previousData: inventoryAlerts,
       });
       notify('Inventory alert settings saved', { type: 'success' });
-    } catch {
-      notify('Error saving settings', { type: 'error' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
     }
     setSaving(false);
   };
