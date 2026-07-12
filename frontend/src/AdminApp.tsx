@@ -154,7 +154,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="permissions" />
     <Menu.ResourceItem name="coaches" />
     <Menu.Item to="/coach-dashboard" primaryText="Coach Dashboard" leftIcon={<DashboardCustomizeIcon />} />
-    <Menu.Item to="/branding-settings/current/edit" primaryText="Branding" leftIcon={<BrandingSettingsIcon />} />
+    <Menu.Item to="/settings/branding-settings/current/edit" primaryText="Branding" leftIcon={<BrandingSettingsIcon />} />
     <Menu.Item to="/settings" primaryText="Settings" leftIcon={<SettingsIcon />} />
     <Menu.Item to="/email-types" primaryText="Email Types" leftIcon={<EmailIcon />} />
     <Menu.Item to="/email-logs" primaryText="Email Logs" leftIcon={<ArticleIcon />} />
@@ -356,7 +356,7 @@ const App = () => (
 
     {/* Branding Settings (singleton — edit only) */}
     <Resource
-      name="branding-settings"
+      name="settings/branding-settings"
       edit={BrandingSettingsEdit}
       icon={BrandingSettingsIcon}
       options={{ label: 'Branding' }}

@@ -1,6 +1,8 @@
 /**
  * Branding Settings — singleton resource.
- * Nav link goes directly to /branding-settings/current/edit, bypassing the list.
+ * Nav link goes directly to /settings/branding-settings/current/edit, bypassing
+ * the list. The resource name carries the settings/ prefix so react-admin's
+ * record load hits the real API path (/api/v1/settings/branding-settings/).
  */
 import {
   Edit,
@@ -60,7 +62,7 @@ export const BrandingSettingsEdit = () => {
 
   return (
     <Edit
-      resource="branding-settings"
+      resource="settings/branding-settings"
       id="current"
       mutationMode="pessimistic"
       mutationOptions={{ onSuccess: () => notify('Branding settings saved', { type: 'success' }) }}
