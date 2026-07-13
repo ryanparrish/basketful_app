@@ -69,6 +69,10 @@ export interface LowInventoryAlertSettings {
   id: number;
   threshold: number;
   enabled: boolean;
+  notify_groups: number[];
+  notify_users: number[];
+  notify_group_details: { id: number; name: string }[];
+  notify_user_details: { id: number; username: string; email: string }[];
 }
 
 export type WindowStatus =

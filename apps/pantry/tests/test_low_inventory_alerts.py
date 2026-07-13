@@ -3,7 +3,7 @@ Tests for apps.pantry.tasks.low_inventory — low-inventory email alerts.
 
 Business rules verified:
   1. A product at/below the threshold triggers one alert email per
-     Inventory Manager, then never re-alerts while it stays low.
+     configured recipient, then never re-alerts while it stays low.
   2. Boundary: exactly at the threshold alerts; one above does not.
   3. Multiple newly-low products are grouped into a single email per
      recipient.
@@ -12,10 +12,13 @@ Business rules verified:
      (queryset .update() bypassing save() included).
   5. Disabled settings, inactive products, and already-alerted products
      never trigger alerts.
-  6. No emailable Inventory Managers → no dispatch, warning logged.
+  6. No configured recipients (no group, no individual user) → no
+     dispatch, warning logged.
   7. LowInventoryAlertSettings enforces the singleton pattern.
   8. Full pipeline (no mocks): rendered email reaches mail.outbox and an
      EmailLog row is written for a staff user with no Participant.
+  9. Recipients can come from a configured group, individual users, or
+     both at once — deduped so a user in both lists gets one email.
 """
 import logging
 from unittest.mock import patch
@@ -28,10 +31,7 @@ from rest_framework.test import APIClient
 
 from apps.log.models import EmailLog, EmailType
 from apps.pantry.models import LowInventoryAlertSettings, Product
-from apps.pantry.tasks.low_inventory import (
-    INVENTORY_MANAGERS_GROUP,
-    check_low_inventory,
-)
+from apps.pantry.tasks.low_inventory import check_low_inventory
 from apps.pantry.tests.factories import ProductFactory
 
 User = get_user_model()
@@ -50,9 +50,9 @@ def alert_settings(db):
 
 
 @pytest.fixture
-def inventory_managers(db):
-    """The Inventory Managers group with two emailable staff members."""
-    group = Group.objects.create(name=INVENTORY_MANAGERS_GROUP)
+def inventory_managers(alert_settings):
+    """An 'Inventory Managers' group, configured as a notify group, with two emailable staff members."""
+    group, _ = Group.objects.get_or_create(name='Inventory Managers')
     liv = User.objects.create_user(
         username='liv', email='liv@example.com', is_staff=True
     )
@@ -61,6 +61,7 @@ def inventory_managers(db):
     )
     liv.groups.add(group)
     linnea.groups.add(group)
+    alert_settings.notify_groups.add(group)
     return group, [liv, linnea]
 
 
@@ -206,37 +207,70 @@ def test_inactive_product_never_alerts(
     mock_send_email.assert_not_called()
 
 
-def test_no_emailable_managers_logs_warning(
+def test_no_emailable_recipients_logs_warning(
     alert_settings, mock_send_email, caplog
 ):
-    group = Group.objects.create(name=INVENTORY_MANAGERS_GROUP)
+    group, _ = Group.objects.get_or_create(name='Inventory Managers')
     blank_email = User.objects.create_user(username='no-email', email='')
     inactive = User.objects.create_user(
         username='gone', email='gone@example.com', is_active=False
     )
     blank_email.groups.add(group)
     inactive.groups.add(group)
+    alert_settings.notify_groups.add(group)
     product = ProductFactory(quantity_in_stock=10)
 
     with caplog.at_level(logging.WARNING):
         check_low_inventory()
 
     mock_send_email.assert_not_called()
-    assert any('no emailable members' in record.message for record in caplog.records)
+    assert any('no configured recipient' in record.message for record in caplog.records)
     # The product is still claimed — the episode was observed, delivery
     # simply had nowhere to go.
     product.refresh_from_db()
     assert product.low_stock_alerted_at is not None
 
 
-def test_missing_group_logs_warning(alert_settings, mock_send_email, caplog):
+def test_no_recipients_configured_logs_warning(alert_settings, mock_send_email, caplog):
     ProductFactory(quantity_in_stock=10)
 
     with caplog.at_level(logging.WARNING):
         check_low_inventory()
 
     mock_send_email.assert_not_called()
-    assert any('no emailable members' in record.message for record in caplog.records)
+    assert any('no configured recipient' in record.message for record in caplog.records)
+
+
+def test_individual_notify_user_without_group(alert_settings, mock_send_email):
+    """An individually-selected user receives alerts with no group involved."""
+    solo = User.objects.create_user(
+        username='solo', email='solo@example.com', is_staff=True
+    )
+    alert_settings.notify_users.add(solo)
+    ProductFactory(name='Canned Corn', quantity_in_stock=5)
+
+    check_low_inventory()
+
+    mock_send_email.assert_called_once()
+    assert mock_send_email.call_args.args[0] == solo.pk
+
+
+def test_group_and_individual_users_combined_and_deduped(
+    alert_settings, inventory_managers, mock_send_email
+):
+    """A user in both the notify group and notify_users gets exactly one email."""
+    _, (liv, linnea) = inventory_managers
+    solo = User.objects.create_user(
+        username='solo', email='solo@example.com', is_staff=True
+    )
+    alert_settings.notify_users.add(liv, solo)  # liv is already in the group
+    ProductFactory(name='Canned Peas', quantity_in_stock=5)
+
+    check_low_inventory()
+
+    alerted_user_ids = [call.args[0] for call in mock_send_email.call_args_list]
+    assert sorted(alerted_user_ids) == sorted({liv.pk, linnea.pk, solo.pk})
+    assert len(alerted_user_ids) == 3  # no duplicate dispatch to liv
 
 
 # ---------------------------------------------------------------------------
@@ -345,3 +379,28 @@ class TestLowInventoryAlertSettingsAPI:
         response = client.patch(self.endpoint, {'threshold': 5}, format='json')
         assert response.status_code == 403
         assert LowInventoryAlertSettings.get_settings().threshold == 45
+
+    def test_staff_can_configure_notify_groups_and_users(self, db):
+        group, _ = Group.objects.get_or_create(name='Inventory Managers')
+        recipient = User.objects.create_user(
+            username='recipient', email='recipient@example.com', is_staff=True
+        )
+        client = APIClient()
+        client.force_authenticate(
+            user=User.objects.create_user(
+                username='staff2', email='staff2@example.com', is_staff=True
+            )
+        )
+
+        response = client.patch(
+            self.endpoint,
+            {'notify_groups': [group.pk], 'notify_users': [recipient.pk]},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['notify_groups'] == [group.pk]
+        assert response.data['notify_users'] == [recipient.pk]
+        settings_row = LowInventoryAlertSettings.get_settings()
+        assert list(settings_row.notify_groups.all()) == [group]
+        assert list(settings_row.notify_users.all()) == [recipient]

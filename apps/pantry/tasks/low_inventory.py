@@ -13,16 +13,15 @@ guard — overlapping beat ticks cannot both claim the same product.
 import logging
 
 from celery import shared_task
+from django.db import models
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-INVENTORY_MANAGERS_GROUP = 'Inventory Managers'
-
 
 @shared_task
 def check_low_inventory():
-    """Alert Inventory Managers about products newly at/below the threshold."""
+    """Alert configured recipients about products newly at/below the threshold."""
     from django.contrib.auth import get_user_model
 
     from apps.account.tasks.email import send_email_by_type
@@ -69,15 +68,20 @@ def check_low_inventory():
     User = get_user_model()
     recipients = (
         User.objects
-        .filter(groups__name=INVENTORY_MANAGERS_GROUP, is_active=True)
+        .filter(
+            models.Q(groups__in=alert_settings.notify_groups.all())
+            | models.Q(pk__in=alert_settings.notify_users.all())
+        )
+        .filter(is_active=True)
         .exclude(email='')
         .distinct()
     )
     if not recipients.exists():
         logger.warning(
-            "[LowInventory] %d product(s) newly low but the '%s' group has "
-            "no emailable members — alert not delivered",
-            len(newly_low_products), INVENTORY_MANAGERS_GROUP,
+            "[LowInventory] %d product(s) newly low but no configured "
+            "recipient (group or user) has an emailable account — "
+            "alert not delivered",
+            len(newly_low_products),
         )
         return
 

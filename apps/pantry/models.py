@@ -3,6 +3,8 @@
 import logging
 from collections import defaultdict
 # Django imports
+from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
@@ -222,8 +224,8 @@ class OrderPacker(models.Model):
 class LowInventoryAlertSettings(models.Model):
     """Singleton configuration for the low-inventory email alert.
 
-    When enabled, a periodic task emails all members of the Inventory
-    Managers group whenever an active product's stock drops to or below
+    When enabled, a periodic task emails everyone in ``notify_groups`` and
+    ``notify_users`` whenever an active product's stock drops to or below
     the threshold. Each product alerts once per low episode — it must
     recover above the threshold before it can alert again.
     """
@@ -234,6 +236,18 @@ class LowInventoryAlertSettings(models.Model):
     enabled = models.BooleanField(
         default=True,
         help_text="Enable low-inventory alert emails."
+    )
+    notify_groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="low_inventory_alert_settings",
+        help_text="Groups whose members receive the low-inventory alert."
+    )
+    notify_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="low_inventory_alert_settings",
+        help_text="Additional individual users who receive the low-inventory alert."
     )
 
     class Meta:

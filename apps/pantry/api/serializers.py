@@ -1,6 +1,7 @@
 """
 Serializers for the Pantry app.
 """
+from django.contrib.auth.models import Group, User
 from rest_framework import serializers
 
 from apps.pantry.models import (
@@ -198,8 +199,26 @@ class ProductLimitSerializer(serializers.ModelSerializer):
 
 class LowInventoryAlertSettingsSerializer(serializers.ModelSerializer):
     """Serializer for the LowInventoryAlertSettings singleton."""
+    notify_groups = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Group.objects.all(), required=False
+    )
+    notify_users = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=User.objects.all(), required=False
+    )
+    notify_group_details = serializers.SerializerMethodField()
+    notify_user_details = serializers.SerializerMethodField()
 
     class Meta:
         model = LowInventoryAlertSettings
-        fields = ['id', 'threshold', 'enabled']
+        fields = [
+            'id', 'threshold', 'enabled',
+            'notify_groups', 'notify_users',
+            'notify_group_details', 'notify_user_details',
+        ]
         read_only_fields = ['id']
+
+    def get_notify_group_details(self, obj) -> list:
+        return list(obj.notify_groups.values('id', 'name'))
+
+    def get_notify_user_details(self, obj) -> list:
+        return list(obj.notify_users.values('id', 'username', 'email'))
