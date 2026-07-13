@@ -60,14 +60,14 @@ class SecurityHeadersMiddleware:
         # Allow self, inline styles (needed for MUI), and Google reCAPTCHA
         if _IS_PROD:
             # Production: restrict connect-src to self only (no localhost)
-            connect_src = "'self' https://www.google.com"
+            connect_src = "'self' https://www.google.com https://cloudflareinsights.com"
         else:
             # Development: also allow localhost for hot-reload / dev servers
-            connect_src = "'self' http://localhost:* ws://localhost:* https://www.google.com"
+            connect_src = "'self' http://localhost:* ws://localhost:* https://www.google.com https://cloudflareinsights.com"
 
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://static.cloudflareinsights.com",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
