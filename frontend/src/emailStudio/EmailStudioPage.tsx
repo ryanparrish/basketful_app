@@ -343,14 +343,16 @@ export const EmailStudioPage = () => {
             />
           ) : (
             <Stack sx={{ flex: 1, minHeight: 0 }}>
-              <Editor
-                height="60%"
-                language="html"
-                theme="vs-dark"
-                value={draft.htmlContent}
-                onChange={value => updateDraft({ htmlContent: value ?? '' })}
-                options={{ minimap: { enabled: false }, wordWrap: 'on', fontSize: 13 }}
-              />
+              <Box sx={{ flexBasis: '60%', flexShrink: 0, minHeight: 0, position: 'relative' }}>
+                <Editor
+                  height="100%"
+                  language="html"
+                  theme="vs-dark"
+                  value={draft.htmlContent}
+                  onChange={value => updateDraft({ htmlContent: value ?? '' })}
+                  options={{ minimap: { enabled: false }, wordWrap: 'on', fontSize: 13 }}
+                />
+              </Box>
               <TextField
                 label={`Plain text (${language === 'en' ? 'English' : 'Spanish'})`}
                 multiline
