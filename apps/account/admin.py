@@ -193,8 +193,12 @@ class ParticipantAdmin(admin.ModelAdmin):
             profile.must_change_password = True
             profile.save(update_fields=['must_change_password'])
             
-            # Send password reset email (async)
-            send_password_reset_email.delay(user.id)
+            # Send password reset email (async). force=True because this
+            # action just generated a brand-new password — the lifetime
+            # "already sent" dedup would otherwise silently drop the email
+            # for any participant who'd ever received one before, leaving
+            # them with a changed password and no way to learn it.
+            send_password_reset_email.delay(user.id, force=True)
             
             reset_count += 1
             email_count += 1

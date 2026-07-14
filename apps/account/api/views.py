@@ -264,7 +264,7 @@ class ParticipantViewSet(viewsets.ModelViewSet):
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.must_change_password = True
             profile.save(update_fields=['must_change_password'])
-            send_password_reset_email.delay(user.id)
+            send_password_reset_email.delay(user.id, force=True)
             reset_count += 1
         parts = [f'Password reset for {reset_count} participant(s).']
         if skipped:

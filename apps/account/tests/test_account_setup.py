@@ -553,10 +553,11 @@ class TestParticipantAdminActions:
         assert profile1.must_change_password is True
         assert profile2.must_change_password is True
         
-        # Verify email task was called for both users
+        # Verify email task was called for both users, forced past the
+        # lifetime "already sent" dedup since a brand-new password was set
         assert mock_send_email_task.call_count == 2
-        mock_send_email_task.assert_any_call(user1.id)
-        mock_send_email_task.assert_any_call(user2.id)
+        mock_send_email_task.assert_any_call(user1.id, force=True)
+        mock_send_email_task.assert_any_call(user2.id, force=True)
 
     def test_reset_password_skips_participants_without_user(self, mocker):
         """
