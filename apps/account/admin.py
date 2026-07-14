@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.utils.crypto import get_random_string
 from django.apps import apps
 # Local app imports
@@ -178,28 +179,38 @@ class ParticipantAdmin(admin.ModelAdmin):
         email_count = 0
         
         for participant in queryset:
-            if not participant.user:
+            if not participant.user_id:
                 continue
-            
-            user = participant.user
-            
-            # Generate a random temporary password
-            temp_password = get_random_string(length=12)
-            user.password = make_password(temp_password)
-            user.save(update_fields=['password'])
-            
-            # Set must_change_password flag
-            profile, created = UserProfile.objects.get_or_create(user=user)
-            profile.must_change_password = True
-            profile.save(update_fields=['must_change_password'])
-            
-            # Send password reset email (async). force=True because this
-            # action just generated a brand-new password — the lifetime
-            # "already sent" dedup would otherwise silently drop the email
-            # for any participant who'd ever received one before, leaving
-            # them with a changed password and no way to learn it.
-            send_password_reset_email.delay(user.id, force=True)
-            
+
+            # Lock the user row and defer the email dispatch until commit —
+            # without this, two overlapping resets for the same user can
+            # interleave: an email's reset token is baked from whatever
+            # password is current when the Celery task runs, so a token
+            # built just before a second reset's write lands goes dead the
+            # moment that write commits, with no indication of which of the
+            # two emailed links actually still works.
+            with transaction.atomic():
+                user = User.objects.select_for_update().get(pk=participant.user_id)
+
+                # Generate a random temporary password
+                temp_password = get_random_string(length=12)
+                user.password = make_password(temp_password)
+                user.save(update_fields=['password'])
+
+                # Set must_change_password flag
+                profile, created = UserProfile.objects.get_or_create(user=user)
+                profile.must_change_password = True
+                profile.save(update_fields=['must_change_password'])
+
+                # Send password reset email (async). force=True because this
+                # action just generated a brand-new password — the lifetime
+                # "already sent" dedup would otherwise silently drop the email
+                # for any participant who'd ever received one before, leaving
+                # them with a changed password and no way to learn it.
+                transaction.on_commit(
+                    lambda uid=user.id: send_password_reset_email.delay(uid, force=True)
+                )
+
             reset_count += 1
             email_count += 1
         

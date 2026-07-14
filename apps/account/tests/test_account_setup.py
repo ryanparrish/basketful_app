@@ -468,7 +468,7 @@ class TestEmailTasks:
 class TestParticipantAdminActions:
     """Test admin actions for Participant model."""
 
-    def test_reset_password_and_send_email_action(self, mocker):
+    def test_reset_password_and_send_email_action(self, mocker, django_capture_on_commit_callbacks):
         """
         Test that the reset_password_and_send_email admin action:
         1. Resets the user's password
@@ -536,9 +536,11 @@ class TestParticipantAdminActions:
             id__in=[participant1.id, participant2.id]
         )
         
-        # Execute action
-        admin.reset_password_and_send_email(request, queryset)
-        
+        # Execute action — the email dispatch is deferred to transaction
+        # commit (see apps/account/admin.py), so it must be captured here
+        with django_capture_on_commit_callbacks(execute=True):
+            admin.reset_password_and_send_email(request, queryset)
+
         # Refresh users from database
         user1.refresh_from_db()
         user2.refresh_from_db()

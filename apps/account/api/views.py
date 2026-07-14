@@ -254,17 +254,28 @@ class ParticipantViewSet(viewsets.ModelViewSet):
         ids = request.data.get('ids', [])
         reset_count = 0
         skipped = 0
-        for participant in Participant.objects.filter(id__in=ids).select_related('user'):
-            if not participant.user:
+        for participant in Participant.objects.filter(id__in=ids):
+            if not participant.user_id:
                 skipped += 1
                 continue
-            user = participant.user
-            user.password = make_password(get_random_string(length=12))
-            user.save(update_fields=['password'])
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.must_change_password = True
-            profile.save(update_fields=['must_change_password'])
-            send_password_reset_email.delay(user.id, force=True)
+
+            # Lock the user row and defer the email dispatch until commit —
+            # without this, two overlapping resets for the same user can
+            # interleave: an email's reset token is baked from whatever
+            # password is current when the Celery task runs, so a token
+            # built just before a second reset's write lands goes dead the
+            # moment that write commits, with no indication of which of the
+            # two emailed links actually still works.
+            with transaction.atomic():
+                user = User.objects.select_for_update().get(pk=participant.user_id)
+                user.password = make_password(get_random_string(length=12))
+                user.save(update_fields=['password'])
+                profile, _created = UserProfile.objects.get_or_create(user=user)
+                profile.must_change_password = True
+                profile.save(update_fields=['must_change_password'])
+                transaction.on_commit(
+                    lambda uid=user.id: send_password_reset_email.delay(uid, force=True)
+                )
             reset_count += 1
         parts = [f'Password reset for {reset_count} participant(s).']
         if skipped:
