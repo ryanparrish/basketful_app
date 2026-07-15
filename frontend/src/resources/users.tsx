@@ -17,6 +17,9 @@ import {
   BooleanInput,
   ReferenceArrayInput,
   SelectArrayInput,
+  ReferenceInput,
+  SelectInput,
+  SearchInput,
   FunctionField,
   required,
   email,
@@ -27,15 +30,23 @@ import {
 import { Chip, Box, Button } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
+const userFilters = [
+  <SearchInput source="q" alwaysOn key="search" />,
+  <ReferenceInput source="participant__program" reference="programs" key="program" label="Program">
+    <SelectInput optionText="name" label="Program" />
+  </ReferenceInput>,
+];
+
 // List
 export const UserList = () => (
-  <List>
+  <List filters={userFilters}>
     <Datagrid rowClick="show">
       <TextField source="id" />
       <TextField source="username" />
       <EmailField source="email" />
       <TextField source="first_name" />
       <TextField source="last_name" />
+      <TextField source="program_name" label="Program" />
       <BooleanField source="is_staff" />
       <BooleanField source="is_superuser" />
       <BooleanField source="is_active" />

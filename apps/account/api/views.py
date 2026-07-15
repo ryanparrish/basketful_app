@@ -61,9 +61,10 @@ class UserViewSet(viewsets.ModelViewSet):
     update: Update user (staff only)
     destroy: Delete user (staff only)
     """
-    queryset = User.objects.all().select_related('userprofile')
+    queryset = User.objects.all().select_related('userprofile', 'participant__program')
     permission_classes = [IsAuthenticated, IsStaffUser]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['participant__program']
     search_fields = ['username', 'email', 'first_name', 'last_name']
     ordering_fields = ['username', 'email', 'date_joined', 'last_login']
     ordering = ['-date_joined']

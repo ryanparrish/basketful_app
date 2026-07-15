@@ -69,6 +69,7 @@ class UserSerializer(serializers.ModelSerializer):
         required=False
     )
     all_permissions = serializers.SerializerMethodField()
+    program_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -76,7 +77,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'is_active', 'is_staff', 'is_superuser', 'date_joined', 'last_login',
             'profile', 'full_name', 'groups', 'group_details',
-            'user_permissions', 'all_permissions'
+            'user_permissions', 'all_permissions', 'program_name'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login', 'is_superuser']
         extra_kwargs = {
@@ -85,12 +86,17 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name() or obj.username
-    
+
     def get_all_permissions(self, obj):
         """Get all permissions (direct + from groups)."""
         if obj.is_superuser:
             return ['*']  # Superuser has all permissions
         return list(obj.get_all_permissions())
+
+    def get_program_name(self, obj):
+        """Program of the linked Participant, if any (staff users have none)."""
+        participant = getattr(obj, 'participant', None)
+        return participant.program.name if participant and participant.program else None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
