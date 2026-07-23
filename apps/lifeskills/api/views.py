@@ -345,6 +345,7 @@ class ProgramPauseViewSet(viewsets.ModelViewSet):
 
         try:
             from django.utils.dateparse import parse_datetime
+            from django.utils.timezone import is_naive, make_aware
             start_dt = parse_datetime(pause_start)
             end_dt = parse_datetime(pause_end)
             if not start_dt or not end_dt:
@@ -352,6 +353,10 @@ class ProgramPauseViewSet(viewsets.ModelViewSet):
                     {'detail': 'Invalid datetime format.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            if is_naive(start_dt):
+                start_dt = make_aware(start_dt)
+            if is_naive(end_dt):
+                end_dt = make_aware(end_dt)
         except (ValueError, TypeError):
             return Response(
                 {'detail': 'Invalid datetime format.'},
