@@ -14,6 +14,7 @@ from apps.orders.models import (
     PackingList,
     WarehouseInventoryList,
 )
+from apps.account.models import AccountBalance
 from apps.log.models import OrderValidationLog
 from apps.pantry.api.serializers import ProductListSerializer
 
@@ -187,6 +188,9 @@ class OrderListSerializer(serializers.ModelSerializer):
 class OrderCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Orders with comprehensive validation."""
     items = OrderItemCreateSerializer(many=True, required=False)
+    account = serializers.PrimaryKeyRelatedField(
+        queryset=AccountBalance.objects.all(), required=False
+    )
 
     class Meta:
         model = Order
@@ -211,6 +215,30 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     _("You may not place an order for another participant's account.")
                 )
         return account
+
+    def validate(self, attrs):
+        """
+        The participant-facing frontend never sends `account` — it always
+        orders for itself, so derive it from the authenticated user's own
+        account rather than requiring the client to know its own database ID.
+        Staff must specify `account` explicitly since they act on behalf of
+        other participants.
+        """
+        if 'account' not in attrs:
+            request = self.context.get('request')
+            user = getattr(request, 'user', None)
+            if user and user.is_staff:
+                raise serializers.ValidationError(
+                    {'account': _("Staff must specify which participant's account to order for.")}
+                )
+            participant = getattr(user, 'participant', None)
+            account = getattr(participant, 'accountbalance', None)
+            if account is None:
+                raise serializers.ValidationError(
+                    {'account': _("No account found for the current user.")}
+                )
+            attrs['account'] = account
+        return attrs
 
     def create(self, validated_data):
         """
