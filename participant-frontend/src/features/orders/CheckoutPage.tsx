@@ -52,7 +52,9 @@ export const CheckoutPage: React.FC = () => {
 
   // Order submission mutation
   const submitMutation = useMutation({
-    mutationFn: () => createOrder({ items: getApiCartItems() }),
+    mutationFn: () => createOrder({
+      items: getApiCartItems().map(({ product_id, quantity }) => ({ product: product_id, quantity })),
+    }),
     onSuccess: (response) => {
       setOrderSuccess(true);
       setOrderId(response.id);

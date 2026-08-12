@@ -127,8 +127,13 @@ export interface Order {
   notes?: string;
 }
 
+export interface CreateOrderItem {
+  product: number;
+  quantity: number;
+}
+
 export interface CreateOrderRequest {
-  items: CartItem[];
+  items: CreateOrderItem[];
 }
 
 export interface CreateOrderResponse {
