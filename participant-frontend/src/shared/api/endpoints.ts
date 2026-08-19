@@ -71,10 +71,27 @@ export const getProducts = async (params?: {
   search?: string;
   active?: boolean;
 }): Promise<Product[]> => {
-  const response = await apiClient.get<PaginatedResponse<Product>>('/products/', {
-    params: { ...params, active: true, page_size: 500 },
-  });
-  return response.data.results || response.data;
+  const results: Product[] = [];
+  let url: string | null = '/products/';
+  // Only the first request needs explicit params — DRF's `next` link already
+  // carries them, and re-sending params alongside an absolute `next` URL
+  // would duplicate query keys.
+  let requestParams: typeof params & { active: boolean; page_size: number } | undefined = {
+    ...params,
+    active: true,
+    page_size: 500,
+  };
+
+  while (url) {
+    const response = await apiClient.get<PaginatedResponse<Product>>(url, {
+      params: requestParams,
+    });
+    results.push(...response.data.results);
+    url = response.data.next;
+    requestParams = undefined;
+  }
+
+  return results;
 };
 
 export const getProduct = async (id: number): Promise<Product> => {
