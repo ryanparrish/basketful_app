@@ -384,7 +384,9 @@ class Order(models.Model):
         from django.db.models import F, Value
         from django.db.models.functions import Greatest
         from apps.pantry.models import Product
+        from apps.pantry.utils.product_lifecycle import deactivate_out_of_stock_products
 
+        product_ids = list(self.items.values_list('product_id', flat=True))
         for item in self.items.select_related('product').all():
             Product.objects.filter(pk=item.product_id).update(
                 quantity_in_stock=Greatest(
@@ -397,6 +399,15 @@ class Order(models.Model):
             self.id,
             self.items.count(),
         )
+
+        deactivated = deactivate_out_of_stock_products(product_ids=product_ids)
+        if deactivated:
+            logger.info(
+                "Order %s: deactivated %d product(s) that reached zero stock: %s",
+                self.id,
+                len(deactivated),
+                ", ".join(name for _, name in deactivated),
+            )
 
     def _consume_vouchers(self):
         """

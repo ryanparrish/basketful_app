@@ -372,6 +372,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.pantry.tasks.low_inventory.check_low_inventory',
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
     },
+    'deactivate-zero-stock-products': {
+        'task': 'apps.pantry.tasks.product_lifecycle.deactivate_zero_stock_products',
+        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']

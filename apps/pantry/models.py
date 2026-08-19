@@ -97,7 +97,14 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
-    active = models.BooleanField(default=True)
+    active = models.BooleanField(
+        default=True,
+        help_text=(
+            "Automatically set to False when quantity_in_stock reaches 0 "
+            "(see apps.pantry.utils.product_lifecycle). Restocking does not "
+            "automatically reactivate it — flip this manually when ready."
+        ),
+    )
     low_stock_alerted_at = models.DateTimeField(
         null=True, blank=True,
         help_text=(
