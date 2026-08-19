@@ -43,13 +43,17 @@ class IsOwnerOrAdmin(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.user.is_staff:
             return True
-        # Check if object has a user field
+        # Prefer the canonical ownership chain (account -> participant -> user)
+        # over a direct `user` field. Some models (e.g. Order) carry `user` as
+        # a separate, frequently-null audit field ("who submitted this") that
+        # is not the same thing as "whose order this is" — account ownership
+        # is the real anchor.
+        account = getattr(obj, 'account', None)
+        participant = getattr(account, 'participant', None) or getattr(obj, 'participant', None)
+        if participant is not None:
+            return getattr(participant, 'user', None) == request.user
         if hasattr(obj, 'user'):
             return obj.user == request.user
-        if hasattr(obj, 'participant'):
-            participant = obj.participant
-            if participant and hasattr(participant, 'user'):
-                return participant.user == request.user
         return False
 
 

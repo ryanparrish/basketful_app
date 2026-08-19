@@ -83,13 +83,17 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Filter orders based on user permissions."""
         qs = super().get_queryset()
         user = self.request.user
+        # Ownership runs through account -> participant -> user, not the
+        # separate (frequently-null) `user` audit field on Order — orders
+        # created by the participant self-checkout flow, the legacy
+        # session-cart view, and seeded test data never set `user`.
         # ?me=true forces participant-scoped results even for staff users.
         # Used by the participant frontend so a staff account cannot see all orders.
         if self.request.query_params.get('me') == 'true':
-            qs = qs.filter(user=user)
+            qs = qs.filter(account__participant__user=user)
         elif not user.is_staff:
             # Non-staff users always see only their own orders
-            qs = qs.filter(user=user)
+            qs = qs.filter(account__participant__user=user)
         return qs
 
     def get_throttles(self):
@@ -1174,7 +1178,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
         if not user.is_staff:
-            qs = qs.filter(order__user=user)
+            qs = qs.filter(order__account__participant__user=user)
         return qs
 
 
