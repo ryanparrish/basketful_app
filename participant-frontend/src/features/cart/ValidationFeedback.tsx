@@ -83,12 +83,38 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
       <Box>
         {hasErrors && (
           <Alert severity="error" sx={{ mb: 1 }}>
-            {t('validation.issuesFound', { count: errors.length })}
+            <AlertTitle>{t('validation.cartIssues')}</AlertTitle>
+            <List dense disablePadding>
+              {errors.map((error, idx) => (
+                <ListItem key={`compact-error-${idx}`} disablePadding>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    <ErrorOutline fontSize="small" color="error" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={displayMessage(error)}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+              ))}
+            </List>
           </Alert>
         )}
         {hasWarnings && !hasErrors && (
           <Alert severity="warning">
-            {t('validation.warningCount', { count: warnings.length })}
+            <AlertTitle>{t('validation.warningsTitle')}</AlertTitle>
+            <List dense disablePadding>
+              {warnings.map((warning, idx) => (
+                <ListItem key={`compact-warning-${idx}`} disablePadding>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    <WarningAmber fontSize="small" color="warning" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={displayMessage(warning)}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                  />
+                </ListItem>
+              ))}
+            </List>
           </Alert>
         )}
       </Box>

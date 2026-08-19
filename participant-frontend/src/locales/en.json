@@ -100,10 +100,6 @@
   "validation": {
     "validating": "Validating cart...",
     "cartValid": "Cart is valid and ready for checkout",
-    "issuesFound_one": "{{count}} issue found in your cart",
-    "issuesFound_other": "{{count}} issues found in your cart",
-    "warningCount_one": "{{count}} warning",
-    "warningCount_other": "{{count}} warnings",
     "budgetExceeded": "Budget Exceeded",
     "quantityLimits": "Quantity Limits",
     "cartIssues": "Cart Issues",

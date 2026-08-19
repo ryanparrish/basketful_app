@@ -100,10 +100,6 @@
   "validation": {
     "validating": "Validando el carrito...",
     "cartValid": "El carrito es válido y está listo para finalizar el pedido",
-    "issuesFound_one": "Se encontró {{count}} problema en su carrito",
-    "issuesFound_other": "Se encontraron {{count}} problemas en su carrito",
-    "warningCount_one": "{{count}} aviso",
-    "warningCount_other": "{{count}} avisos",
     "budgetExceeded": "Presupuesto excedido",
     "quantityLimits": "Límites de cantidad",
     "cartIssues": "Problemas del carrito",
