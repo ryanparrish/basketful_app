@@ -325,11 +325,14 @@ describe('Cart Edge Cases - Session vs localStorage Conflicts', () => {
     expect(cart).toEqual({'1': 5});
   });
 
-  test('should use localStorage when session is empty object', () => {
+  test('should trust an empty session object over stale localStorage', () => {
+    // An empty {} from the server is a real, authoritative signal (e.g. the
+    // cart was just cleared after checkout) — it must not be treated the
+    // same as `null` ("no session data, fall back to localStorage").
     localStorage.setItem('cart', JSON.stringify({'1': 5}));
-    
+
     const cart = initializeCart({});
-    expect(cart).toEqual({'1': 5});
+    expect(cart).toEqual({});
   });
 });
 

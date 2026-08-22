@@ -154,50 +154,32 @@ describe('Cart Calculations', () => {
 });
 
 describe('Session vs LocalStorage Priority', () => {
-  let localStorage;
-  
   beforeEach(() => {
-    localStorage = {
-      data: {},
-      getItem(key) {
-        return this.data[key] || null;
-      },
-      setItem(key, value) {
-        this.data[key] = value;
-      }
-    };
-    global.localStorage = localStorage;
+    localStorage.clear();
   });
 
   test('should prioritize session cart over localStorage', () => {
     const sessionCart = { "1": 5 };
-    const localCart = { "2": 3 };
-    localStorage.setItem('cart', JSON.stringify(localCart));
-    
-    // Simulate initialization logic
-    let cart;
-    if (sessionCart && Object.keys(sessionCart).length > 0) {
-      localStorage.setItem('cart', JSON.stringify(sessionCart));
-      cart = sessionCart;
-    } else {
-      cart = JSON.parse(localStorage.getItem('cart'));
-    }
-    
-    expect(cart).toEqual({ "1": 5 });
+    localStorage.setItem('cart', JSON.stringify({ "2": 3 }));
+
+    expect(initializeCart(sessionCart)).toEqual({ "1": 5 });
   });
 
-  test('should use localStorage when session is empty', () => {
-    const sessionCart = {};
-    const localCart = { "2": 3 };
-    localStorage.setItem('cart', JSON.stringify(localCart));
-    
-    let cart;
-    if (sessionCart && Object.keys(sessionCart).length > 0) {
-      cart = sessionCart;
-    } else {
-      cart = JSON.parse(localStorage.getItem('cart'));
-    }
-    
-    expect(cart).toEqual({ "2": 3 });
+  test('should trust an empty session cart instead of falling back to localStorage', () => {
+    // Regression test: an empty session cart is the server's authoritative
+    // signal that the cart was just cleared (e.g. after a successful
+    // checkout). A stale cart still sitting in localStorage must not be
+    // resurrected — that was the root cause of carts silently "not
+    // clearing" for participants.
+    localStorage.setItem('cart', JSON.stringify({ "2": 3 }));
+
+    expect(initializeCart({})).toEqual({});
+    expect(JSON.parse(localStorage.getItem('cart'))).toEqual({});
+  });
+
+  test('should fall back to localStorage only when no session cart is provided at all', () => {
+    localStorage.setItem('cart', JSON.stringify({ "2": 3 }));
+
+    expect(initializeCart(null)).toEqual({ "2": 3 });
   });
 });

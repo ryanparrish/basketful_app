@@ -118,16 +118,19 @@
 
   const csrftoken = getCookie('csrftoken');
   
-  // Initialize cart - prioritize session cart over localStorage
+  // Initialize cart - the server's session cart is always authoritative
   let cart = initializeCart();
 
   function initializeCart() {
-    // If session has a cart, use it (user may have come back from review page)
-    if (sessionCart && Object.keys(sessionCart).length > 0) {
+    // sessionCart is always provided by the server, even as {} (e.g. right
+    // after a successful checkout) — trust it. localStorage has no way to
+    // tell "an abandoned cart worth restoring" apart from "just cleared",
+    // so falling back to it whenever the session looks empty resurrects
+    // old items after every checkout.
+    if (sessionCart != null) {
       localStorage.setItem('cart', JSON.stringify(sessionCart));
       return sessionCart;
     }
-    // Otherwise, load from localStorage
     return loadCartFromStorage();
   }
 

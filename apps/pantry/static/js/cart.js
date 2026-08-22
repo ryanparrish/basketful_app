@@ -24,10 +24,16 @@ function getCookie(name) {
 }
 
 /**
- * Initialize cart from session or localStorage
+ * Initialize cart from session or localStorage.
+ *
+ * sessionCart is always provided by the server, even as {} (e.g. right
+ * after a successful checkout) — trust it. localStorage has no way to
+ * tell "an abandoned cart worth restoring" apart from "just cleared", so
+ * falling back to it whenever the session looks empty resurrects old
+ * items after every checkout.
  */
 function initializeCart(sessionCart) {
-  if (sessionCart && Object.keys(sessionCart).length > 0) {
+  if (sessionCart != null) {
     localStorage.setItem('cart', JSON.stringify(sessionCart));
     return sessionCart;
   }
