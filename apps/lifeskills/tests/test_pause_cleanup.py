@@ -330,13 +330,82 @@ class TestDailyCleanupTask:
             archived=True,
             archived_at=now - timedelta(days=22)
         )
-        
+
         # Run cleanup
         cleanup_expired_pause_flags()
-        
+
         # Should not cause errors
         pause.refresh_from_db()
         assert pause.archived is True
+
+
+# ----------------------------
+# Regression: archiving must not re-trigger handle_program_pause
+# ----------------------------
+@pytest.mark.django_db
+class TestArchivingDoesNotRetriggerPauseSignal:
+    """Archiving a ProgramPause is terminal bookkeeping, not a new pause event.
+
+    Bug: final_cleanup_after_pause_end/cleanup_expired_pause_flags used to save
+    archived=True without skipping signals. That re-fired handle_program_pause,
+    which (since pause_start/pause_end are now in the past) took the "outside
+    ordering window" branch and called schedule_voucher_tasks() with past
+    activate/deactivate times — re-flagging the vouchers this same task just
+    cleared, via a separate async update_voucher_flag_task.delay(activate=True)
+    call with no ordering guarantee against the matching deactivate call.
+
+    Asserting only the final voucher state (as the tests above do) does not
+    catch this: in eager test mode schedule_voucher_tasks() runs its activate
+    branch and then its deactivate branch synchronously in that fixed order,
+    so the reactivation is always immediately undone and the final state looks
+    correct. Production dispatches those two calls as independent Celery tasks
+    with no such ordering guarantee, so the reactivation can win the race and
+    stick. This test asserts the reactivation call never happens at all.
+    """
+
+    def test_final_cleanup_does_not_reschedule_voucher_activation(self, participant_with_vouchers):
+        now = timezone.now()
+        pause = ProgramPause.objects.create(
+            pause_start=now - timedelta(days=30),
+            pause_end=now - timedelta(minutes=10),
+            reason="Ended Pause",
+        )
+        vouchers = participant_with_vouchers["vouchers"]
+        active_ids = [v.id for v in vouchers if v.active]
+        set_voucher_pause_state(active_ids, activate=True, multiplier=2)
+
+        with mock.patch("apps.lifeskills.signals.schedule_voucher_tasks") as mock_schedule:
+            final_cleanup_after_pause_end(pause.id)
+
+        mock_schedule.assert_not_called()
+
+        pause.refresh_from_db()
+        assert pause.archived is True
+        for v in Voucher.objects.filter(id__in=active_ids):
+            assert v.program_pause_flag is False
+            assert v.multiplier == 1
+
+    def test_daily_cleanup_does_not_reschedule_voucher_activation(self, participant_with_vouchers):
+        now = timezone.now()
+        pause = ProgramPause.objects.create(
+            pause_start=now - timedelta(days=30),
+            pause_end=now - timedelta(days=23),
+            reason="Old Pause",
+        )
+        vouchers = participant_with_vouchers["vouchers"]
+        active_ids = [v.id for v in vouchers if v.active]
+        set_voucher_pause_state(active_ids, activate=True, multiplier=2)
+
+        with mock.patch("apps.lifeskills.signals.schedule_voucher_tasks") as mock_schedule:
+            cleanup_expired_pause_flags()
+
+        mock_schedule.assert_not_called()
+
+        pause.refresh_from_db()
+        assert pause.archived is True
+        for v in Voucher.objects.filter(id__in=active_ids):
+            assert v.program_pause_flag is False
+            assert v.multiplier == 1
 
 
 # ----------------------------

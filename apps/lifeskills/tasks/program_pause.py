@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.voucher.models import Voucher
 from apps.lifeskills.models import ProgramPause
 from apps.lifeskills.utils import set_voucher_pause_state
+from apps.pantry.utils.utils import skip_signals
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +373,12 @@ def final_cleanup_after_pause_end(
     if not pp.archived:
         pp.archived = True
         pp.archived_at = now
-        pp.save(update_fields=['archived', 'archived_at'])
+        # Archiving is a terminal bookkeeping update, not a new pause event —
+        # skip the signal so handle_program_pause() doesn't re-derive
+        # activate/deactivate timing from the (now-past) pause_start/pause_end
+        # and re-flag vouchers right after this task just cleared them.
+        with skip_signals(pp):
+            pp.save(update_fields=['archived', 'archived_at'])
         logger.info(
             "[Final Cleanup] Marked ProgramPause ID=%s as archived",
             program_pause_id
@@ -418,7 +424,10 @@ def cleanup_expired_pause_flags(self):
         if not pause.archived:
             pause.archived = True
             pause.archived_at = now
-            pause.save(update_fields=['archived', 'archived_at'])
+            # See final_cleanup_after_pause_end: skip the signal so this
+            # bookkeeping save doesn't re-trigger handle_program_pause().
+            with skip_signals(pause):
+                pause.save(update_fields=['archived', 'archived_at'])
             logger.info(
                 "[Daily Cleanup] Marked ProgramPause ID=%s as archived",
                 pause.id
