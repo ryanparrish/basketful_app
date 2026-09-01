@@ -1,7 +1,5 @@
 from decimal import Decimal, ROUND_CEILING
-from django.utils import timezone
 from apps.voucher.models import VoucherSetting
-from apps.lifeskills.models import ProgramPause
 
 
 def calculate_base_balance(participant) -> Decimal:
@@ -35,48 +33,30 @@ def calculate_available_balance(account_balance, limit=2):
 
     Rules:
       - Sums up to `limit` active grocery vouchers.
-      - Uses each voucher's multiplier.
-      - If a ProgramPause is currently active, only include vouchers 
-        with program_pause_flag=True.
+      - Applies the CURRENT program-pause multiplier live (see
+        _get_current_pause_multiplier) rather than each voucher's stored
+        program_pause_flag/multiplier — those are only set by a one-shot
+        batch job when a ProgramPause is saved, so a voucher created
+        afterward (a new participant, a replenished voucher) would never
+        get flagged and would silently stay un-doubled. Computing it live
+        means it's always correct regardless of when the voucher was created.
     """
     if not account_balance:
         return Decimal(0)
 
-    now = timezone.now()
+    multiplier = Decimal(_get_current_pause_multiplier())
 
-    # Global active ProgramPauses
-    active_pauses = ProgramPause.objects.filter(
-        pause_start__lte=now,
-        pause_end__gte=now
+    vouchers = list(
+        account_balance.vouchers.filter(
+            state="applied",
+            voucher_type="grocery"
+        ).order_by("created_at")[:limit]
     )
 
-    # Dynamic gate check
-    gate_active = any(getattr(pp, "is_active_gate", False) for pp in active_pauses)
-
-    # Base queryset: active grocery vouchers
-    vouchers_qs = account_balance.vouchers.filter(
-        state="applied",
-        voucher_type="grocery"
-    ).order_by("created_at")
-
-    # Convert to list for Python-level filtering
-    vouchers = list(vouchers_qs)
-
-    # Only include vouchers flagged for pause if gate is active
-    if gate_active:
-        vouchers = [v for v in vouchers if getattr(v, "program_pause_flag", False)]
-
-    # Apply limit **after filtering**
-    vouchers = vouchers[:limit]
-
-    # Compute total balance using voucher amount * multiplier
-    total_balance = sum(
-        (getattr(v, "voucher_amnt", Decimal(0)) or Decimal(0)) *
-        (getattr(v, "multiplier", Decimal(1)) or Decimal(1))
+    return sum(
+        (getattr(v, "voucher_amnt", Decimal(0)) or Decimal(0)) * multiplier
         for v in vouchers
     )
-
-    return total_balance
 
 
 def calculate_full_balance(account_balance) -> Decimal:

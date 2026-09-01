@@ -357,51 +357,119 @@ class TestAvailableBalanceCalculation:
         assert result_3 >= result
 
     def test_available_balance_with_program_pause(self, account_balance, vouchers, voucher_setting):
-        """Test available balance during active program pause."""
+        """A pause currently in progress (not in its pre-pause gate) does not double the balance."""
+        # Participant creation auto-provisions 2 starter vouchers (see
+        # apps/pantry/signals.py) independently of this `vouchers` fixture —
+        # remove them so `limit=2` unambiguously measures vouchers[0]/[1].
+        account_balance.vouchers.exclude(id__in=[v.id for v in vouchers]).delete()
+
         now = timezone.now()
 
-        # Create an active program pause (current time within range)
+        # Currently IN the pause itself (started yesterday) — outside the
+        # 10-14 day pre-pause gate, so the multiplier must be 1, not 2.
         pause = ProgramPause.objects.create(
             pause_start=now - timedelta(days=1),
             pause_end=now + timedelta(days=7),
             reason='Test Pause'
         )
 
-        # Mark one voucher with program_pause_flag
-        vouchers[0].program_pause_flag = True
-        vouchers[0].save()
-
-        # During pause, only vouchers with program_pause_flag should count
         result = calculate_available_balance(account_balance, limit=2)
 
-        assert isinstance(result, Decimal)
-        assert result >= Decimal('0')
+        # 2 vouchers x $100 base balance x multiplier 1 (gate not active)
+        assert result == Decimal('200.00')
 
-        # Clean up
         pause.delete()
 
-    def test_available_balance_no_pause_flag_during_pause(self, account_balance, vouchers, voucher_setting):
-        """Test available balance when pause gate is active but no vouchers flagged."""
-        # Note: The gate logic in calculate_available_balance checks for:
-        # 1. Currently active pauses (pause_start <= now <= pause_end)
-        # 2. Whether any of those pauses have is_active_gate=True
-        # However, is_active_gate depends on dates 11-14 days in future
-        # So in practice, this scenario (active pause with is_active_gate=True) is rare
-        # We'll test the filtering logic by verifying vouchers without flags are excluded
+    def test_available_balance_doubles_unflagged_voucher_during_gate(
+        self, account_balance, vouchers, voucher_setting
+    ):
+        """
+        Regression for issue #101: a voucher that was never touched by the
+        one-shot flagging batch (program_pause_flag stays at its default
+        False) must still be doubled while the pre-pause gate is active —
+        the multiplier is computed live, not read off a stale per-voucher flag.
+        """
+        # Participant creation auto-provisions 2 starter vouchers (see
+        # apps/pantry/signals.py) independently of this `vouchers` fixture —
+        # remove them so `limit=2` unambiguously measures vouchers[0]/[1].
+        account_balance.vouchers.exclude(id__in=[v.id for v in vouchers]).delete()
 
         now = timezone.now()
 
-        # This test verifies the voucher filtering logic when gate_active=True
-        # Since creating a realistic pause with is_active_gate=True requires
-        # complex date manipulation, we'll simplify to test the core logic:
-        # "During a pause period, only flagged vouchers count"
+        # 12 days out, 5-day pause -> inside the 10-14 day gate, multiplier 2.
+        pause_start = now + timedelta(days=12)
+        pause = ProgramPause.objects.create(
+            pause_start=pause_start,
+            pause_end=pause_start + timedelta(days=5),
+            reason='Short pause'
+        )
 
-        # Skip this test as the business logic makes this scenario rare
-        # The pause must be:
-        # - Currently active (start <= now <= end)
-        # - AND have multiplier > 1 (which requires start to be 11-14 days from now)
-        # These conditions conflict, making the scenario impossible in practice
-        pytest.skip("Gate logic requires future dates; testing covered in integration tests")
+        assert vouchers[0].program_pause_flag is False
+        assert vouchers[1].program_pause_flag is False
+
+        result = calculate_available_balance(account_balance, limit=2)
+
+        # 2 vouchers x $100 base balance x multiplier 2, despite neither
+        # voucher ever having program_pause_flag set.
+        assert result == Decimal('400.00')
+
+        pause.delete()
+
+    def test_available_balance_doubles_voucher_created_after_pause_exists(
+        self, account_balance, voucher_setting
+    ):
+        """
+        Same regression as above, but the voucher is created AFTER the
+        ProgramPause already exists — mirrors a new participant onboarded,
+        or an order placed, partway through an already-active gate window.
+        """
+        # Participant creation auto-provisions 2 starter vouchers via
+        # apps/pantry/signals.py (independent of the account/signals.py
+        # handler `disable_signals` disconnects). Clear those so this test's
+        # single new voucher is unambiguously the only one being measured.
+        account_balance.vouchers.all().delete()
+
+        now = timezone.now()
+        pause_start = now + timedelta(days=12)
+        pause = ProgramPause.objects.create(
+            pause_start=pause_start,
+            pause_end=pause_start + timedelta(days=5),
+            reason='Short pause'
+        )
+
+        voucher = Voucher.objects.create(
+            account=account_balance,
+            state="applied",
+            voucher_type="grocery",
+        )
+        assert voucher.program_pause_flag is False
+
+        result = calculate_available_balance(account_balance, limit=2)
+
+        assert result == Decimal('200.00')  # 1 voucher x $100 x multiplier 2
+
+        pause.delete()
+
+    def test_available_balance_triple_week(self, account_balance, vouchers, voucher_setting):
+        """An extended (>=14 day) pause in its gate window applies a 3x multiplier."""
+        # Participant creation auto-provisions 2 starter vouchers (see
+        # apps/pantry/signals.py) independently of this `vouchers` fixture —
+        # remove them so `limit=2` unambiguously measures vouchers[0]/[1].
+        account_balance.vouchers.exclude(id__in=[v.id for v in vouchers]).delete()
+
+        now = timezone.now()
+        pause_start = now + timedelta(days=12)
+        pause = ProgramPause.objects.create(
+            pause_start=pause_start,
+            pause_end=pause_start + timedelta(days=20),
+            reason='Extended pause'
+        )
+
+        result = calculate_available_balance(account_balance, limit=2)
+
+        assert result == Decimal('600.00')  # 2 vouchers x $100 x multiplier 3
+
+        pause.delete()
 
     def test_available_balance_no_active_pause(self, account_balance, vouchers, voucher_setting):
         """Test available balance with no active program pause."""
@@ -412,11 +480,10 @@ class TestAvailableBalanceCalculation:
             pause_end__gte=now
         ).delete()
 
-        # Should count normal vouchers
+        # Should count normal vouchers at multiplier 1
         result = calculate_available_balance(account_balance, limit=2)
 
-        assert isinstance(result, Decimal)
-        assert result >= Decimal('0')
+        assert result == Decimal('200.00')
 
     def test_available_balance_only_pending_vouchers(self, account_balance, voucher_setting):
         """Test available balance with only pending vouchers."""
