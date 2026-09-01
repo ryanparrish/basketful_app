@@ -68,7 +68,15 @@ export const BrandingSettingsEdit = () => {
       mutationOptions={{ onSuccess: () => notify('Branding settings saved', { type: 'success' }) }}
       title="Branding Settings"
     >
-      <SimpleForm toolbar={<BrandingToolbar />} onSubmit={handleSave}>
+      {/* keepDirtyValues: picking a logo opens the OS file dialog, which blurs
+          the window; react-query's refetchOnWindowFocus then refetches this
+          record on refocus, and without this option the form reset wipes the
+          just-picked file and clears the dirty flag, leaving Save disabled. */}
+      <SimpleForm
+        toolbar={<BrandingToolbar />}
+        onSubmit={handleSave}
+        resetOptions={{ keepDirtyValues: true }}
+      >
         <Box sx={{ maxWidth: 600 }}>
           <Typography variant="h6" gutterBottom>
             Organization Branding

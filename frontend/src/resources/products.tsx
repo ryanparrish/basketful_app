@@ -121,7 +121,11 @@ export const ProductShow = () => (
 
 export const ProductEdit = () => (
   <Edit title={<ProductTitle />}>
-    <SimpleForm>
+    {/* keepDirtyValues: picking a photo opens the OS file dialog, which blurs
+        the window; react-query's refetchOnWindowFocus then refetches this
+        record on refocus, and without this option the form reset wipes the
+        just-picked file and clears the dirty flag, leaving Save disabled. */}
+    <SimpleForm resetOptions={{ keepDirtyValues: true }}>
       {/* Edit the explicit language columns, not the resolved base fields —
           the full-record submit would otherwise clobber name_en with the
           stale base value (dataProvider strips the base twins). */}

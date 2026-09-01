@@ -142,7 +142,11 @@ export const CoachShow = () => (
 
 export const CoachEdit = () => (
   <Edit>
-    <SimpleForm>
+    {/* keepDirtyValues: picking a photo opens the OS file dialog, which blurs
+        the window; react-query's refetchOnWindowFocus then refetches this
+        record on refocus, and without this option the form reset wipes the
+        just-picked file and clears the dirty flag, leaving Save disabled. */}
+    <SimpleForm resetOptions={{ keepDirtyValues: true }}>
       <Typography variant="h6" gutterBottom>Coach Profile</Typography>
       <TextInput source="name" fullWidth required />
       <TextInput source="email" type="email" fullWidth required />
