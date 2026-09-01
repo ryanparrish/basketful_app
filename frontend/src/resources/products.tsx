@@ -172,7 +172,10 @@ export const ProductCreate = () => (
         <SelectArrayInput optionText="name" />
       </ReferenceArrayInput>
       <NumberInput source="quantity_in_stock" min={0} defaultValue={0} />
-      <NumberInput source="weight_lbs" min={0} step={0.1} />
+      {/* Backend weight_lbs is a non-nullable DecimalField (apps/pantry/models.py).
+          Leaving this blank makes react-admin send null, not '' or omit it,
+          which DRF rejects with a 400 — defaultValue keeps it a valid number. */}
+      <NumberInput source="weight_lbs" min={0} step={0.1} defaultValue={0} />
       <BooleanInput source="active" defaultValue={true} />
       <BooleanInput source="is_meat" label="Is Meat Product" defaultValue={false} />
       <ImageInput source="image" accept={{ 'image/*': [] }}>
