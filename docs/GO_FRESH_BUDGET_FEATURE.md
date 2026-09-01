@@ -1,6 +1,6 @@
 # Go Fresh Budget Feature Documentation
 
-> Last updated: January 2026
+> Last updated: 2026-07-13
 
 ## Overview
 
@@ -41,21 +41,30 @@ Navigate to: Admin → Account → Go Fresh Settings
 
 **Location:** `apps/account/utils/balance_utils.py`
 
-The `calculate_go_fresh_balance()` function determines the budget based on household size:
+The `calculate_go_fresh_balance()` function determines the budget based on household size, then applies the current program-pause multiplier (see below):
 
 ```python
 def calculate_go_fresh_balance(account_balance) -> Decimal:
     """
     Calculate Go Fresh budget per order based on household size.
-    
-    Logic:
-    - household_size <= small_threshold → small_budget
-    - household_size >= large_threshold → large_budget
-    - otherwise → medium_budget
+
+    Household size determines a base tier (small/medium/large), and the
+    result is multiplied by the current program-pause multiplier (1 unless
+    a pause's pre-pause ordering window is currently active).
     """
+    ...
+    if household_size <= settings.small_threshold:
+        base = settings.small_household_budget
+    elif household_size >= settings.large_threshold:
+        base = settings.large_household_budget
+    else:
+        base = settings.medium_household_budget
+
+    multiplier = _get_current_pause_multiplier()
+    return base * Decimal(multiplier)
 ```
 
-**Examples with Default Thresholds:**
+**Examples with Default Thresholds (no pause multiplier active):**
 - 1 person household: $10.00 (small)
 - 2 people household: $10.00 (small)
 - 3 people household: $20.00 (medium)
@@ -63,6 +72,12 @@ def calculate_go_fresh_balance(account_balance) -> Decimal:
 - 5 people household: $20.00 (medium)
 - 6 people household: $25.00 (large)
 - 10 people household: $25.00 (large)
+
+### 2a. Program Pause Multiplier
+
+Go Fresh budget is boosted the same way grocery voucher balances are: `_get_current_pause_multiplier()` (also in `apps/account/utils/balance_utils.py`) looks at every non-archived `ProgramPause` and takes the highest `multiplier` property across them (1 if none are currently in their pre-pause ordering window, 2 for a short pause, 3 for an extended pause — see [PROGRAM_PAUSES.md](PROGRAM_PAUSES.md)).
+
+This means a 4-person household's normal $20.00 Go Fresh budget becomes $40.00 during a short pause's 10–14 day pre-pause ordering window, or $60.00 during an extended pause's window. This multiplier is **not documented anywhere else** in this feature's original design — it was added so Go Fresh budgets scale up alongside grocery vouchers when participants are stocking up before a break.
 
 ### 3. Category Protection
 
@@ -82,22 +97,33 @@ Both "Hygiene" and "Go Fresh" categories are protected from modification:
 
 ### 4. Order Validation
 
-**Location:** `apps/orders/models.py` - `Order.clean()` method
+Go Fresh budget is enforced in **three separate places**, each with slightly different wording:
 
-Go Fresh items are validated during order confirmation:
+1. **`apps/orders/models.py` — `Order.clean()`** (authoritative, runs on every `Order.save()` via `full_clean()`)
+   - Calculates total price of items in the "Go Fresh" category, compares against `account.go_fresh_balance`
+   - Only runs the comparison if `go_fresh_balance > 0` (i.e., skips the check entirely when the feature is disabled)
+   - On failure, raises `ValidationError`:
+     ```
+     Go Fresh balance exceeded: $XX.XX > $YY.YY
+     ```
+   - Also persists the computed `go_fresh_total` onto the order instance (see Order Tracking, below)
 
-**Validation Rules:**
-1. Calculate total price of all items in "Go Fresh" category
-2. Compare against participant's `go_fresh_balance`
-3. If exceeded, raise `ValidationError` with message:
-   ```
-   Go Fresh balance exceeded: $XX.XX > $YY.YY
-   ```
-4. Go Fresh items are ALSO counted in `food_items` for overall available balance validation
+2. **`apps/orders/utils/order_validation.py` — `OrderValidation.validate_order_items()`** (used by the Django admin order-item inline and by `OrderOrchestration`'s create-order path in `apps/orders/utils/order_utils.py`)
+   - Same threshold check, but raises:
+     ```
+     Go Fresh items total $XX.XX exceeds Go Fresh balance $YY.YY.
+     ```
 
-**Important:** Go Fresh items must pass BOTH validations:
+3. **`apps/orders/api/views.py` — `OrderViewSet.validate_cart()` action** (`POST /api/orders/validate-cart/`, a non-committing preview endpoint used by the React frontends before checkout)
+   - Does not raise — instead appends a violation object to the response:
+     ```json
+     {"type": "balance", "severity": "error", "message": "Go Fresh balance exceeded by $X.XX", "amount_over": X.XX, "grace_allowed": false}
+     ```
+   - Like the food/hygiene balance checks in this endpoint, an over-budget Go Fresh total can be downgraded to a `"warning"` (grace-allowed) if the overage is within `ProgramSettings.grace_amount`. Go Fresh does not currently get its own grace rule — it shares the program-wide grace allowance.
+
+**Important:** Go Fresh items must pass BOTH validations in every path above:
 - Go Fresh-specific budget (per-order limit)
-- Overall available balance (weekly limit)
+- Overall available balance (weekly limit) — Go Fresh items are counted as `food_items` (anything not in the "Hygiene" category) for this check
 
 ### 5. Order Tracking
 
@@ -114,7 +140,7 @@ go_fresh_total = models.DecimalField(
 )
 ```
 
-This field is automatically calculated during order validation and persists for reporting/analytics.
+`Order.clean()` computes and assigns this field during validation. `Order.confirm()` recomputes it and explicitly includes it in `update_fields` (`self.save(update_fields=['status', 'paid', 'go_fresh_total'])`) so the value is persisted at confirmation time, not just held in memory — this is covered by regression tests in `apps/orders/tests/test_go_fresh_validation.py`.
 
 ## User Interface
 
@@ -134,24 +160,19 @@ The dashboard displays 4 balance cards in responsive grid:
 - Tablet (768px-991px): 2 columns
 - Mobile (<768px): 1 column (stacked)
 
-### Cart Drawer Balance Display
+### Cart Drawer (Legacy Django Template)
 
-**Location:** `apps/pantry/templates/food_orders/create_order.html`
+**Location:** `core/templates/pantry/create_order.html` (not under `apps/pantry/templates/`)
 
-Real-time balance updates in cart sidebar:
+This template renders the offcanvas "Your Cart" drawer, but it does **not** display Available/Hygiene/Go Fresh balances — it only lists cart line items and a running total, computed client-side from `allProducts`/`sessionCart` JSON embedded in the page. Submitting the cart POSTs to `/update-cart/` (see below) purely to persist the session cart, then redirects to `review_order`; the response's `balances` payload is not read or rendered anywhere in this template.
 
-**Features:**
-- Shows Available, Hygiene, and Go Fresh balances
-- Updates automatically via AJAX when cart changes
-- Mobile responsive:
-  - Hidden on very small screens (<375px width)
-  - Vertical stack with smaller font on mobile (375px-767px)
-  - Normal display on tablet/desktop (≥768px)
+**Note:** `apps/pantry/static/js/cart.js` defines a separate `updateCartBalances()` / `syncCartWithServer()` pair that *would* populate `#cart-available-balance`, `#cart-hygiene-balance`, and `#cart-go-fresh-balance` elements in real time — but that script is not `{% static %}`-included by `create_order.html`. It only ships with, and is exercised by, its own Jest test files (`cart.test.js`, `cart-submission.test.js`, etc.) and is effectively dead code against the live template.
 
-**JavaScript Implementation:**
-- `updateCartBalances()` function formats and displays balances
-- `syncCartWithServer()` sends cart updates and receives balance data
-- Format: `$XX.XX` with 2 decimal places
+### Participant-Frontend Account Page (React)
+
+**Location:** `participant-frontend/src/components/AccountPage.tsx`
+
+The newer React participant app renders all four balances (full, available, hygiene, go_fresh) as colored balance cards, fetched from `GET /account-balances/me/` (see `participant-frontend/src/shared/api/endpoints.ts`). This is where a real-time Go Fresh balance display currently lives in practice.
 
 ### Cart AJAX Response
 
@@ -348,6 +369,12 @@ This ensures every shopping trip includes fresh food access, preventing scenario
 - Category protection checks are minimal (lookup by name.lower())
 
 ## Changelog
+
+**Documentation audit** (2026-07-13)
+- Corrected: `calculate_go_fresh_balance()` also applies the program-pause multiplier (`_get_current_pause_multiplier()`) — previously undocumented.
+- Corrected: Order validation actually happens in three places with different message wording (`Order.clean()`, `OrderValidation.validate_order_items()`, and the `validate-cart` API action), not just `Order.clean()`.
+- Corrected: `create_order.html` lives at `core/templates/pantry/create_order.html`, not under `apps/pantry/templates/`, and its cart drawer does not display real-time balances — `cart.js`'s balance-display functions are not wired into the live template.
+- Added: participant-frontend React `AccountPage.tsx` as the current real-time balance display surface.
 
 **Version 1.0.0** (January 30, 2026)
 - Initial implementation

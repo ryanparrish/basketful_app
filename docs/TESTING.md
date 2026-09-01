@@ -13,10 +13,12 @@
 > - Adding a test without updating this file is **incomplete work**.
 > - This file is read by the `write-tests` agent before every test-writing session.
 
-**Last audited**: 2026-05-12 (BEH-204, BEH-205, BEH-206 added; dataProvider image-stripping tests added; CI gate for frontend tests added)
+**Last audited**: 2026-07-13 (full pass against real test files — corrected numerous stale test citations that pointed at nonexistent files/classes/methods; see individual `[~]`/`[ ]` notes below for what changed)
 **Backend**: `pytest` (see `pytest.ini`) — run with `pytest --tb=short -v`
-**Frontend**: `vitest` (see `frontend/vitest.config.js`) — run with `npm test -- --run`
-**CI**: `.github/workflows/ci.yml` (backend), `.github/workflows/frontend-ci.yml` (frontend)
+**Admin frontend**: `vitest` (see `frontend/vitest.config.js`) — run with `npm test -- --run`
+**Participant frontend**: `vitest` (see `participant-frontend/vitest.config.ts`) — run with `npm test -- --run` (its `test` script is already `vitest run`)
+**Root-level JS (vanilla cart/filter JS under `apps/pantry/static/js/`)**: `jest` (see `jest.config.js`, `jest.setup.js`, root `package.json`) — run with `npm test` from the repo root. This is a third, separate test runner from the two frontends' Vitest suites.
+**CI**: `.github/workflows/ci.yml` (backend), `.github/workflows/frontend-ci.yml` (frontend). See also `.github/workflows/mutation-testing.yml` (non-blocking mutmut scoring) — full details in [CI.md](CI.md).
 
 ---
 
@@ -64,23 +66,28 @@ cd frontend && npm test -- --run
 
 # Frontend (Participant)
 cd participant-frontend && npm test -- --run
+
+# Root-level Jest suite (vanilla JS cart/filter logic under apps/pantry/static/js/)
+npm ci && npm test
 ```
 
 ---
 
 ## Factory Index
 
+There are only two `factories.py` modules in the repo — `apps/orders/tests/factories.py` and `apps/pantry/tests/factories.py` — and several factory classes (`CategoryFactory`, `ProductFactory`, `ParticipantFactory`, `VoucherFactory`, `VoucherSettingFactory`, `OrderFactory`, `OrderItemFactory`, `ProgramFactory`) are defined independently in **both**, with slightly different defaults — there is no shared/canonical factory module. `apps/voucher/tests/` has no `factories.py` at all (previously cited below — wrong).
+
 | Factory | Module | Key Traits / Params |
 |---------|--------|---------------------|
-| `UserFactory` | `apps/orders/tests/factories.py` | default: non-staff; `.staff` trait |
-| `ParticipantFactory` | `apps/orders/tests/factories.py` | `user=` kwarg to link User |
-| `AccountBalanceFactory` | `apps/orders/tests/factories.py` | `participant=` |
-| `VoucherFactory` | `apps/orders/tests/factories.py` | `state=`, `voucher_amnt=` |
-| `VoucherSettingFactory` | `apps/voucher/tests/factories.py` | `active=True` required by many tests |
-| `OrderFactory` | `apps/orders/tests/factories.py` | `participant=`, `status=` |
-| `OrderItemFactory` | `apps/orders/tests/factories.py` | `order=`, `quantity=` |
-| `CategoryFactory` | `apps/pantry/tests/factories.py` | — |
-| `ProductFactory` | `apps/pantry/tests/factories.py` | `category=`, `is_go_fresh=` |
+| `UserFactory` | `apps/orders/tests/factories.py` | `username`, `email`, `password` (via `PostGenerationMethodCall`) — no `.staff` trait exists |
+| `ParticipantFactory` | `apps/orders/tests/factories.py` | `user=` (SubFactory, overridable), `program=` (SubFactory) |
+| `AccountBalanceFactory` | `apps/orders/tests/factories.py` | `participant=`, `base_balance=` (default `100.00`) |
+| `VoucherFactory` | `apps/orders/tests/factories.py` | `account=`, `voucher_type=` (default `'grocery'`), `state=` (default `'applied'`), `multiplier=`. **Not** `voucher_amnt=` — that's a computed `@property` on `Voucher`, not a settable field |
+| `VoucherSettingFactory` | `apps/orders/tests/factories.py` (also duplicated in `apps/pantry/tests/factories.py`) | `adult_amount=`, `child_amount=`, `infant_modifier=`, `active=True` |
+| `OrderFactory` | `apps/orders/tests/factories.py` | `account=` (AccountBalance, **not** `participant=`), `status=` (default `'pending'`), `order_number=` |
+| `OrderItemFactory` | `apps/orders/tests/factories.py` | `order=`, `product=`, `quantity=`, `price_at_order=` |
+| `CategoryFactory` | `apps/pantry/tests/factories.py` (also duplicated in `apps/orders/tests/factories.py`) | `name=` |
+| `ProductFactory` | `apps/pantry/tests/factories.py` (also duplicated in `apps/orders/tests/factories.py`) | `category=`, `quantity_in_stock=`. **No `is_go_fresh=` trait** — GoFresh eligibility is determined by `category.name == "go fresh"` (case-insensitive), not a Product field |
 | `ProgramWindowOverrideFactory` | ⚠️ **MISSING — needs to be created** | `expires_at=`, `participant=` |
 
 ---
@@ -95,18 +102,18 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-001 | Participant can place an order when balance ≥ total | `[x]` | `apps/orders/tests/test_order_validation.py::TestOrderValidation::test_valid_order` |
-| BEH-002 | Order total is correctly summed from line items | `[x]` | `apps/orders/tests/test_order_validation.py::TestOrderValidation::test_order_total_calculation` |
-| BEH-003 | Order is rejected when total exceeds available balance | `[x]` | `apps/orders/tests/test_order_validation.py::TestOrderValidation::test_order_exceeds_balance` |
+| BEH-001 | Participant can place an order when balance ≥ total | `[x]` | `apps/orders/tests/test_balance_validation_fix.py::TestBalanceValidationFix::test_food_total_within_available_balance_passes` |
+| BEH-002 | Order total is correctly summed from line items | `[ ]` | — (previously cited `test_order_validation.py`, which does not exist in the repo; no confident replacement found) |
+| BEH-003 | Order is rejected when total exceeds available balance | `[x]` | `apps/orders/tests/test_balance_validation_fix.py::TestBalanceValidationFix::test_food_total_exceeds_available_balance_rejected_before_creation` |
 | BEH-004 | Order status transitions: `pending → submitted → fulfilled` are enforced | `[ ]` | — |
 | BEH-005a | Second order attempt while a pending order exists is rejected | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_second_pending_order_for_same_participant_is_rejected` |
-| BEH-005b | Second order attempt while a confirmed order exists is rejected | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_second_order_while_confirmed_order_exists_is_rejected` |
+| BEH-005b | Second order attempt while a confirmed order exists is rejected | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_second_confirmed_order_while_confirmed_order_exists_is_rejected` |
 | BEH-005c | Cancelled order does NOT block a new order (over-block guard) | `[x]` | `apps/orders/tests/test_duplicate_order.py::TestDuplicateOrderGuard::test_new_order_allowed_after_previous_order_is_cancelled` |
 | BEH-005d | Race condition — two simultaneous POSTs for same participant → only one succeeds (requires DB-level unique constraint) | `[ ]` | — |
 | BEH-006 | Order with zero-quantity item is rejected | `[ ]` | — |
 | BEH-007 | Order with negative-quantity item is rejected | `[ ]` | — |
 | BEH-008 | Cancelled order does not deduct balance | `[ ]` | — |
-| BEH-009 | Fulfilled order deducts balance exactly once | `[~]` | `apps/orders/tests/test_order_validation.py` (happy path only) |
+| BEH-009 | Fulfilled order deducts balance exactly once | `[~]` | `apps/orders/tests/test_order_success.py::TestVoucherConsumptionEdgeCases::test_order_success_after_voucher_consumption` (happy path only) |
 | BEH-010 | `OrderItem.unit_price` is captured at time of ordering, not at current product price | `[ ]` | — |
 | BEH-011 | Out-of-stock product cannot be added to order | `[ ]` | — |
 | BEH-012 | Order API returns 403 for unauthenticated request | `[ ]` | — |
@@ -121,11 +128,11 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-020 | Voucher in `applied` state increases available balance | `[x]` | `apps/account/tests/test_account_balance.py::TestAvailableBalance::test_available_balance_with_voucher` |
-| BEH-021 | Voucher in `redeemed` state does NOT increase available balance | `[x]` | `apps/account/tests/test_account_balance.py::TestAvailableBalance::test_redeemed_voucher_excluded` |
+| BEH-020 | Voucher in `applied` state increases available balance | `[~]` | `apps/account/tests/test_account_balance.py::TestAvailableBalanceCalculation::test_available_balance_default_limit` (asserts result is a non-negative `Decimal`, not an exact value) |
+| BEH-021 | Voucher in `redeemed` state does NOT increase available balance | `[ ]` | — (previously cited `TestAvailableBalance::test_redeemed_voucher_excluded`, which does not exist; the real `TestAvailableBalanceCalculation` class only has a `pending`-state exclusion test, see BEH-024) |
 | BEH-022 | Voucher in `expired` state does NOT increase available balance | `[~]` | partial in `test_account_balance.py` |
 | BEH-023 | Voucher `expires_at` in the past is automatically expired | `[ ]` | — |
-| BEH-024 | Two vouchers for the same participant sum correctly | `[x]` | `apps/account/tests/test_account_balance.py` |
+| BEH-024 | Two vouchers for the same participant sum correctly | `[ ]` | — (previously cited `apps/account/tests/test_account_balance.py` generally; the real `TestAvailableBalanceCalculation` class doesn't assert an exact summed value — closest existing test is `test_available_balance_only_pending_vouchers`, which actually covers `pending`-state exclusion, not summation) |
 | BEH-025 | Voucher amount is immutable once `applied` | `[ ]` | — |
 | BEH-026 | Bulk voucher creation creates the correct count of vouchers | `[ ]` | — |
 | BEH-027 | Voucher for wrong participant cannot be redeemed by another participant | `[ ]` | — |
@@ -136,14 +143,14 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-030 | `available_balance` = sum of `applied` vouchers minus fulfilled order totals | `[x]` | `apps/account/tests/test_account_balance.py::TestAvailableBalance` |
+| BEH-030 | `available_balance` = sum of `applied` vouchers minus fulfilled order totals | `[~]` | `apps/account/tests/test_account_balance.py::TestAvailableBalanceCalculation` (class exists; individual tests mostly assert "is a non-negative `Decimal`", not exact summed values) |
 | BEH-031 | `available_balance` rounds to 2 decimal places | `[ ]` | — |
 | BEH-032 | `available_balance` is never negative | `[ ]` | — |
-| BEH-033 | Balance is 0 for participant with no vouchers | `[x]` | `apps/account/tests/test_account_balance.py::TestAvailableBalance::test_no_vouchers` |
+| BEH-033 | Balance is 0 for participant with no vouchers | `[~]` | `apps/account/tests/test_account_balance.py::TestAvailableBalanceCalculation::test_available_balance_none_account` (tests a `None` account, not a real account with zero vouchers — close but not exact) |
 | BEH-034 | Balance is correctly recalculated after order fulfilment | `[ ]` | — |
 | BEH-035 | Balance calculation ignores `pending` (unsubmitted) orders | `[ ]` | — |
-| BEH-036 | GoFresh budget is tracked separately from main voucher balance | `[~]` | `apps/orders/tests/test_go_fresh_validation.py` |
-| BEH-037 | GoFresh budget does not bleed into general balance | `[x]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshValidation` |
+| BEH-036 | GoFresh budget is tracked separately from main voucher balance | `[~]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshOrderValidation::test_non_go_fresh_items_dont_affect_go_fresh_total` |
+| BEH-037 | GoFresh budget does not bleed into general balance | `[~]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshOrderValidation` (class is `TestGoFreshOrderValidation`, not `TestGoFreshValidation` as previously cited) |
 | BEH-038 | Balance API returns 403 for unauthenticated request | `[ ]` | — |
 | BEH-039 | Balance API returns 404 for another participant's balance (IDOR) | `[ ]` | — |
 
@@ -208,8 +215,8 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-100 | Active program pause blocks all new orders for that program | `[x]` | `apps/lifeskills/tests/test_program_pause.py` |
-| BEH-101 | Deactivating a pause re-enables ordering | `[x]` | `apps/lifeskills/tests/test_program_pause.py` |
+| BEH-100 | Active program pause blocks all new orders for that program | `[x]` | `apps/orders/tests/test_pause_blocks_orders.py::TestOrderCreationDuringPause::test_create_order_rejected_during_pause` (previously cited `test_program_pause.py`, which actually tests voucher-flagging/multiplier signal logic, not order blocking) |
+| BEH-101 | Deactivating a pause re-enables ordering | `[~]` | `apps/orders/tests/test_pause_blocks_orders.py::TestOrderCreationDuringPause::test_create_order_succeeds_without_pause` (tests the "no pause" case, not an explicit deactivation transition) |
 | BEH-102 | Pause affects only its targeted program, not others | `[ ]` | — |
 | BEH-103 | Multiple pauses — only one active at a time per program | `[ ]` | — |
 | BEH-104 | Creating a pause via API requires staff permission | `[ ]` | — |
@@ -223,12 +230,12 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-110 | Participant receives correct GoFresh budget for household size | `[x]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshValidation` |
-| BEH-111 | GoFresh budget is not available to participants without eligibility | `[x]` | `apps/orders/tests/test_go_fresh_validation.py` |
-| BEH-112 | GoFresh items can only be paid from GoFresh budget, not main balance | `[x]` | `apps/orders/tests/test_go_fresh_validation.py` |
-| BEH-113 | Main-balance items cannot be paid from GoFresh budget | `[x]` | `apps/orders/tests/test_go_fresh_validation.py` |
+| BEH-110 | Participant receives correct GoFresh budget for household size | `[x]` | `apps/account/tests/test_go_fresh_balance.py::TestGoFreshBalanceCalculations` (small/medium/large household tiers; previously cited a nonexistent `TestGoFreshValidation` class in the orders app) |
+| BEH-111 | GoFresh budget is not available to participants without eligibility | `[x]` | `apps/account/tests/test_go_fresh_balance.py::TestGoFreshBalanceCalculations::test_disabled_settings_returns_zero` |
+| BEH-112 | GoFresh items can only be paid from GoFresh budget, not main balance | `[x]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshOrderValidation::test_go_fresh_items_count_against_available_balance` |
+| BEH-113 | Main-balance items cannot be paid from GoFresh budget | `[x]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshOrderValidation::test_non_go_fresh_items_dont_affect_go_fresh_total` |
 | BEH-114 | GoFresh budget is reset correctly at the start of each window | `[ ]` | — |
-| BEH-115 | GoFresh product flag `is_go_fresh=True` is enforced in ordering logic | `[~]` | `apps/pantry/tests/test_go_fresh_settings.py` |
+| BEH-115 | GoFresh-eligible products are identified by category name ("Go Fresh", case-insensitive) — not a per-product boolean flag | `[~]` | `apps/orders/tests/test_go_fresh_validation.py::TestGoFreshOrderValidation::test_go_fresh_with_case_insensitive_category` (redefined — there is no `is_go_fresh` product field in `apps/pantry/models.py`; eligibility is category-name-based, see `apps/pantry/tests/test_category_protection.py` for the related admin-side "Go Fresh" category protections) |
 | BEH-116 | GoFresh-only window does not allow non-GoFresh items | `[ ]` | — |
 | BEH-117 | GoFresh budget max is capped even when household size is very large | `[ ]` | — |
 | BEH-118 | GoFresh budget API returns 403 for unauthenticated request | `[ ]` | — |
@@ -253,11 +260,13 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | ID | Behaviour | Status | Test |
 |----|-----------|--------|------|
-| BEH-140 | Combined order totals both GoFresh and standard budgets correctly | `[x]` | `apps/orders/tests/test_combined_orders.py::TestCombinedOrders` |
-| BEH-141 | Combined order respects per-category limits | `[x]` | `apps/orders/tests/test_combined_orders.py` |
+> **Naming note**: "Combined order" here means a single order combining multiple budget streams (food + hygiene + Go Fresh) within one participant's cart — this is distinct from the `CombinedOrder` Django model in `apps/orders/models.py`, which merges multiple *participants'* orders into one warehouse picking batch (see `apps/orders/tests/test_combined_order.py` / `test_combined_order_enhanced.py` for that unrelated feature). The citations below previously pointed at a nonexistent `test_combined_orders.py::TestCombinedOrders`.
+
+| BEH-140 | Combined order totals both GoFresh and standard budgets correctly | `[x]` | `apps/orders/tests/test_balance_validation_fix.py::TestCombinedBalanceValidation::test_combined_food_and_hygiene_within_balance_passes` |
+| BEH-141 | Combined order respects per-category limits | `[~]` | Category/subcategory quantity limits (a related but distinct concern) are tested in `apps/pantry/tests/test_category_limits.py` and `test_subcategory_limits.py`; no test found combining that with multi-budget totaling specifically |
 | BEH-142 | Removing a GoFresh item from a combined order recalculates GoFresh total | `[ ]` | — |
 | BEH-143 | Combined order with $0 GoFresh portion is still valid | `[ ]` | — |
-| BEH-144 | Combined order is rejected if either sub-total exceeds its respective budget | `[x]` | `apps/orders/tests/test_combined_orders.py` |
+| BEH-144 | Combined order is rejected if either sub-total exceeds its respective budget | `[x]` | `apps/orders/tests/test_balance_validation_fix.py::TestCombinedBalanceValidation::test_combined_food_and_hygiene_exceeds_voucher_balance_rejected_before_creation` |
 
 ---
 
@@ -339,14 +348,16 @@ Legend: `[x]` covered · `[ ]` gap · `[~]` partially covered
 
 | Gate | Status | Config |
 |------|--------|--------|
-| Backend pytest passes | ✅ enforced | `.github/workflows/ci.yml` |
+| Backend pytest passes | ✅ enforced | `.github/workflows/ci.yml` — `test` job |
+| Backend flake8 lint passes | ✅ enforced | `.github/workflows/ci.yml` — `flake8 apps/ core/` step (not `continue-on-error`) |
+| Backend migrations apply cleanly | ✅ enforced | `.github/workflows/ci.yml` — `manage.py migrate --noinput` step must succeed before tests run |
 | Backend coverage ≥ 80% | ⚠️ reported, NOT blocking (`fail_ci_if_error: false`) | `codecov.yml` |
 | Admin frontend build passes | ✅ enforced | `.github/workflows/frontend-ci.yml` |
 | Admin frontend tests pass | ✅ enforced | `.github/workflows/frontend-ci.yml` — `npx vitest run` step |
 | Participant frontend build passes | ✅ enforced | `.github/workflows/frontend-ci.yml` |
 | Participant frontend tests pass | ✅ enforced | `.github/workflows/frontend-ci.yml` — `npx vitest run` step |
-
-**Open CI gap**: Add `npm test -- --run` step to `.github/workflows/frontend-ci.yml` for both matrix entries.
+| `makemigrations --check` (no missing migrations) | ❌ NOT enforced | Not a step in any workflow today — see [CI.md](CI.md) "Local CI Simulation" |
+| Mutation score threshold | ❌ NOT enforced | `.github/workflows/mutation-testing.yml` runs weekly/on-demand but does not gate merges |
 
 ---
 
@@ -417,3 +428,4 @@ Work the 🔴 items before moving to 🟠. Do not skip.
 
 - [CI.md](CI.md) — CI/CD workflow configuration
 - [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — Test file locations
+- [apps/pantry/tests/README.md](../apps/pantry/tests/README.md) — detailed module-by-module breakdown of the pantry app's product-limit test suite (`test_category_limits.py`, `test_limit_scopes.py`, `test_subcategory_limits.py`, `test_limit_edge_cases.py`, `test_limit_uniqueness.py`, `test_views.py`) — verified current against the actual files in that directory

@@ -1,5 +1,12 @@
 # Order Validation Fix - Implementation Complete
 
+> Last updated: 2026-07-13. This documents a change that has been deployed and is now the
+> normal order-creation flow (`OrderOrchestration.create_order` in
+> `apps/orders/utils/order_utils.py`). Later work built on top of it — `packing` status,
+> `program_pause_at_creation`/`pause_multiplier_at_creation` on `Order`, and the
+> `orders.can_bypass_order_transitions` permission — is covered in
+> [ORDER_HISTORY.md](ORDER_HISTORY.md), not repeated here.
+
 ## Summary
 Fixed critical order validation bugs where orders were created in database before validation, allowing invalid orders to persist even when validation failed. Implemented comprehensive solution with idempotency, distributed locking, exponential backoff, and failure analytics.
 
@@ -37,7 +44,7 @@ Comprehensive audit table tracking failed order attempts with:
 - Request metadata (IP address, user agent)
 - Idempotency tracking (key, cart hash)
 
-**Location:** `apps/orders/models.py` lines 8-78
+**Location:** `apps/orders/models.py::FailedOrderAttempt` (20 fields, not counting the `id` primary key)
 
 **Indexes:**
 - `(participant, -created_at)` - Fast participant lookups
@@ -50,7 +57,7 @@ Comprehensive audit table tracking failed order attempts with:
 #### 1. apps/orders/models.py
 - **Removed:** Duplicate OrderValidationLog model (lines 27-37)
 - **Added:** Import from apps.log.models.OrderValidationLog
-- **Added:** FailedOrderAttempt model with 18 fields
+- **Added:** FailedOrderAttempt model with 20 fields
 - **Fixed:** Order.clean() to use `message` parameter instead of `error_message`
 - **Simplified:** Order.confirm() - removed full_clean() call, now only sets status
 
@@ -60,7 +67,9 @@ Comprehensive audit table tracking failed order attempts with:
 - **Added:** `distributed_order_lock(participant_id, timeout)` - Context manager for Redis lock with fallback
 - **Added:** `check_duplicate_submission(idempotency_key, ttl_seconds)` - Check for duplicate within time window
 
-**Graceful Degradation:** All Redis operations have try/except with fallback. If Redis is down, logs warning and allows request through.
+**Graceful Degradation is asymmetric by design** — the two Redis-backed checks fail differently:
+- `check_duplicate_submission()` (idempotency) **fails open**: if Redis is unreachable it logs a warning and lets the request through, since losing duplicate-detection is preferable to blocking all orders.
+- `distributed_order_lock()` **fails closed**: if Redis is unreachable it logs `critical` and returns `lock_acquired=False`, which makes `create_order()` raise a `ValidationError` and block the submission. This was hardened after the initial implementation — allowing orders through without the lock would reopen the exact race window (concurrent submissions double-spending the same balance) the lock exists to close during a Redis failover.
 
 #### 3. apps/orders/api/throttles.py (NEW FILE)
 Custom throttle implementation with exponential backoff:
@@ -111,9 +120,9 @@ Complete refactor of `OrderOrchestration.create_order()`:
   - Balance-related failure count
 - **Added:** `recent_failures()` endpoint - paginated list of recent failed attempts
 
-**API Endpoints:**
-- `GET /api/orders/failure-analytics/?days=7&participant_id=123` - Staff only
-- `GET /api/orders/recent-failures/?limit=50&participant_id=123` - Staff only
+**API Endpoints** (versioned under `/api/v1/`, see [FAILURE_ANALYTICS_GUIDE.md](FAILURE_ANALYTICS_GUIDE.md)):
+- `GET /api/v1/orders/failure-analytics/?days=7&participant_id=123` - Staff only
+- `GET /api/v1/orders/recent-failures/?limit=50&participant_id=123` - Staff only
 
 #### 7. apps/orders/views.py
 Updated `submit_order()` view:
@@ -168,12 +177,12 @@ Added throttle rate configuration:
 **Migration:** `apps/orders/migrations/0009_failedorderattempt_delete_ordervalidationlog_and_more.py`
 
 **Operations:**
-1. Created `orders_failedorderattempt` table with 18 fields
+1. Created `orders_failedorderattempt` table (20 fields, not counting `id`)
 2. Deleted `orders_ordervalidationlog` table (duplicate removed, proper one in apps.log)
 3. Created index `orders_fail_partici_46f973_idx` on `(participant, -created_at)`
 4. Created index `orders_fail_cart_ha_015cc2_idx` on `(cart_hash, -created_at)`
 
-**Applied:** Migration successfully applied ✓
+**Applied:** Migration is applied in all environments; this is the current schema.
 
 ## Testing Checklist
 
@@ -190,15 +199,15 @@ Added throttle rate configuration:
 ```bash
 # Get failure analytics (last 7 days)
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/orders/failure-analytics/?days=7"
+  "http://localhost:8000/api/v1/orders/failure-analytics/?days=7"
 
 # Get recent failures
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/orders/recent-failures/?limit=20"
+  "http://localhost:8000/api/v1/orders/recent-failures/?limit=20"
 
 # Get failures for specific participant
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/orders/recent-failures/?participant_id=123"
+  "http://localhost:8000/api/v1/orders/recent-failures/?participant_id=123"
 ```
 
 ### Cleanup Command Testing
@@ -231,7 +240,9 @@ python manage.py cleanup_failed_attempts --days=90
 ### Throttling Impact
 - **3 orders/minute** = max 180 orders/hour per user
 - **Exponential backoff** after failures prevents abuse
-- **Redis fallback** ensures orders not blocked if Redis down
+- Note: unlike the idempotency check, the distributed lock **fails closed** — if Redis is
+  down, order submission is blocked rather than allowed through (see Graceful Degradation
+  above)
 
 ## Monitoring & Alerts
 
@@ -248,11 +259,12 @@ python manage.py cleanup_failed_attempts --days=90
 - Specific participant with > 10 failures in 1 hour
 - High number of balance-related failures (may indicate UI issue)
 
-## Documentation Updates Needed
-- [ ] Update ORDER_WINDOW_FEATURE.md with validation flow changes
-- [ ] Update TESTING.md with new test cases
-- [ ] Update ARCHITECTURE.md with FailedOrderAttempt model
-- [ ] Create FAILURE_ANALYTICS.md with API documentation
+## Documentation Updates
+
+`FailedOrderAttempt` and its API endpoints are documented above, in
+[ORDER_HISTORY.md](ORDER_HISTORY.md#failed-order-attempts), and in the dedicated
+[FAILURE_ANALYTICS_GUIDE.md](FAILURE_ANALYTICS_GUIDE.md) (endpoint reference with example
+requests/responses).
 
 ## Benefits
 
@@ -271,40 +283,31 @@ python manage.py cleanup_failed_attempts --days=90
 - **Prevent Bad Data:** No more orphaned "pending" orders in database
 - **Reduce Support Tickets:** Accurate error messages reduce confusion
 - **Analytics Dashboard:** Failure trends visible via API endpoints
-- **Self-Healing:** Graceful degradation when Redis unavailable
+- **Fail-safe idempotency:** duplicate-submission detection degrades gracefully (fails
+  open) if Redis is unavailable, rather than blocking all orders on a cache outage
 
-## Next Steps
+## Operating This in Production
 
-1. **Deploy to Staging**
-   - Test all scenarios in staging environment
-   - Verify Redis connectivity
-   - Check admin interface works
+This fix is deployed; the items below are ongoing operational tasks rather than a
+one-time rollout:
 
-2. **Monitor Initial Deployment**
-   - Watch failure_analytics endpoint first 24 hours
-   - Check for any Redis connection issues
-   - Verify no false positives in duplicate detection
-
-3. **Tune Throttling (if needed)**
-   - Adjust `order_submission` rate based on actual usage
-   - Consider adding per-program limits if needed
-   - May need to adjust backoff formula based on user feedback
-
-4. **Set Up Cron Job**
-   - Schedule cleanup_failed_attempts to run monthly
-   - Consider alerting if failure table grows too large
-
-5. **Documentation**
-   - Document API endpoints for analytics dashboard
-   - Update runbooks with troubleshooting steps
-   - Train support team on admin interface
+1. **Monitor** the `failure-analytics` endpoint for failure-rate spikes and Redis
+   connectivity issues (watch for `"Redis unavailable"` / `"critical"` log lines from
+   `distributed_order_lock`).
+2. **Tune throttling** — `order_submission` is currently `3/minute` (`core/settings.py`);
+   adjust based on observed usage, and revisit the exponential-backoff formula in
+   `apps/orders/api/throttles.py` if support tickets suggest it's too aggressive or too lax.
+3. **Schedule `cleanup_failed_attempts`** to run periodically (e.g. monthly via cron/Celery
+   beat) so the `FailedOrderAttempt` table doesn't grow unbounded.
 
 ## Rollback Plan
 
 If issues arise:
 
 1. **Quick Fix:** Disable throttling by removing `get_throttles()` method
-2. **Redis Issues:** System already has fallback - no action needed
+2. **Redis Issues:** Idempotency checks degrade gracefully on their own, but a sustained
+   Redis outage blocks all order submissions (the distributed lock fails closed by
+   design) — this needs Redis restored, not a code rollback
 3. **Full Rollback:** Revert migration and code changes:
    ```bash
    python manage.py migrate orders 0008  # Previous migration
@@ -326,16 +329,9 @@ If issues arise:
 - ✓ Exponential backoff prevents abuse
 - ✓ 90-day data retention keeps storage manageable
 
-## Completion Status
+## Status
 
-**All tasks complete! ✅**
-
-Total changes:
-- 10 files modified
-- 1 new file created (throttles.py)
-- 1 new management command
-- 1 database migration applied
-- ~600 lines of new code
-- ~200 lines removed/refactored
-
-Ready for testing and deployment! 🚀
+This fix is live in production and is the current order-creation code path. Subsequent
+migrations (`0010`–`0012` in `apps/orders/migrations/`) added program-pause tracking on
+`Order`, the `can_bypass_order_transitions` permission, and warehouse inventory lists —
+those are separate features layered on top of this one, not part of it.

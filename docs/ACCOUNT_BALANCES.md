@@ -1,6 +1,6 @@
 # Account Balances
 
-> Last updated: January 2026
+> Last updated: 2026-07-13
 
 This document describes the balance system used for participant accounts.
 
@@ -11,9 +11,9 @@ Each participant has an `AccountBalance` that tracks multiple balance types deri
 ## Balance Types
 
 ### Full Balance
-Total value of all non-consumed grocery vouchers on the account.
+Total value of all non-consumed, non-expired grocery vouchers on the account.
 
-**Calculation:** Sum of `voucher_amnt` for all vouchers where `state != 'consumed'` and `voucher_type = 'grocery'`
+**Calculation:** Sum of `voucher_amnt` for all vouchers where `voucher_type = 'grocery'` and `state` is not `'consumed'` or `'expired'`
 
 **Implementation:** `apps/account/utils/balance_utils.py::calculate_full_balance()`
 
@@ -37,7 +37,11 @@ sum(voucher.voucher_amnt * voucher.multiplier
 ### Hygiene Balance
 Reserved portion of available balance for hygiene products.
 
-**Calculation:** `available_balance / 3`
+**Calculation:** `available_balance * hygiene_ratio`, rounded **up** to the nearest whole dollar (`ROUND_CEILING`)
+
+**Configurable via `HygieneSettings`** (singleton model, admin-editable):
+- `hygiene_ratio` — default `1/3` (0.3333...), stored as a high-precision decimal
+- `enabled` — if `False`, hygiene balance is always `0`
 
 **Implementation:** `apps/account/utils/balance_utils.py::calculate_hygiene_balance()`
 
@@ -47,11 +51,12 @@ Fixed budget for fresh food items, based on household size.
 **Calculation:** Determined by `GoFreshSettings` thresholds based on `adults + children` count
 
 **Behavior:** 
-- Resets with each order (doesn't accumulate)
+- Resets with each order (doesn't accumulate) — it's a computed property, not a stored running balance
 - Independent of voucher amounts
-- Can be disabled globally via `GoFreshSettings.is_enabled`
+- Can be disabled globally via `GoFreshSettings.enabled`
+- Multiplied by the active `ProgramPause` multiplier, if any (see `apps/lifeskills/models.py::ProgramPause.multiplier` — 2x for short pauses, 3x for extended pauses, 1x otherwise). This is the same pause-driven multiplier concept used for grocery vouchers.
 
-**Implementation:** `apps/account/models.py::AccountBalance.go_fresh_balance` property
+**Implementation:** `apps/account/models.py::AccountBalance.go_fresh_balance` property, backed by `apps/account/utils/balance_utils.py::calculate_go_fresh_balance()`
 
 See [GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md) for detailed Go Fresh implementation.
 

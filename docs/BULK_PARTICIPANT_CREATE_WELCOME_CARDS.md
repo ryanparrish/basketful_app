@@ -1,12 +1,57 @@
-# Bulk Participant Create + Welcome Cards — Implementation Plan
+# Bulk Participant Create + Welcome Cards
 
+> Last updated: 2026-07-13
+>
 > **Feature:** Give pantry staff a fast, guided flow to create multiple participants
 > at once, then immediately print a physical welcome card for each one — with their
 > customer number (`C-BKM-7`) and login URL front and centre.
 >
-> **Effort:** M — estimated 3–5 focused development days
+> **Status: Implemented.** This document was originally written as a
+> pre-implementation plan; the feature has since shipped (backend migration
+> `apps/account/migrations/0009_participant_preferred_language_and_more.py`,
+> dated 2026-05-02, adds `BulkCreateBatch` and `Participant.preferred_language`).
+> The sections below have been updated to describe the feature as it actually
+> works today. The original "Resolved Design Decisions" are kept for context
+> since they were followed faithfully in the real implementation, with the
+> deviations called out below.
 >
-> **Status:** Planning — adversarial review complete, decisions recorded below
+> **Known deviations from this plan, as shipped:**
+> - The `create_user` boolean field/flag referenced throughout this plan's
+>   code samples **does not exist** — it was added, defaulted to `True`, and
+>   then removed entirely before this feature shipped (see
+>   `apps/account/migrations/0011_default_create_user_true.py` and
+>   `0012_remove_create_user_field.py`). Every participant unconditionally
+>   gets a linked `User` account via the `initialize_participant` signal
+>   (`apps/account/signals.py`) — there is no toggle.
+> - §5g's plan to extend the audit trail to single-participant creates (a
+>   `log-create` endpoint or a 1-row `BulkCreateBatch` entry) was **not
+>   implemented**. Only bulk creates via `bulk_create` write a
+>   `BulkCreateBatch` row; creating one participant at a time (via the admin
+>   frontend's `ParticipantCreate` form or the Django admin) leaves no
+>   dedicated audit record beyond Django's own admin log / DB row history.
+> - §6a's plan to move keyboard focus to the first invalid field when
+>   returning to Step 1 from the Step 2 validation preview was **not
+>   implemented** — "Back to edit" just switches steps.
+> - §6c's plan to add a `create_user` toggle and auto-redirect to the print
+>   page after a **single**-participant create was **not implemented**. The
+>   single-participant `ParticipantCreate` form (`frontend/src/resources/participants.tsx`)
+>   shows a success notification with the username/customer number instead;
+>   reprinting a card is a separate, manual "Print Welcome Card" button on
+>   `ParticipantShow`.
+> - §6b's plan for the shared-printer warning banner to disappear after
+>   `window.print()` is called was **not implemented** — the banner is
+>   always shown on the screen-only toolbar.
+> - The onboarding email content described in §3 (leading with the customer
+>   number) shipped via migration `0010_fix_onboarding_email_customer_number.py`,
+>   but was **subsequently reverted** by
+>   `apps/log/migrations/0017_onboarding_email_username_wording.py` (Issue
+>   #83): the email now leads with the username again, with the customer
+>   number as a secondary note. See "3. Pre-requisite" below and
+>   [CUSTOMER_NUMBER_SYSTEM.md](CUSTOMER_NUMBER_SYSTEM.md).
+> - No automated tests exist yet for this feature: there is no
+>   `apps/account/tests/test_bulk_participant_create.py` and no
+>   `frontend/src/pages/PrintWelcomeCards.test.tsx`, despite both being
+>   called for in §11 below.
 
 ---
 
@@ -123,7 +168,6 @@ one bad row rolls back all 20 good ones — not what staff expect. Instead:
 for index, row_data in enumerate(rows):
     try:
         with transaction.atomic():       # ← per-row savepoint
-            row_data["create_user"] = True
             s = ParticipantCreateSerializer(data=row_data)
             if not s.is_valid():
                 errors.append({"index": index, "errors": s.errors})
@@ -133,6 +177,10 @@ for index, row_data in enumerate(rows):
     except Exception as exc:
         errors.append({"index": index, "errors": {"non_field": [str(exc)]}})
 ```
+
+*(As shipped, there is no `create_user` flag to set — see "Known deviations"
+above. Every `Participant` gets a linked `User` unconditionally via the
+`initialize_participant` signal.)*
 
 ### 4. Is there a grace period before onboarding emails fire?
 
@@ -240,27 +288,51 @@ Each card shows:
 
 ## 3. Pre-requisite: Fix the Onboarding Email
 
-**This ships first, independently. It is a one-migration change.**
+**Status: shipped, then partially reverted.**
 
-### The bug
+### The original bug
 
 The `onboarding` `EmailType` record (seeded in `apps/log/migrations/0005_seed_email_types.py`)
-contains:
+originally contained:
 
 ```
 YOUR USERNAME: {{ user.username }}
 ```
 
-Participants **cannot** log in with a username. They use their customer number (`C-BKM-7`).
-The `FlexibleTokenObtainPairSerializer` in `apps/account/api/jwt_serializers.py` resolves
-`C-XXX-D → Participant → User` — the username is a backend artifact only.
+At the time this plan was written, participants could only be expected to
+use their customer number (`C-BKM-7`) — the `FlexibleTokenObtainPairSerializer`
+in `apps/account/api/jwt_serializers.py` resolves `C-XXX-D → Participant → User`.
 
-### The fix
+### What actually happened
 
-New migration: `apps/log/migrations/0010_fix_onboarding_email_customer_number.py`
+Migration `apps/log/migrations/0010_fix_onboarding_email_customer_number.py`
+shipped the fix below exactly as planned — the email led with
+`YOUR LOGIN NUMBER: {{ participant_customer_number }}`.
 
-Replace the broken credential line with the correct one in both `text_content` and
-`html_content`, and add the login URL.
+**This was later reverted.** `apps/log/migrations/0017_onboarding_email_username_wording.py`
+("Issue #83") changed the email to lead with the username again:
+
+> Staff and participants use the Django username day to day — migration 0010
+> switched the email to the customer number, which is what Issue #83
+> reports as confusing. Both credentials authenticate (see
+> `FlexibleTokenObtainPairSerializer`), so the email now leads with the
+> username and keeps the customer number as a secondary note.
+
+So, as of today, the onboarding email's **current** wording leads with
+`YOUR USERNAME: {{ user.username }}` and adds a secondary line: *"You can
+also log in with your Customer Number: {{ participant_customer_number }}"*.
+The welcome card (this feature's actual deliverable) is unaffected by this
+back-and-forth — it always shows the customer number as the primary login
+credential, since that's the one a warehouse-floor participant can read off
+a printed card without needing to remember a generated username.
+
+### The fix (as originally shipped by migration 0010 — since amended by 0017, above)
+
+Migration: `apps/log/migrations/0010_fix_onboarding_email_customer_number.py`
+
+Replaced the username credential line with the customer-number one in both
+`text_content` and `html_content`, and added the login URL. (Migration 0017
+subsequently re-introduced the username as the lead credential — see above.)
 
 **Text content change:**
 
@@ -290,21 +362,34 @@ First-time setup — set your password:
 **HTML content change:** Same content restructure, with the customer number in a
 large `<div>` styled like a badge, and the login URL as a clickable `<a>` tag.
 
-### New email context variables
+### New email context variables (as actually implemented)
 
-Two new variables need to be injected in `apps/account/tasks/email.py` inside
-`send_new_user_onboarding_email`:
+`send_new_user_onboarding_email` (`apps/account/tasks/email.py`) builds an
+`extra_context` dict with `participant_customer_number` and
+`participant_frontend_url`, and also carries a 24-hour deduplication guard
+(not part of the original plan text here, but see §5h below):
 
 ```python
-# In the existing email context builder, add:
-"participant_customer_number": participant.customer_number,
-"participant_frontend_url": settings.PARTICIPANT_FRONTEND_URL,  # new env var
+extra_context: dict = {
+    'participant_frontend_url': get_email_settings().get_participant_frontend_url(),
+}
+try:
+    participant = user.participant
+    extra_context['participant_customer_number'] = participant.customer_number or ''
+except Exception:
+    extra_context['participant_customer_number'] = ''
 ```
 
-Add `PARTICIPANT_FRONTEND_URL` to `core/settings.py` reading from env:
+`PARTICIPANT_FRONTEND_URL` is defined in `core/settings.py` reading from env
+(`env('PARTICIPANT_FRONTEND_URL', default='https://app.basketful.org')`),
+but the runtime value actually used comes from
+`EmailSettings.get_participant_frontend_url()` (`core/models.py`) — a
+staff-editable singleton override that falls back to the env var only when
+blank:
 
 ```python
-PARTICIPANT_FRONTEND_URL = os.environ.get("PARTICIPANT_FRONTEND_URL", "https://app.basketful.org")
+def get_participant_frontend_url(self):
+    return self.participant_frontend_url or settings.PARTICIPANT_FRONTEND_URL
 ```
 
 ---
@@ -351,9 +436,11 @@ class BulkParticipantCreateSerializer(serializers.Serializer):
         return value
 ```
 
-The inner `ParticipantCreateSerializer` already covers all validation.
-`create_user` defaults to `True` in the view (not the serializer) so the wizard
-eualways creates login accounts — no checkbox confusion.
+The inner `ParticipantCreateSerializer` already covers all validation. There
+is no `create_user` flag at all in the shipped implementation — every
+participant always gets a login account via the `initialize_participant`
+signal, so there's no checkbox confusion by construction rather than by a
+view-level default.
 
 ### 5b. `apps/account/api/views.py` — new `bulk_create` action
 
@@ -430,7 +517,6 @@ def bulk_create(self, request):
     for index, row_data in enumerate(rows):
         try:
             with transaction.atomic():          # per-row savepoint
-                row_data["create_user"] = True
                 row_data["_skip_onboarding_signal"] = use_grace
 
                 row_serializer = ParticipantCreateSerializer(data=row_data)
@@ -522,11 +608,15 @@ def cancel_bulk_batch(self, request, pk=None):
     return Response({"revoked": revoked})
 ```
 
-> **Note on `_skip_onboarding_signal`:** The `initialize_participant` signal
-> currently calls `.delay()` unconditionally. Add a guard:
-> `if not getattr(instance, '_skip_onboarding_signal', False):` before the
-> `.delay()` call in `signals.py`. When `use_grace` is True, the view
-> calls `.apply_async(countdown=...)` itself.
+> **Note on `_skip_onboarding_signal`:** implemented as planned in
+> `apps/account/signals.py`'s `initialize_participant` signal.
+
+As shipped, `cancel_bulk_batch` and `get_bulk_batch` are both `detail=False`
+actions with a regex `url_path` capturing `batch_id`
+(`bulk-create-batches/(?P<batch_id>[^/.]+)` and `.../cancel`), not the
+`detail=True, pk=None` shape sketched above — same resulting URLs
+(`POST .../bulk-create-batches/{batch_id}/cancel/`), different DRF wiring.
+The shipped version also returns 400 if the batch was already cancelled.
 
 ### 5c. `apps/account/models.py` — new `BulkCreateBatch` model
 
@@ -560,7 +650,11 @@ class BulkCreateBatch(models.Model):
         verbose_name = "Bulk Create Batch"
 ```
 
-Requires a new migration: `apps/account/migrations/XXXX_add_bulk_create_batch.py`.
+As shipped, this didn't get its own migration file — it was bundled into
+`apps/account/migrations/0009_participant_preferred_language_and_more.py`
+alongside the `preferred_language` field addition. The shipped model also
+adds `related_name='bulk_create_batches'` on `created_by` and a
+`verbose_name_plural`.
 
 Add a `BulkCreateBatch` retrieve endpoint to `ParticipantViewSet` so the print
 page can recover:
@@ -580,24 +674,12 @@ def get_bulk_batch(self, request, batch_id=None):
 
 ### 5d. `apps/account/tasks/email.py`
 
-Inside `send_new_user_onboarding_email` (the existing Celery task), add
-`participant_customer_number` and `participant_frontend_url` to the context dict
-passed to the template renderer:
-
-```python
-# Existing context will have: user, domain, protocol, uid, token
-# Add:
-from django.conf import settings
-try:
-    participant = user.participant
-    participant_customer_number = participant.customer_number or ""
-except Exception:
-    participant_customer_number = ""
-
-context.update({
-    "participant_customer_number": participant_customer_number,
-    "participant_frontend_url": settings.PARTICIPANT_FRONTEND_URL,
-})
+As shipped, `send_new_user_onboarding_email` builds an `extra_context` dict
+(passed into the shared `send_email_by_type` task) rather than mutating a
+module-level `context` dict directly, and resolves the frontend URL through
+the `EmailSettings` singleton rather than reading `settings.PARTICIPANT_FRONTEND_URL`
+directly (see §3 above for the exact code). It also carries the 24-hour
+deduplication guard described in §5h.
 ```
 
 ### 5e. `core/settings.py`
@@ -730,13 +812,16 @@ has `BaseLog`, `VoucherLog`, and `UserLoginLog` — there is no `ParticipantCrea
 **The `BulkCreateBatch` model IS an audit trail for bulk creates** — it stores
 `created_by`, `created_at`, and a JSON snapshot of created participants.
 It just needs to be:
-1. Registered in Django admin with useful `list_display`
-2. Covered by a data retention policy
-3. Extended to cover single-participant creates too
+1. Registered in Django admin with useful `list_display` — **done**
+2. Covered by a data retention policy — **done**, as a docstring note on the model (see below), not an enforced purge job
+3. Extended to cover single-participant creates too — **not done** (see (b) below)
 
 **Changes:**
 
-**a. Register `BulkCreateBatch` in `apps/account/admin.py`:**
+**a. Register `BulkCreateBatch` in `apps/account/admin.py`:** shipped —
+`BulkCreateBatchAdmin` is registered (with a slightly larger `list_display`
+that also includes `email_grace_seconds`, plus `has_add_permission`/
+`has_delete_permission` overrides not shown in this sketch).
 
 ```python
 @admin.register(BulkCreateBatch)
@@ -752,26 +837,19 @@ class BulkCreateBatchAdmin(admin.ModelAdmin):
     participant_count.short_description = 'Created'
 ```
 
-**b. Write a thin log entry for single-participant creates.** Rather than a new
-model, the `ParticipantCreate` `onSuccess` callback sends a lightweight
-`POST /api/v1/participants/log-create/` action that records:
+**b. Write a thin log entry for single-participant creates — not implemented.**
+There is no `POST /api/v1/participants/log-create/` action and no
+`ParticipantCreateLog` model. Single-participant creates via
+`ParticipantCreate` (admin frontend) or the Django admin still leave no
+record of which staff member created them. This remains an open gap.
 
-```json
-{ "participant_id": 42, "created_by": "staff-username", "created_at": "ISO8601" }
-```
-
-This can be stored in `BulkCreateBatch` with `participants = [single snapshot]`
-and `email_grace_seconds = 0` — the same model, no schema change needed.
-The view sets `batch_size=1` implicitly.
-
-**c. Data retention.** Add a `TODO` comment in `BulkCreateBatch`:
-> _"Retention: `participants` JSON contains PII (names + emails). Consider
-> purging after 90 days or replacing with a count-only summary after staff
-> confirm cards were printed."_
-
-**Files changed:** `apps/account/admin.py` (register model),
-`apps/account/api/views.py` (single-create log endpoint or inline in existing
-`create` action).
+**c. Data retention — done, as a docstring note, not an enforced job.** The
+`BulkCreateBatch` model docstring in `apps/account/models.py` reads:
+> _"NOTE (Retention): `participants` JSON contains PII (names + emails).
+> Consider purging after 90 days or replacing with a count-only summary
+> after staff confirm cards were printed."_
+No purge job/management command exists yet — this is a documented
+intention, not automated cleanup.
 
 ---
 
@@ -821,18 +899,23 @@ making a runaway loop visible within minutes.
 dispatching, check whether an onboarding email was already sent to this user
 in the last 24 hours:
 
+As shipped, in `send_new_user_onboarding_email`
+(`apps/account/tasks/email.py`) — using `email_type__name`, not `__slug`
+(`EmailType` has no `slug` field), and also gating on `status='sent'`:
+
 ```python
 from apps.log.models import EmailLog
 from django.utils import timezone
 
-already_sent = EmailLog.objects.filter(
+recently_sent = EmailLog.objects.filter(
     user=user,
-    email_type__slug='onboarding',
+    email_type__name='onboarding',
     sent_at__gte=timezone.now() - timedelta(hours=24),
+    status='sent',
 ).exists()
-if already_sent:
-    logger.info("Skipping duplicate onboarding email for user %s", user.id)
-    return
+if recently_sent and not force:
+    logger.info("[Onboarding] Skipping duplicate — already sent to user_id=%s within 24h", user_id)
+    return False
 ```
 
 This is idempotency — a retry, a re-run, or a malicious duplicate batch cannot
@@ -859,7 +942,7 @@ A 4-step wizard, modelled on the existing `BulkVoucherCreate.tsx` pattern.
 | 1 | Data entry grid | Add/remove rows |
 | 2 | Validation preview | Review errors, fix or skip invalid rows |
 | 3 | Confirm | "Create X participants" button |
-| 4 | Print welcome cards | Auto-opens print dialog |
+| 4 | Print welcome cards | Explicit "Print Welcome Cards" button click (auto-print was rejected — see adversarial review table above) |
 
 #### Step 1 — Data entry grid
 
@@ -890,17 +973,17 @@ interface IntakeRow {
 
 #### Step 2 — Validation preview
 
-- POST to `/api/v1/participants/bulk-create/` with `?dry_run=true`
-  (or a separate `/bulk-validate/` action — see design decision below)
-- Show a summary: "X valid, Y have errors"
-- Per-row status chip: ✅ Ready / ⚠️ Error
-- Inline error text under each problem field
-- "Back to edit" button returns to Step 1 with errors highlighted **and moves
-  programmatic focus to the first field containing an error** — keyboard users
-  and screen reader users must not have to Tab through all preceding cells to
-  reach the first problem. Implement by storing `{ rowIndex, fieldName }` of
-  the first error in state and calling `.focus()` on that input ref after
-  the step transition completes (`useEffect` on step change).
+**As implemented** (`BulkParticipantCreate.tsx`):
+- POSTs to the separate `/api/v1/participants/bulk-validate/` action (the
+  design decision below was followed — no `dry_run` query param)
+- Shows a summary alert: "All N rows are valid…" or "N row(s) have errors…"
+- A table (#, Name, Email, Program, Status) with a per-row status chip:
+  "✓ Ready" / "⚠ Error" — hovering the error chip shows the field errors in a tooltip
+- "Back to edit" returns to Step 1 (`setActiveStep(0)`) — **it does not
+  highlight the offending fields or move keyboard focus to the first error**.
+  The plan's original accessibility goal (auto-focusing the first invalid
+  field for keyboard/screen-reader users) was not implemented; staff have to
+  visually cross-reference the row number against the Step 1 grid.
 
 > **Design decision — dry run vs. separate validate endpoint:**
 > The simplest approach is a `bulk-validate` action that runs the same serializer
@@ -909,14 +992,18 @@ interface IntakeRow {
 > calls a separate `preview/` endpoint). Add:
 >
 > ```python
+> # As shipped (apps/account/api/views.py) — no create_user key, and a
+> # 400 guard for an empty rows list that this original sketch omitted:
 > @action(detail=False, methods=["post"], url_path="bulk-validate")
 > def bulk_validate(self, request):
 >     serializer = BulkParticipantCreateSerializer(data=request.data)
 >     serializer.is_valid(raise_exception=True)
 >     rows = serializer.validated_data["participants"]
+>     if not rows:
+>         return Response({"detail": "At least one row is required."}, status=400)
 >     errors = []
 >     for i, row in enumerate(rows):
->         s = ParticipantCreateSerializer(data={**row, "create_user": True})
+>         s = ParticipantCreateSerializer(data=row)
 >         if not s.is_valid():
 >             errors.append({"index": i, "errors": s.errors})
 >     return Response({"errors": errors, "valid_count": len(rows) - len(errors)})
@@ -1174,8 +1261,12 @@ browser popup-policy blocking.
 
 #### Screen-only toolbar
 
+**As implemented**, the toolbar has two buttons, not three (there is no
+"Print All" — a single "Print Welcome Cards (N)" prints the whole batch,
+since the card grid always renders every participant in the batch):
+
 ```
-[← Back to Participants]  [Print Welcome Cards (N)]  [Print All]
+[← Back to Participants]  [Print Welcome Cards (N)]
 ```
 
 > **Shared network printer risk.** `window.print()` opens the OS print dialog,
@@ -1183,14 +1274,15 @@ browser popup-policy blocking.
 > often a network printer used by multiple departments. Fifty welcome cards sent
 > to the wrong device before staff notice is a real scenario.
 >
-> Mitigation — show a persistent **orange alert banner** on the print page
-> (above the card grid, not dismissible until print is clicked):
-> _"⚠️ Before printing: confirm the correct printer is selected in the print
-> dialog. Welcome cards contain participant login numbers."_
+> Mitigation — show an **orange alert banner** on the print page (above the
+> card grid): _"⚠️ Before printing: confirm the correct printer is selected in
+> the print dialog. Welcome cards contain participant login numbers."_
 >
-> The banner disappears after `window.print()` is called. It cannot prevent a
-> wrong printer selection — that is an OS-level choice — but it creates a
-> deliberate pause before staff click OK in the print dialog.
+> **As implemented, this banner is permanent** — it does not hide itself
+> after `window.print()` is called (the plan's original intent). It cannot
+> prevent a wrong printer selection — that is an OS-level choice — but it
+> creates a deliberate, always-visible reminder before staff click OK in the
+> print dialog.
 
 ---
 
@@ -1209,42 +1301,37 @@ the existing "Create" button:
 />
 ```
 
-### Single-participant create path
+### Single-participant create path — **not implemented as planned**
 
-`ParticipantCreate` is currently a bare `<SimpleForm>` with no `create_user`
-field exposed and no post-save redirect to the print page. After this plan
-ships, single-participant creation should behave consistently with bulk:
-
-**Changes to `ParticipantCreate`:**
-1. Add a `BooleanInput source="create_user"` toggle (default `true` — staff
-   almost always want a login account at intake)
-2. Use React-Admin's `<Create mutationOptions={{ onSuccess }}>` callback to
-   redirect to `/participants/welcome-cards` after save, passing the new
-   participant as a single-item array via `sessionStorage` (same pattern as
-   bulk — no `batch_id` needed for a single record, just write directly):
+This part of the plan did not ship. As implemented, `ParticipantCreate`
+(`frontend/src/resources/participants.tsx`) is a plain `<SimpleForm>` with no
+`create_user` toggle (moot anyway — the field no longer exists on the model)
+and **no post-save redirect to the print page**. Its actual `onSuccess`
+handler just shows a notification with the username and customer number:
 
 ```tsx
-const onSuccess = (participant: WelcomeParticipant) => {
-  if (participant.customer_number) {
-    sessionStorage.setItem(
-      `single_participant_card`,
-      JSON.stringify([participant])
-    );
-    navigate(`/participants/welcome-cards/single`);
-  } else {
-    // No user account created — go to show page as normal
-    navigate(`/participants/${participant.id}/show`);
-  }
-};
+onSuccess: (data: any) => {
+  const username = data?.user_username;
+  const customerNumber = data?.customer_number;
+  const msg = username
+    ? `Participant created. Login username: ${username}${
+        customerNumber ? ` · Customer #: ${customerNumber}` : ''
+      }`
+    : 'Participant created successfully.';
+  notify(msg, { type: 'success', autoHideDuration: 8000 });
+},
 ```
 
-**Email delay:** A single participant is always ≤5 rows, so `create_user`
-fires `.delay()` immediately via the existing signal — no grace period, no
-cancel window needed.
+**Email delay:** A single participant creation always uses the immediate
+(`.delay()`) onboarding email path via `initialize_participant` — no grace
+period, no cancel window, matching the plan's intent (only `bulk_create`
+batches larger than `EMAIL_EAGER_THRESHOLD` get the grace-period countdown).
 
-**`PrintWelcomeCards` at `/participants/welcome-cards/single`:** Reads from
-`sessionStorage.getItem('single_participant_card')` — same component, no
-server fetch needed since there's no `batch_id` in the URL.
+**`PrintWelcomeCards` at `/participants/welcome-cards/single`:** This route
+*is* implemented, but it's reached only via the manual "Print Welcome Card"
+button on `ParticipantShow` (below) — never automatically after create. It
+reads from `sessionStorage.getItem('single_participant_card')` — same
+component, no server fetch needed since there's no `batch_id` in the URL.
 
 Also add **"Print Welcome Card"** to `ParticipantShow` actions — for when
 staff need to reprint a card for an existing participant:
@@ -1374,62 +1461,62 @@ class Migration(migrations.Migration):
 
 ## 8. File Checklist
 
-### New files
+### New files — all shipped
 
-- [ ] `frontend/src/pages/BulkParticipantCreate.tsx`
-- [ ] `frontend/src/pages/PrintWelcomeCards.tsx`
-- [ ] `apps/log/migrations/0010_fix_onboarding_email_customer_number.py`
-- [ ] `apps/account/migrations/XXXX_add_bulk_create_batch.py`
+- [x] `frontend/src/pages/BulkParticipantCreate.tsx`
+- [x] `frontend/src/pages/PrintWelcomeCards.tsx`
+- [x] `apps/log/migrations/0010_fix_onboarding_email_customer_number.py` (later amended by `apps/log/migrations/0017_onboarding_email_username_wording.py`)
+- [x] `apps/account/migrations/0009_participant_preferred_language_and_more.py` (bundles `BulkCreateBatch` + `preferred_language` together, rather than the separate migration file this plan originally sketched)
 
 ### Modified files
 
-| File | Change |
-|------|--------|
-| `frontend/src/resources/participants.tsx` | Add "Bulk Create" toolbar button; add "Print Welcome Card" to Show actions |
-| `frontend/src/AdminApp.tsx` | Register 2 new routes (now with `:batchId` param) |
-| `frontend/.env` | Add `VITE_PARTICIPANT_URL` |
-| `frontend/.env.production` | Add `VITE_PARTICIPANT_URL` |
-| `apps/account/models.py` | Add `BulkCreateBatch` model |
-| `apps/account/api/serializers.py` | Add `BulkParticipantCreateSerializer` (add `preferred_language` field) |
-| `apps/account/api/views.py` | Add `bulk_create`, `bulk_validate`, `get_bulk_batch`, `cancel_bulk_batch` |
-| `apps/account/signals.py` | Add `_skip_onboarding_signal` guard before `.delay()` call |
-| `apps/account/tasks/email.py` | Add `participant_customer_number` + `participant_frontend_url` to email context; add 24h deduplication guard |
-| `apps/account/models.py` (Participant) | Add `preferred_language` field (CharField, choices `en`/`es`, default `en`) |
-| `apps/account/admin.py` | Register `BulkCreateBatch` with audit-friendly `list_display` |
-| `apps/account/utils/warehouse_id.py` | Add `normalize_customer_number()` function |
-| `apps/account/api/jwt_serializers.py` | Call `normalize_customer_number()` + `validate_customer_number()` before DB lookup |
-| `core/settings.py` | Add `PARTICIPANT_FRONTEND_URL` env var; add `bulk_create` throttle rate (`20/hour`) |
-| `render.yaml` | Add `PARTICIPANT_FRONTEND_URL` env var entry |
+| File | Change | Status |
+|------|--------|--------|
+| `frontend/src/resources/participants.tsx` | Add "Bulk Create" toolbar button; add "Print Welcome Card" to Show actions | Done |
+| `frontend/src/AdminApp.tsx` | Register 2 new routes (`:batchId` param + bare) | Done |
+| `apps/account/models.py` | Add `BulkCreateBatch` model + `Participant.preferred_language` | Done |
+| `apps/account/api/serializers.py` | Add `BulkParticipantCreateSerializer`, `preferred_language` on `ParticipantCreateSerializer` | Done |
+| `apps/account/api/views.py` | Add `bulk_create`, `bulk_validate`, `get_bulk_batch`, `cancel_bulk_batch` | Done |
+| `apps/account/signals.py` | Add `_skip_onboarding_signal` guard before `.delay()` call | Done |
+| `apps/account/tasks/email.py` | Add `participant_customer_number` + `participant_frontend_url` to email context; add 24h deduplication guard | Done |
+| `apps/account/admin.py` | Register `BulkCreateBatch` with audit-friendly `list_display` | Done |
+| `apps/account/utils/warehouse_id.py` | Add `normalize_customer_number()` function | Done |
+| `apps/account/api/jwt_serializers.py` | Call `normalize_customer_number()` + `validate_customer_number()` before DB lookup | Done |
+| `core/settings.py` | Add `PARTICIPANT_FRONTEND_URL` env var; add `bulk_create` throttle rate (`20/hour`) | Done |
+| `render.yaml` | Add `PARTICIPANT_FRONTEND_URL` env var entry | **Not present in the tracked `render.yaml`** — if this is set in production it's configured directly in the Render dashboard, not in the repo file |
+| `frontend/.env` / `.env.production` | Add `VITE_PARTICIPANT_URL` | Not present in the repo (these files aren't tracked); `PrintWelcomeCards.tsx` falls back to the hardcoded default `https://app.basketful.org` unless the var is set outside the repo |
 
 ---
 
 ## 9. Implementation Order
 
-Work in this order to ship value incrementally and keep PRs reviewable:
+**As actually shipped** — the feature landed as one bundled migration (`0009_participant_preferred_language_and_more.py`,
+2026-05-02) rather than three separate PRs, and the original per-PR test
+steps below were **not carried out** — see "Known deviations" at the top of
+this document and §11 below for the current (missing) test coverage.
 
-### PR 1 — Fix the email (ships first, standalone, no frontend)
-1. Add `PARTICIPANT_FRONTEND_URL` to `core/settings.py`
-2. Update `apps/account/tasks/email.py` to inject `participant_customer_number` + `participant_frontend_url`
-3. Write and run `0010_fix_onboarding_email_customer_number.py`
-4. **Test:** Create a test participant with `create_user=True`, check email log shows customer number
+### Email wording
+1. `PARTICIPANT_FRONTEND_URL` added to `core/settings.py`
+2. `apps/account/tasks/email.py` injects `participant_customer_number` + `participant_frontend_url`
+3. `0010_fix_onboarding_email_customer_number.py` shipped, then partially reverted by `0017_onboarding_email_username_wording.py` (see §3)
 
-### PR 2 — Backend bulk create endpoints
-1. Add `preferred_language` to `Participant` model + migration
-2. Add `BulkCreateBatch` model + migration
-3. Add `BulkParticipantCreateSerializer` to `serializers.py`
-4. Add `bulk_validate` action to `ParticipantViewSet`
-5. Add `bulk_create` action (with atomic per-row savepoints + smart email delay)
-6. Add `get_bulk_batch` and `cancel_bulk_batch` actions
-7. Add `_skip_onboarding_signal` guard in `signals.py`
-8. **Test:** `pytest apps/account/tests/` — add tests for all endpoints including cancel and recovery
+### Backend bulk create endpoints
+1. `preferred_language` added to `Participant`
+2. `BulkCreateBatch` model added
+3. `BulkParticipantCreateSerializer` added to `serializers.py`
+4. `bulk_validate` action added to `ParticipantViewSet`
+5. `bulk_create` action added (atomic per-row savepoints + smart email delay)
+6. `get_bulk_batch` and `cancel_bulk_batch` actions added
+7. `_skip_onboarding_signal` guard added in `signals.py`
+8. **Test coverage: none.** No `apps/account/tests/test_bulk_participant_create.py` exists.
 
-### PR 3 — Frontend wizard + print page
-1. Create `PrintWelcomeCards.tsx`
-2. Create `BulkParticipantCreate.tsx` (Steps 1–4)
-3. Register routes in `AdminApp.tsx`
-4. Add toolbar button + show action in `participants.tsx`
-5. Add env vars to `.env` and `.env.production`
-6. **Test:** Manual walkthrough — create 3 participants, verify cards print correctly
+### Frontend wizard + print page
+1. `PrintWelcomeCards.tsx` created
+2. `BulkParticipantCreate.tsx` created (Steps 1–4)
+3. Routes registered in `AdminApp.tsx`
+4. Toolbar button + show action added in `participants.tsx`
+5. Env var wiring (`VITE_PARTICIPANT_URL`) — not present in the repo's env files (see §8)
+6. **Test coverage: none.** No `frontend/src/pages/PrintWelcomeCards.test.tsx` exists.
 
 ---
 
@@ -1440,7 +1527,8 @@ Work in this order to ship value incrementally and keep PRs reviewable:
 | Participant types en-dash or spaces in login number | `normalize_customer_number()` in `FlexibleTokenObtainPairSerializer` converts to canonical form before lookup; check digit validation gives specific error if the digit itself is wrong |
 | Participant copies wrong check digit | `validate_customer_number()` returns `"Check digit mismatch: expected 8, got 7"` — surfaced as `invalid_customer_number_format` error code |
 | Staff sends duplicate batch (same emails twice) | 24h deduplication guard in `send_new_user_onboarding_email` skips resend; `bulk_create` `ScopedRateThrottle` (`20/hour`) limits burst |
-| No record of who created a participant | `BulkCreateBatch` stores `created_by` + participant snapshot for all bulk creates; single creates also write a 1-row `BulkCreateBatch` entry via `onSuccess` callback |
+| No record of who created a participant (bulk) | `BulkCreateBatch` stores `created_by` + participant snapshot for all `bulk_create` batches |
+| No record of who created a participant (single, via `ParticipantCreate`) | **Not implemented.** Single-participant creates do not write any `BulkCreateBatch` entry or other dedicated audit record — this was planned in §5g/§7 but never shipped |
 | Participant already exists (same email) | Serializer raises `ValidationError` — surfaces in Step 2 with message: "A participant with this email already exists" |
 | Email send fails (Celery down) | Onboarding email is best-effort; `bulk_create` still returns 201. Staff can resend via existing "Resend Onboarding Email" bulk action |
 | `participant_customer_number` missing in email context | `try/except` in the task returns `""` — email sends without the number rather than crashing |
@@ -1452,22 +1540,29 @@ Work in this order to ship value incrementally and keep PRs reviewable:
 | Screen reader announces C-BKM-7 without context | `.customer-number-badge` element carries `aria-label="Your login number: {customer_number}"` so NVDA/VoiceOver announces the full phrase |
 | Printer driver clips card edges (non-printable margin) | `@page { margin: 0.75in }` reserves outer margin; `.card-grid` has `padding: 0.5in` — content inset is always ≥ 0.2in from any card border, well inside printable zone |
 | Very large batch (>50 rows) | Cap at 100 in serializer validation; show a persistent warning chip at 50+ in the Step 1 toolbar |
-| Program not selected on a row | `program` is required; surfaces in Step 2 with message: "Please select a program" |
+| Program not selected on a row | The Step 1 column is labeled "Program *" and the field is UI-required, but `Participant.program` is `null=True, blank=True` at the model/serializer level — a row with no program **can** actually be created by the API. The asterisk is a UI convention, not a backend-enforced constraint |
 | `bulk_create` called with 0 valid rows | Returns **400** with `{"detail": "No participants could be created.", "errors": [...]}` |
 | `bulk_validate` called with empty array | Returns **400** with `{"detail": "At least one row is required."}` |
 | Double-click on Step 3 submit | Button disabled on first click; spinner shown; re-enabled only on error |
 | Browser back after Step 3 success | `replace: true` on navigate removes Step 3 from history stack — back button goes to participant list, not Step 3 |
 | Onboarding email grace period — staff cancels | `POST .../cancel/` revokes all Celery task IDs stored in `BulkCreateBatch`; banner updates to "Emails cancelled" |
-| Staff on A4 printer | Print CSS uses `@page { size: auto }` with relative card sizing; documented limitation that Letter gives best results |
+| Staff on A4 printer | **Not handled.** The shipped print CSS hard-codes `@page { size: letter; margin: 0.75in; }` — there is no `size: auto` fallback or A4-relative sizing. A4 printers will print the letter-sized layout scaled or clipped depending on printer driver behavior |
 
 ---
 
 ## 11. Testing Plan
 
-### Backend (pytest)
+**As of 2026-07-13, none of the automated tests below were ever written.**
+There is no `apps/account/tests/test_bulk_participant_create.py` and no
+`frontend/src/pages/PrintWelcomeCards.test.tsx` in the repo, despite the
+feature having shipped to production. Per this repo's testing conventions
+(see project `CLAUDE.md`), proper pytest/Vitest coverage — not one-off
+scripts — should be added for:
+
+### Backend (pytest) — proposed, not present
 
 ```python
-# apps/account/tests/test_bulk_participant_create.py
+# apps/account/tests/test_bulk_participant_create.py  (does not exist)
 
 class TestBulkParticipantCreate:
     def test_bulk_validate_returns_errors_for_missing_email(self): ...
@@ -1477,27 +1572,28 @@ class TestBulkParticipantCreate:
     def test_bulk_create_returns_customer_numbers(self): ...
     def test_bulk_create_skips_invalid_rows_and_reports_errors(self): ...
     def test_bulk_create_enforces_100_row_limit(self): ...
+    def test_bulk_create_grace_period_and_cancel(self): ...
 
 class TestOnboardingEmailContext:
     def test_email_context_includes_customer_number(self): ...
     def test_email_context_includes_participant_frontend_url(self): ...
 ```
 
-### Frontend (Vitest)
+### Frontend (Vitest) — proposed, not present
 
 ```tsx
-// frontend/src/pages/PrintWelcomeCards.test.tsx
+// frontend/src/pages/PrintWelcomeCards.test.tsx  (does not exist)
 
 test('renders a card for each participant', () => { ... })
 test('shows empty state when no participants in location.state', () => { ... })
 test('displays customer number prominently', () => { ... })
 ```
 
-### Manual QA checklist
+### Manual QA checklist (unchanged from the original plan; status of these runs is not tracked in the repo)
 
 - [ ] Create 1 participant via single create form → onboarding email shows customer number
 - [ ] Create 3 participants via bulk create → all receive emails with customer numbers
-- [ ] Bulk create with one invalid row → Step 2 shows the error inline; valid rows proceed
+- [ ] Bulk create with one invalid row → Step 2 shows the error; valid rows proceed
 - [ ] Step 4 prints 2-up card grid on letter paper — cards don't split across pages
 - [ ] "Print Welcome Card" from ParticipantShow → single card prints correctly
 - [ ] Navigate to `/participants/welcome-cards` with no state → empty state shown

@@ -1,5 +1,9 @@
 # Basketful Production Deployment Guide
 
+> Last updated: 2026-07-13
+
+> **What's actually tracked in this repo vs. illustrative templates**: `docker-compose.prod.images.yml`, `docker-compose.frontend-admin.yml`, `docker-compose.frontend-participant.yml`, `render.yaml`, `Dockerfile`, `nginx/nginx.conf`, and `nginx/conf.d/basketful.conf` are real, committed files. There is **no** `docker-compose.prod.yml` in the repo — Option 1 below shows how you'd hand-roll one if you wanted local `dist/` volume mounts instead of pulling CI-built images; the repo's actual self-hosted path is Option 1 → step 5 (`docker-compose.prod.images.yml`). The real `nginx/conf.d/basketful.conf` is also simpler than the generic template in "Create Nginx Configuration" below — it proxies to Gunicorn/frontends directly and relies on the upstream load balancer for TLS and on S3 (`USE_S3=True`) for static/media, rather than serving `/static/`, `/media/` from local volumes. See the callout in that section for the real config. **Known gap**: `docker-compose.prod.images.yml` mounts `./nginx/conf.d/default.images.conf`, but no file by that name exists in the repo (only `nginx/conf.d/basketful.conf` does) — if you deploy via `docker-compose.prod.images.yml` as-is today, you need to add that file yourself.
+
 This guide covers deploying the Basketful application to production, including:
 - Django backend API
 - Admin frontend (staff dashboard)
@@ -73,9 +77,12 @@ services:
       - media_volume:/code/media
     environment:
       - DEBUG=False
+      - DJANGO_ENV=prod
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - HASHIDS_SALT=${HASHIDS_SALT}
+      - DOMAIN_NAME=${DOMAIN_NAME}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
@@ -83,6 +90,9 @@ services:
       - AUTH_COOKIE_SECURE=True
       - RECAPTCHA_PUBLIC_KEY=${RECAPTCHA_PUBLIC_KEY}
       - RECAPTCHA_PRIVATE_KEY=${RECAPTCHA_PRIVATE_KEY}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
     depends_on:
       - db
       - redis
@@ -96,25 +106,35 @@ services:
     command: celery -A core worker -l INFO
     environment:
       - DEBUG=False
+      - DJANGO_ENV=prod
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - HASHIDS_SALT=${HASHIDS_SALT}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_SENDER_DOMAIN=${MAILGUN_SENDER_DOMAIN}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
     depends_on:
       - db
       - redis
     restart: unless-stopped
 
-  # Celery Beat Scheduler
+  # Celery Beat Scheduler — required for the 6 periodic tasks registered in
+  # CELERY_BEAT_SCHEDULE (core/settings.py), e.g. weekly combined orders,
+  # order-window notifications, low-inventory checks. Uses django-celery-beat's
+  # DatabaseScheduler in production (see docker-compose.prod.images.yml).
   celery-beat:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A core beat -l INFO
+    command: celery -A core beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
       - DEBUG=False
+      - DJANGO_ENV=prod
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - HASHIDS_SALT=${HASHIDS_SALT}
     depends_on:
       - db
       - redis
@@ -165,6 +185,15 @@ volumes:
 ```
 
 ### 2. Create Nginx Configuration
+
+> **The real, tracked config differs from the template below.** `nginx/nginx.conf` (base config: gzip, mime types, `include /etc/nginx/conf.d/*.conf`) and `nginx/conf.d/basketful.conf` are already committed to the repo and reflect the actual live deployment topology at `basketful.lovewm.org`:
+> - TLS is terminated **upstream** (Linode NodeBalancer, Full Strict mode) — nginx itself only listens on plain HTTP `:80` and hardcodes `X-Forwarded-Proto: https` on the Django proxy (using `$scheme` there would be `http` and cause an infinite HTTPS redirect loop against Django's `SECURE_SSL_REDIRECT=True`).
+> - `location /` proxies everything else (Django app + API + Django admin) to Gunicorn on `127.0.0.1:8080` — there's no separate `/api/` or `/django-admin/` location.
+> - `location ^~ /new/admin/` proxies to the admin frontend container on `127.0.0.1:8081`.
+> - `location ^~ /new/cart/` proxies to the participant frontend container on `127.0.0.1:8082`.
+> - There are no `/static/` or `/media/` location blocks — static/media are served from S3-compatible object storage (`USE_S3=True`, see `core/settings.py`), not from local volumes.
+>
+> The template below is an alternative, fully self-hosted topology (no S3, TLS terminated locally via certbot, root path serves the participant frontend, `/admin/` serves the admin frontend) — use it if you're not using S3 and want nginx to terminate TLS itself. If you adapt it, keep in mind it does **not** match `nginx/conf.d/basketful.conf`, and the real path prefixes used by the CI-built frontend Docker images are `/new/admin/` and `/new/cart/` (baked in at build time — see [CI.md](CI.md)), not `/admin/` and `/`.
 
 Create `nginx/conf.d/default.conf`:
 
@@ -257,23 +286,36 @@ server {
 
 ### 3. Create Production Environment File
 
-Create `.env.production`:
+A real, tracked template already exists at **`.env.production.example`** in the repo root — copy it to `.env.production` and fill in real values rather than starting from scratch:
+
+```bash
+cp .env.production.example .env.production
+```
+
+Key fields (see the file itself for the complete, commented list):
 
 ```bash
 # Django
 SECRET_KEY=your-super-secret-key-generate-with-django
 DEBUG=False
+DJANGO_ENV=prod
 ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 CORS_ALLOWED_ORIGINS=https://yourdomain.com
+DOMAIN_NAME=yourdomain.com
+PARTICIPANT_FRONTEND_URL=https://shop.yourdomain.com
+HASHIDS_SALT=your-random-salt-string
 
 # Database
 DATABASE_URL=postgresql://basketful:securepassword@db:5432/basketful
+POSTGRES_DB=basketful
 POSTGRES_USER=basketful
 POSTGRES_PASSWORD=securepassword
 
-# Redis
+# Redis (Celery broker/result backend and cache)
 REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
 
 # Security Cookies
 AUTH_COOKIE_DOMAIN=.yourdomain.com
@@ -284,12 +326,12 @@ AUTH_COOKIE_SAMESITE=Lax
 RECAPTCHA_PUBLIC_KEY=your-site-key
 RECAPTCHA_PRIVATE_KEY=your-secret-key
 
-# Email (configure your SMTP provider)
-EMAIL_HOST=smtp.sendgrid.net
-EMAIL_PORT=587
-EMAIL_HOST_USER=apikey
-EMAIL_HOST_PASSWORD=your-sendgrid-api-key
-DEFAULT_FROM_EMAIL=noreply@yourdomain.com
+# Email — production ALWAYS uses django-anymail's Mailgun backend
+# (core/settings.py hardcodes EMAIL_BACKEND when DJANGO_ENV=prod; SMTP
+# settings such as EMAIL_HOST/EMAIL_HOST_PASSWORD are NOT read at all)
+MAILGUN_API_KEY=your-mailgun-api-key
+MAILGUN_SENDER_DOMAIN=mg.yourdomain.com
+DEFAULT_FROM_EMAIL=Basketful <noreply@yourdomain.com>
 ```
 
 ### 4. Build and Deploy
@@ -377,83 +419,18 @@ Compose files:
 
 ### Render.com Deployment
 
-Create `render.yaml` in project root:
+`render.yaml` is already committed at the project root — Render will pick it up automatically as a Blueprint (`https://render.com/deploy`). It provisions, in region `oregon`, plan `starter` throughout:
 
-```yaml
-databases:
-  - name: basketful-db
-    databaseName: basketful
-    user: basketful
-    plan: starter
+- **`basketful-db`** — managed PostgreSQL
+- **`basketful-redis`** — managed Redis (`type: redis`), used as both the Celery broker/result backend
+- **`basketful-api`** — Django web service (`runtime: docker`, `dockerfilePath: ./Dockerfile`), `healthCheckPath: /api/health/`; `buildCommand` runs `pip install`, `collectstatic`, **and** `migrate --noinput`; `startCommand` runs `gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60 --max-requests 1000 --max-requests-jitter 100`
+- **`basketful-worker`** — Celery worker (`dockerCommand: celery -A core worker -l INFO --concurrency=2`), shares `SECRET_KEY` from `basketful-api` via `fromService`
+- **`basketful-admin`** — admin frontend static site (`buildCommand: cd frontend && npm ci && npm run build`, `staticPublishPath: frontend/dist`), `pullRequestPreviewsEnabled: true`
+- **`basketful-shop`** — participant frontend static site (note: the service is named `basketful-shop` in `render.yaml`, **not** `basketful-participant`), same build pattern from `participant-frontend/`
 
-services:
-  # Django API
-  - type: web
-    name: basketful-api
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: basketful-db
-          property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DEBUG
-        value: "False"
-      - key: ALLOWED_HOSTS
-        value: ".onrender.com"
-      - key: AUTH_COOKIE_SECURE
-        value: "True"
-      - key: RECAPTCHA_PUBLIC_KEY
-        sync: false
-      - key: RECAPTCHA_PRIVATE_KEY
-        sync: false
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+Key env vars set in `render.yaml` for `basketful-api`: `DATABASE_URL` and `REDIS_URL` (both wired via `fromDatabase`/`fromService`), `SECRET_KEY` and `HASHIDS_SALT` (`generateValue: true`), `DEBUG=False`, `DJANGO_ENV=prod`, `ALLOWED_HOSTS=.onrender.com`, `CSRF_TRUSTED_ORIGINS=https://basketful-api.onrender.com`, `AUTH_COOKIE_SECURE=True`, `AUTH_COOKIE_SAMESITE=Lax`, and `RECAPTCHA_PUBLIC_KEY`/`RECAPTCHA_PRIVATE_KEY` (`sync: false` — set manually in the Render dashboard). Both static frontend services set `VITE_API_URL=https://basketful-api.onrender.com` at build time and add an `X-Frame-Options: SAMEORIGIN` header plus an SPA rewrite route (`/*` → `/index.html`).
 
-  # Admin Frontend
-  - type: web
-    name: basketful-admin
-    runtime: static
-    buildCommand: cd frontend && npm ci && npm run build
-    staticPublishPath: frontend/dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://basketful-api.onrender.com
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-
-  # Participant Frontend  
-  - type: web
-    name: basketful-participant
-    runtime: static
-    buildCommand: cd participant-frontend && npm ci && npm run build
-    staticPublishPath: participant-frontend/dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://basketful-api.onrender.com
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-
-  # Celery Worker
-  - type: worker
-    name: basketful-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A core worker -l INFO
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: basketful-db
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-```
+Note: unlike the Docker Compose paths above, this Render blueprint does not set `MAILGUN_API_KEY`/`MAILGUN_SENDER_DOMAIN`/`DEFAULT_FROM_EMAIL` — add those manually in the Render dashboard if you need production email to work.
 
 ---
 
@@ -597,17 +574,23 @@ export default defineConfig({
 
 ### Environment Variables for Frontends
 
-Create `.env.production` in each frontend:
+`VITE_API_URL` and `VITE_BASE_PATH` are **Vite build-time variables**, not runtime container env vars — they get compiled into the static JS bundle at `npm run build` / `vite build` time (see `frontend/vite.config.ts` `base` above, and the `ARG`/`ENV` lines in `frontend/Dockerfile` and `participant-frontend/Dockerfile`). How you set them depends on which deployment path you're using:
 
-**frontend/.env.production**:
-```
-VITE_API_URL=https://yourdomain.com/api
-```
+- **Building locally / on a VPS** (Option 1 step 4, Option 3): create `.env.production` in each frontend directory before running the build:
 
-**participant-frontend/.env.production**:
-```
-VITE_API_URL=https://yourdomain.com/api
-```
+  **frontend/.env.production**:
+  ```
+  VITE_API_URL=https://yourdomain.com/api
+  ```
+
+  **participant-frontend/.env.production**:
+  ```
+  VITE_API_URL=https://yourdomain.com/api
+  ```
+
+- **Render static sites** (Option 2): set as `envVars` directly in `render.yaml` at build time (already wired to `https://basketful-api.onrender.com`).
+
+- **Pulling the CI-built Docker images** (Option 1 step 5, `docker-compose.prod.images.yml`): these values are **already baked in** by `.github/workflows/frontend-ci.yml`'s `build-args` — `VITE_API_URL=/api/v1` and `VITE_BASE_PATH=/new/admin/` (admin) or `/new/cart/` (participant) for every branch/tag (see [CI.md](CI.md)). You cannot override them by setting env vars on the running container; you'd need to rebuild the image yourself with different `--build-arg` values if you need different paths.
 
 ---
 
@@ -694,6 +677,18 @@ docker-compose -f docker-compose.prod.images.yml exec api python manage.py migra
 ---
 
 ## Quick Reference
+
+### Real production routing (`nginx/conf.d/basketful.conf`)
+
+| URL Path | Service | Description |
+|----------|---------|-------------|
+| `/` | Django (Gunicorn, `127.0.0.1:8080`) | Main app, Django admin, REST API — all unprefixed paths |
+| `/new/admin/` | Admin Frontend (`127.0.0.1:8081`) | Staff dashboard (react-admin) |
+| `/new/cart/` | Participant Frontend (`127.0.0.1:8082`) | Shopping portal |
+
+Static/media are served from S3-compatible object storage (`USE_S3=True`), not from nginx.
+
+### Self-hosted template (Option 1's generic `nginx/conf.d/default.conf`, no S3)
 
 | URL Path | Service | Description |
 |----------|---------|-------------|

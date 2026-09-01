@@ -1,6 +1,6 @@
 # Customer Number System
 
-> Last updated: January 2026
+> Last updated: 2026-07-13
 
 ## Overview
 The customer number system generates spoken-friendly, warehouse-optimized identifiers for participants. These numbers are designed to be easily communicated verbally in noisy environments while including error detection.
@@ -68,17 +68,55 @@ def calculate_check_digit(code: str) -> int:
 ### Validation
 
 ```python
-validate_customer_number("C-BKM-7")
-# Returns: (True, None)
+validate_customer_number("C-BKM-8")
+# Returns: (True, "")
 
 validate_customer_number("C-BKM-9")  # Wrong check digit
-# Returns: (False, "Invalid check digit...")
+# Returns: (False, "Check digit mismatch: expected 8, got 9")
 
 validate_customer_number("INVALID")
-# Returns: (False, "Format must be C-XXX-D...")
+# Returns: (False, "Invalid format: must be C-XXX-D")
 ```
 
+### Normalization (login-time input cleanup)
+
+Participants typing a customer number from a printed card don't always type
+the literal ASCII hyphen. `normalize_customer_number()` cleans up common
+input variants before validation/lookup:
+
+- En-dash (`–`), em-dash (`—`), figure-dash, minus sign, soft hyphen → ASCII hyphen
+- Spaces used as separators (`C BKM 7`) → removed
+- No separator at all (`CBKM7`) → reformatted to `C-BKM-7`
+- Lowercase (`c-bkm-7`) → uppercased
+
+```python
+normalize_customer_number("c bkm 7")   # -> "C-BKM-7"
+normalize_customer_number("C–BKM–7")   # en-dash -> "C-BKM-7"
+normalize_customer_number("CBKM7")     # -> "C-BKM-7"
+```
+
+This is wired into login: `FlexibleTokenObtainPairSerializer.validate()`
+(`apps/account/api/jwt_serializers.py`) calls `normalize_customer_number()`
+then `validate_customer_number()` on any identifier that looks like a
+customer number, before looking up the `Participant`. An invalid check digit
+surfaces as a specific error (`"Check digit mismatch: expected 8, got 7"`)
+rather than a generic "not found" message.
+
+**Implementation:** `apps/account/utils/warehouse_id.py::normalize_customer_number()`
+
 ## Usage
+
+### Login
+Participants can log in with **either** their customer number or their
+Django username — `FlexibleTokenObtainPairSerializer`
+(`apps/account/api/jwt_serializers.py`) detects which one was entered (an
+identifier starting with `C` and at least 5 characters is treated as a
+customer number) and resolves it to the linked `User` account. The
+onboarding email (see `apps/log` `EmailType` "onboarding") currently leads
+with the username and lists the customer number as a secondary credential —
+this was changed back from customer-number-first in migration
+`apps/log/migrations/0017_onboarding_email_username_wording.py` (Issue #83),
+since staff and participants use the username day-to-day.
 
 ### Display on Orders
 Customer numbers appear on:
@@ -86,6 +124,7 @@ Customer numbers appear on:
 - Admin participant lists
 - Cart displays
 - Warehouse pick sheets
+- Welcome cards printed at intake (see [BULK_PARTICIPANT_CREATE_WELCOME_CARDS.md](BULK_PARTICIPANT_CREATE_WELCOME_CARDS.md))
 
 ### Manual Entry
 Warehouse staff can verify numbers by:
@@ -103,15 +142,15 @@ Warehouse staff can verify numbers by:
 ## Migration
 
 ### Schema Migration
-```sql
-ALTER TABLE account_participant 
-ADD COLUMN customer_number VARCHAR(10) UNIQUE;
-```
+`apps/account/migrations/0002_participant_customer_number.py` adds the
+`customer_number` field (`CharField`, `max_length=10`, `unique=True`,
+`blank=True`, `null=True`) to `Participant`.
 
 ### Data Migration
-- Generates numbers for all existing participants
-- Tracks generated numbers to prevent collisions
-- Reversible (removes all numbers)
+`apps/account/migrations/0003_populate_customer_numbers.py`:
+- Generates numbers for all existing participants missing one
+- Tracks generated numbers within the batch to prevent in-run collisions (plus a DB existence check)
+- Reversible (`reverse_populate_customer_numbers` clears all numbers back to `null`)
 
 ## Benefits
 
@@ -159,10 +198,11 @@ def save(self, *args, **kwargs):
 
 ## Testing
 
-Run validation tests:
-```bash
-pytest apps/account/tests/ -k warehouse_id
-```
+There is currently no dedicated pytest module for
+`apps/account/utils/warehouse_id.py` (no `warehouse_id`-matching tests exist
+under `apps/account/tests/` as of this writing). Coverage of customer-number
+generation/validation is indirect, via participant-creation tests elsewhere
+in `apps/account/tests/`.
 
 ## Future Enhancements
 

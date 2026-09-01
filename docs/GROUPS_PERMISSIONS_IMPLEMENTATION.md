@@ -1,22 +1,45 @@
 # Groups & Permissions Implementation Summary
 
+> Last updated: 2026-07-13
+
 ## Overview
-Implemented a comprehensive JWT-based groups and permissions system integrating Django REST Framework with React Admin. This follows industry best practices for RBAC (Role-Based Access Control) with a hybrid approach: groups in JWT token claims, detailed permissions fetched from API and cached.
+Implemented a groups and permissions system (RBAC) integrating Django REST
+Framework with React Admin. Login is cookie-based: JWT access/refresh
+tokens are set as httpOnly cookies and never touch client-side JavaScript.
+Groups and effective permissions are **not** carried in JWT claims read by
+the client — the frontend fetches them from a dedicated REST endpoint
+(`GET /api/v1/users/me/permissions/`) and caches the result in
+`localStorage` for 30 minutes. (An earlier design added groups directly to
+JWT claims via `CustomTokenObtainPairSerializer` — that class still exists
+in `jwt_serializers.py` but is not wired to any URL; the endpoints actually
+used by the app resolve tokens through `FlexibleTokenObtainPairSerializer`
+instead. See "Architecture Decisions" below.)
 
 ## Backend Implementation (Django)
 
 ### 1. Custom JWT Serializer
 **File**: `apps/account/api/jwt_serializers.py`
 
-Created `CustomTokenObtainPairSerializer` that extends JWT tokens with:
+`CustomTokenObtainPairSerializer` extends JWT tokens with:
 - `username`: User's username
 - `email`: User's email address
 - `is_staff`: Staff status boolean
 - `is_superuser`: Superuser status boolean
 - `groups`: Array of group names (e.g., ["Administrators", "Order Managers"])
 - `group_ids`: Array of group IDs for efficient lookups
+- `can_bypass_order_transitions`: baked-in escape-hatch permission flag (`user.has_perm('orders.can_bypass_order_transitions')`)
 
-**Token size**: ~600 bytes with 2-3 groups
+**Status: not currently wired to a URL.** No view in the codebase uses
+`CustomTokenObtainPairSerializer` (there is no `CustomTokenObtainPairView`).
+The app's actual authentication endpoints —
+`FlexibleTokenObtainPairView` (`/api/v1/token/`) and the cookie-based
+`CookieTokenObtainView` (`/api/v1/auth/login/`) — both use
+`FlexibleTokenObtainPairSerializer` instead, which accepts either a customer
+number or a username but does **not** override `get_token()`, so its JWTs
+carry only the default `rest_framework_simplejwt` claims (no groups,
+no `is_staff`, no permission flags). Groups/permissions reach the frontend
+exclusively through the `GET /api/v1/users/me/permissions/` endpoint
+described below.
 
 ### 2. Groups & Permissions API
 **File**: `apps/account/api/serializers.py`
@@ -37,39 +60,48 @@ Created three new viewsets:
 **Files**: `apps/account/api/urls.py`, `apps/api/urls.py`
 
 - Registered `/api/v1/groups/` and `/api/v1/permissions/` routes
-- Updated `/api/v1/token/` to use `CustomTokenObtainPairView`
-- Added `/api/v1/users/me/permissions/` endpoint
+- `/api/v1/token/` uses `FlexibleTokenObtainPairView` (customer-number-or-username login, plain JWT response body — not the cookie flow, not `CustomTokenObtainPairSerializer`)
+- Added `/api/v1/users/me/permissions/` endpoint (`UserViewSet.my_permissions`)
+- The production React Admin app logs in via the cookie-based
+  `/api/v1/auth/login/`, `/api/v1/auth/refresh/`, `/api/v1/auth/logout/`,
+  `/api/v1/auth/me/` endpoints (`apps/account/api/auth_views.py`), not
+  `/api/v1/token/`
 
 ### 4. Management Command
 **File**: `apps/account/management/commands/setup_groups.py`
 
-Created `setup_groups` command that creates 7 default groups:
+`setup_groups` creates 7 default groups (`apps/account/management/commands/setup_groups.py`):
 
-1. **Administrators** (169 permissions)
-   - Full access to all features except superuser-only operations
+1. **Administrators**
+   - All `Permission` objects in the database (`Permission.objects.all()`) — this
+     grows automatically as new apps/models are added, so the exact count is
+     not fixed and should not be treated as a stable number
    
-2. **Order Managers** (16 permissions)
-   - Full CRUD on orders, order items, combined orders
-   - View access to participants, programs, products, categories
+2. **Order Managers**
+   - Full CRUD on `orders.order`, `orders.orderitem`, `orders.combinedorder`
+   - View access to `account.participant`, `lifeskills.program`, `pantry.product`, `pantry.category`
    
-3. **Voucher Coordinators** (6 permissions)
-   - Full CRUD on vouchers
-   - View access to participants and programs
+3. **Voucher Coordinators**
+   - Full CRUD on `voucher.voucher`
+   - View access to `account.participant`, `lifeskills.program`
    
-4. **Program Coordinators** (10 permissions)
-   - Full CRUD on programs and participants
-   - View access to vouchers and orders
+4. **Program Coordinators**
+   - Full CRUD on `lifeskills.program`, `account.participant`
+   - View access to `voucher.voucher`, `orders.order`
    
-5. **Inventory Managers** (10 permissions)
-   - Full CRUD on pantry products and categories
-   - View access to orders and order items
+5. **Inventory Managers**
+   - Full CRUD on `pantry.product`, `pantry.category`
+   - View access to `orders.order`, `orders.orderitem`
    
-6. **Staff** (18 permissions)
-   - Add, change, view permissions for most models (no delete)
-   - Covers orders, vouchers, participants, programs, products
+6. **Staff**
+   - Add/change/view (no delete) on `orders.order`, `orders.orderitem`, `voucher.voucher`, `account.participant`, `lifeskills.program`, `pantry.product`
    
-7. **Read-Only** (8 permissions)
-   - View-only access to all resources
+7. **Read-Only**
+   - View-only on `orders.order`, `orders.orderitem`, `orders.combinedorder`, `voucher.voucher`, `account.participant`, `lifeskills.program`, `pantry.product`, `pantry.category`
+
+Re-running the command clears and recreates permissions on existing groups
+(`group.permissions.clear()` then re-add), so it's safe to re-run after
+adding new models/permissions.
 
 **Run**: `python manage.py setup_groups`
 
@@ -78,27 +110,30 @@ Created `setup_groups` command that creates 7 default groups:
 ### 1. Auth Provider Updates
 **File**: `frontend/src/providers/authProvider.ts`
 
-Updated `DecodedToken` interface to include:
+There is no client-side JWT decoding — tokens live in httpOnly cookies set
+by the backend and are never read by JavaScript. `login()` posts
+`username`/`password`/`recaptcha_token` to `/auth/login/`; the response body
+contains a `user` object (not a JWT) which is cached in `localStorage` under
+`basketful_admin_user`:
+
 ```typescript
-interface DecodedToken {
-  exp: number;
-  user_id: number;
+interface UserData {
+  id: number;
   username: string;
-  email?: string;
-  is_staff?: boolean;
-  is_superuser?: boolean;
+  email: string;
+  is_staff: boolean;
+  is_superuser: boolean;
   groups?: string[];
   group_ids?: number[];
 }
 ```
 
-Updated `getPermissions()` method:
-- Checks localStorage cache (30-minute TTL)
-- Fetches from `/api/v1/users/me/permissions/` if cache expired
-- Caches response in localStorage
-- Falls back to token data if API fails
+`getPermissions()`:
+- Checks a `localStorage` cache (`userPermissions` / `permissionsCacheTime`, 30-minute TTL)
+- Fetches from `GET /api/v1/users/me/permissions/` if the cache is missing or expired, and caches the response
+- On fetch failure, falls back to `{ groups, group_ids, is_staff, is_superuser }` from the cached `UserData` plus an empty `permissions` array (note: the `/auth/login/` response and the `/users/me/permissions/` endpoint don't actually populate `group_ids` today — only `groups` by name — so this fallback field is typically empty)
 
-Updated `logout()` to clear permissions cache
+`logout()` calls `POST /auth/logout/` and clears the cached user and permissions from `localStorage`. `checkAuth()` verifies the session via `GET /auth/me/` on each app load.
 
 ### 2. Permission Context
 **File**: `frontend/src/contexts/PermissionContext.tsx`
@@ -177,9 +212,17 @@ Created full CRUD interface for users:
 ## Architecture Decisions
 
 ### JWT Token Structure
-- **What's included**: Groups only (not detailed permissions)
-- **Why**: Keeps token size manageable (~600 bytes), groups rarely change
-- **Trade-off**: Need API call for detailed permissions
+- **What's actually included today**: Nothing beyond the default SimpleJWT
+  claims. The live login endpoints (`/api/v1/auth/login/` and
+  `/api/v1/token/`) both authenticate through
+  `FlexibleTokenObtainPairSerializer`, which does not override `get_token()`.
+  `CustomTokenObtainPairSerializer` (which *would* add `groups`, `group_ids`,
+  `is_staff`, `is_superuser`, `can_bypass_order_transitions` to the token)
+  is defined but unused — no view references it.
+- **How the frontend actually gets groups/permissions**: a dedicated
+  `GET /api/v1/users/me/permissions/` call, cached client-side. Tokens
+  themselves stay in httpOnly cookies and are never inspected by JS.
+- **Trade-off**: An extra network round-trip for permissions on cache miss, but simpler than keeping JWT claims and DB state in sync, and it means permission changes take effect within the 30-minute cache window without needing the user to log out/in.
 
 ### Permission Caching
 - **Strategy**: 30-minute localStorage cache
@@ -199,8 +242,12 @@ Created full CRUD interface for users:
 ## API Endpoints
 
 ### Authentication
-- `POST /api/v1/token/` - Get JWT access/refresh tokens (includes groups in claims)
-- `POST /api/v1/token/refresh/` - Refresh access token
+- `POST /api/v1/auth/login/` - Cookie-based login (requires `recaptcha_token`); sets httpOnly `access_token`/`refresh_token` cookies, returns `user` in the response body. **This is what the React Admin app actually uses.**
+- `POST /api/v1/auth/refresh/` - Rotates the refresh token cookie
+- `POST /api/v1/auth/logout/` - Blacklists the refresh token, clears cookies
+- `GET /api/v1/auth/me/` - Returns the current user + linked participant
+- `POST /api/v1/token/` - Legacy/direct JWT endpoint (`FlexibleTokenObtainPairView`); returns access/refresh tokens in the response body instead of cookies. Does **not** include groups in claims (see Architecture Decisions above).
+- `POST /api/v1/token/refresh/` - Refresh access token via the body-based flow
 
 ### Groups & Permissions
 - `GET /api/v1/groups/` - List all groups
@@ -223,14 +270,12 @@ Created full CRUD interface for users:
 
 ### Backend Tests
 ```bash
-# Test JWT token includes groups
+# Get tokens via the direct JWT endpoint (body-based, no cookies, no groups in claims)
 curl -X POST http://localhost:8000/api/v1/token/ \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "password"}'
 
-# Decode JWT to verify groups claim
-
-# Test permissions endpoint
+# Test permissions endpoint (this is where groups/permissions actually come from)
 curl http://localhost:8000/api/v1/users/me/permissions/ \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 
@@ -239,8 +284,14 @@ curl http://localhost:8000/api/v1/groups/ \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
+Note: the real login path (`/api/v1/auth/login/`) requires a
+`recaptcha_token` and returns tokens as httpOnly cookies rather than in the
+response body, so it isn't directly curl-friendly without a valid reCAPTCHA
+token (or the `test-private-key` bypass — see `verify_recaptcha()` in
+`apps/account/api/auth_views.py`).
+
 ### Frontend Tests
-1. Log in and check JWT token includes groups
+1. Log in and confirm `localStorage['userPermissions']` is populated after the `/users/me/permissions/` call (not from decoding a token — there isn't one to decode client-side)
 2. Navigate to Users, Groups, Permissions resources
 3. Create a new group, assign permissions
 4. Create a user, assign to groups

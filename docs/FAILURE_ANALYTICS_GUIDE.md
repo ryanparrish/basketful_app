@@ -1,12 +1,14 @@
 # Order Failure Analytics - Quick Reference Guide
 
+> Last updated: 2026-07-13
+
 ## Overview
-New API endpoints and admin interface for monitoring and debugging failed order submissions.
+API endpoints and admin interface for monitoring and debugging failed order submissions. Backed by the `FailedOrderAttempt` model in `apps/orders/models.py`. These are `@action` methods on the `OrderViewSet` (`apps/orders/api/views.py`), not standalone views — the API is versioned under `/api/v1/`, so their full paths are `/api/v1/orders/failure-analytics/` and `/api/v1/orders/recent-failures/`.
 
 ## API Endpoints
 
 ### 1. Failure Analytics
-**Endpoint:** `GET /api/orders/failure-analytics/`
+**Endpoint:** `GET /api/v1/orders/failure-analytics/`
 
 **Authentication:** Required (Staff only)
 
@@ -18,15 +20,15 @@ New API endpoints and admin interface for monitoring and debugging failed order 
 ```bash
 # Get last 7 days of failures
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/failure-analytics/
+  http://localhost:8000/api/v1/orders/failure-analytics/
 
 # Get last 30 days
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/failure-analytics/?days=30
+  http://localhost:8000/api/v1/orders/failure-analytics/?days=30
 
 # Get failures for specific participant
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/failure-analytics/?participant_id=123
+  http://localhost:8000/api/v1/orders/failure-analytics/?participant_id=123
 ```
 
 **Response Structure:**
@@ -77,7 +79,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ---
 
 ### 2. Recent Failures
-**Endpoint:** `GET /api/orders/recent-failures/`
+**Endpoint:** `GET /api/v1/orders/recent-failures/`
 
 **Authentication:** Required (Staff only)
 
@@ -89,15 +91,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```bash
 # Get last 50 failures
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/recent-failures/
+  http://localhost:8000/api/v1/orders/recent-failures/
 
 # Get last 100 failures
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/recent-failures/?limit=100
+  http://localhost:8000/api/v1/orders/recent-failures/?limit=100
 
 # Get recent failures for participant
 curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/orders/recent-failures/?participant_id=123
+  http://localhost:8000/api/v1/orders/recent-failures/?participant_id=123
 ```
 
 **Response Structure:**
@@ -121,7 +123,7 @@ curl -H "Authorization: Bearer $TOKEN" \
       "hygiene_balance": "10.00",
       "program_pause_active": true,
       "program_pause_name": "Weekoff",
-      "voucher_multiplier": "2.0",
+      "voucher_multiplier": 2,
       "active_voucher_count": 0,
       "validation_errors": [
         "Food balance exceeded: $240.00 > $250.00"
@@ -141,6 +143,13 @@ curl -H "Authorization: Bearer $TOKEN" \
 - Review recent error context
 - Verify validation logic working correctly
 - Export data for analysis
+
+---
+
+### 3. Failed Order Attempts (standard REST resource)
+**Endpoint:** `GET /api/v1/failed-order-attempts/`
+
+A regular DRF router resource (`FailedOrderAttemptViewSet`, read-only + delete) alongside the two custom analytics actions above. Supports the standard list/retrieve/filter/search/ordering query params (`?participant=`, `?program_pause_active=`, `?search=`, `?ordering=`) and pagination, rather than the bespoke summary shape of `failure-analytics`/`recent-failures`. `DELETE /api/v1/failed-order-attempts/<id>/` is restricted to superusers (403 otherwise) — mirrors the admin's delete restriction.
 
 ---
 
@@ -272,12 +281,13 @@ Sample records:
 - Returns HTTP 429 (Too Many Requests) when exceeded
 
 ### Exponential Backoff
-After failed order attempts:
+After failed order attempts (`apps/orders/api/throttles.py`, formula `min(2**failure_count, 60)` seconds):
 - 1st failure: 2 seconds wait
 - 2nd failure: 4 seconds wait
 - 3rd failure: 8 seconds wait
 - 4th failure: 16 seconds wait
-- 5th+ failure: 60 seconds wait (max)
+- 5th failure: 32 seconds wait
+- 6th+ failure: 60 seconds wait (capped — 2^6=64 exceeds the cap)
 
 **Reset:** After 1 hour of no failures, counter resets
 
@@ -295,7 +305,7 @@ After failed order attempts:
 **Step 1: Check Recent Failures**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/orders/recent-failures/?participant_id=123&limit=5"
+  "http://localhost:8000/api/v1/orders/recent-failures/?participant_id=123&limit=5"
 ```
 
 **Step 2: Review Error Context**
@@ -331,7 +341,7 @@ Create custom dashboard using analytics API:
 
 ```javascript
 // Fetch last 7 days analytics
-const analytics = await fetch('/api/orders/failure-analytics/?days=7');
+const analytics = await fetch('/api/v1/orders/failure-analytics/?days=7');
 const data = await analytics.json();
 
 // Display metrics
@@ -412,12 +422,17 @@ echo "Cleanup completed at $(date)" >> /var/log/basketful/cleanup.log
 ## Troubleshooting
 
 ### Redis Connection Issues
-**Symptom:** Log warnings "Redis unavailable for idempotency check"
+There are two independent Redis-backed safeguards in `apps/orders/utils/order_services.py`, and they fail differently on purpose:
 
-**Impact:** 
-- Orders still process (graceful degradation)
-- No duplicate protection or distributed locking
-- No exponential backoff
+**`check_duplicate_submission` (idempotency check) — fails OPEN**
+- **Symptom:** Log warnings "Redis unavailable for idempotency check"
+- **Impact:** Orders still process; duplicate-submission detection is skipped for the duration of the outage (better to risk a rare double-order than to block all ordering on a cache blip).
+
+**`distributed_order_lock` (per-participant lock) — fails CLOSED**
+- **Symptom:** Log criticals "Redis unavailable for distributed lock ... Order submission blocked until Redis recovers."
+- **Impact:** Order submission is blocked entirely while Redis is down. This is intentional — allowing orders through without the lock would open the full double-confirm/double-spend race window on every node during a Redis failover. See the comment above `distributed_order_lock()` for the reasoning.
+
+Exponential backoff (`apps/orders/api/throttles.py`) uses the same cache backend as both of the above, so it is also unavailable during a Redis outage (`get_backoff_time`/`increment_failure_count` fail safe and return 0, i.e. no backoff applied rather than blocking).
 
 **Solution:**
 ```bash

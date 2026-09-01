@@ -1,8 +1,16 @@
 # Mailgun Delivery Intelligence — Architecture Doc
 
-> **Status**: Future milestone — not yet built.
+> Last updated: 2026-07-13
+>
+> **Status**: Future milestone — not yet built. Everything below (`CommunicationEvent`, `CommunicationMessage`,
+> `ParticipantReachabilityScore`, the Mailgun webhook, the reachability dashboard, the participant inbox) is still
+> pure roadmap — none of it exists in the codebase today. Confirmed absent as of this review: no webhook URL is
+> registered anywhere (`core/urls.py` has no `webhooks/` path and `ANYMAIL` has no `MAILGUN_WEBHOOK_SIGNING_KEY`),
+> and there is no `CommunicationEvent`/`CommunicationMessage`/`ParticipantReachabilityScore` model or `InboxPage`
+> in either frontend.
+>
 > This document describes the "Wild" evolution of the [Medium] Mailgun delivery status feature.
-> The Medium build (polling + `delivery_status` field) must be complete before beginning this work.
+> **The Medium prerequisite is now done** — see "Phased Rollout" below — so this work is unblocked whenever it's prioritized.
 
 ---
 
