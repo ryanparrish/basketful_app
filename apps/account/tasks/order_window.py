@@ -48,6 +48,16 @@ def notify_participants_order_window_opened():
         )
         return
 
+    # Global "double/triple order" gate: True for the 10-14 day window before
+    # a pause starts, when vouchers created now are worth 2x or 3x. Computed
+    # once per run (ProgramPause has no per-program FK) via the authoritative
+    # Python property rather than the (unrelated, currently mismatched)
+    # ProgramPauseQuerySet.active() annotation.
+    upcoming_pauses = ProgramPause.objects.filter(pause_end__gte=now)
+    gate_pause = next((p for p in upcoming_pauses if p.is_active_gate), None)
+    is_double_week = bool(gate_pause and gate_pause.multiplier == 2)
+    is_triple_week = bool(gate_pause and gate_pause.multiplier == 3)
+
     programs = Program.objects.prefetch_related('participant_set__user').all()
 
     for program in programs:
@@ -119,6 +129,8 @@ def notify_participants_order_window_opened():
                         user_id=user.id,
                         program_name=program.name,
                         closes_at_str=closes_at_str,
+                        is_double_week=is_double_week,
+                        is_triple_week=is_triple_week,
                     )
                     dispatched += 1
                 except Exception:

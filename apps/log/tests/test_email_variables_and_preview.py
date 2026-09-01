@@ -86,6 +86,11 @@ class TestVariableRegistry:
         assert context['program_name']
         assert context['participant_customer_number']
 
+    def test_sample_context_includes_double_week_variables(self):
+        context = build_sample_context('order_window_opened')
+        assert context['is_double_week'] is True
+        assert context['is_triple_week'] is True
+
 
 # ---------------------------------------------------------------------------
 # Migration 0017 wording

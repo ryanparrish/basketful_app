@@ -105,6 +105,16 @@ EMAIL_TYPE_VARIABLES = {
             'Display name of the participant.', 'Maria Garcia'),
         _PARTICIPANT_CUSTOMER_NUMBER,
         _PARTICIPANT_FRONTEND_URL,
+        EmailVariable(
+            'is_double_week', 'Double order week',
+            'True when this order counts double toward vouchers (the '
+            '10-14 day window before a short program pause). Use with '
+            '{% if is_double_week %}...{% endif %}.', True),
+        EmailVariable(
+            'is_triple_week', 'Triple order week',
+            'True when this order counts triple toward vouchers (the '
+            '10-14 day window before an extended program pause). Use with '
+            '{% if is_triple_week %}...{% endif %}.', True),
     ],
     'low_inventory_alert': [
         EmailVariable(

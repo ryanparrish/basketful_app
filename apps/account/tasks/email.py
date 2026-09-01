@@ -279,7 +279,9 @@ def send_password_reset_email(user_id, force=False):
 
 
 @shared_task
-def send_order_window_opened_notification(user_id, program_name, closes_at_str, force=False):
+def send_order_window_opened_notification(
+    user_id, program_name, closes_at_str, is_double_week=False, is_triple_week=False, force=False
+):
     """Send an order-window-opened notification to a single participant.
 
     Args:
@@ -289,6 +291,10 @@ def send_order_window_opened_notification(user_id, program_name, closes_at_str, 
                        e.g. "Monday, June 3 at 9:00 AM", formatted in the
                        application's configured timezone (settings.TIME_ZONE).
                        Shown directly in the email body.
+        is_double_week: True when this order counts double toward vouchers
+                        (10-14 days before a short ProgramPause).
+        is_triple_week: True when this order counts triple toward vouchers
+                        (10-14 days before an extended ProgramPause).
         force:         If True, bypass the per-cycle deduplication guard.
     """
     try:
@@ -300,6 +306,8 @@ def send_order_window_opened_notification(user_id, program_name, closes_at_str, 
     extra_context = {
         'program_name': program_name,
         'closes_at': closes_at_str,
+        'is_double_week': is_double_week,
+        'is_triple_week': is_triple_week,
         'participant_frontend_url': get_email_settings().get_participant_frontend_url(),
     }
     try:

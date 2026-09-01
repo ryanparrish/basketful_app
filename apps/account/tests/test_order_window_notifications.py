@@ -354,6 +354,124 @@ def test_email_sent_during_pre_pause_double_order_week(monday_program, email_typ
 
     mock_send = _run_task_frozen_at(frozen_now)
     mock_send.assert_called_once()
+    call_kwargs = mock_send.call_args.kwargs
+    # 7 days out is BEFORE the 10-14 day gate — this is a normal week, not
+    # a double week yet, even though a pause is scheduled.
+    assert call_kwargs["is_double_week"] is False
+    assert call_kwargs["is_triple_week"] is False
+
+
+# ---------------------------------------------------------------------------
+# 9b. Double/triple-week flags — computed from the pre-pause gate window
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_double_week_flag_set_for_short_pre_pause_pause(monday_program, email_type):
+    """A short pause (<14 days) 10-14 days out sets is_double_week only."""
+    _make_participant_with_user(monday_program, suffix="dw")
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    pause_start = frozen_now + timedelta(days=12)
+    ProgramPause.objects.create(
+        pause_start=pause_start,
+        pause_end=pause_start + timedelta(days=5),
+        reason="Short pause",
+    )
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["is_double_week"] is True
+    assert call_kwargs["is_triple_week"] is False
+
+
+@pytest.mark.django_db
+def test_triple_week_flag_set_for_extended_pre_pause_pause(monday_program, email_type):
+    """An extended pause (>=14 days) 10-14 days out sets is_triple_week only."""
+    _make_participant_with_user(monday_program, suffix="tw")
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    pause_start = frozen_now + timedelta(days=12)
+    ProgramPause.objects.create(
+        pause_start=pause_start,
+        pause_end=pause_start + timedelta(days=20),
+        reason="Extended pause",
+    )
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["is_triple_week"] is True
+    assert call_kwargs["is_double_week"] is False
+
+
+@pytest.mark.django_db
+def test_no_upcoming_pause_flags_false(monday_program, email_type):
+    """With no ProgramPause at all, both flags are explicitly False."""
+    _make_participant_with_user(monday_program, suffix="none")
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["is_double_week"] is False
+    assert call_kwargs["is_triple_week"] is False
+
+
+@pytest.mark.django_db
+def test_pause_outside_gate_window_flags_false(monday_program, email_type):
+    """A pause that exists but is too far out (>14 days) doesn't set either flag."""
+    _make_participant_with_user(monday_program, suffix="outside")
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    pause_start = frozen_now + timedelta(days=20)
+    ProgramPause.objects.create(
+        pause_start=pause_start,
+        pause_end=pause_start + timedelta(days=5),
+        reason="Far-out pause",
+    )
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["is_double_week"] is False
+    assert call_kwargs["is_triple_week"] is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "days_until_start,expect_double,expect_triple",
+    [
+        (9, False, False),
+        (10, True, False),
+        (14, True, False),
+        (15, False, False),
+    ],
+)
+def test_pause_gate_boundary(
+    monday_program, email_type, days_until_start, expect_double, expect_triple
+):
+    """Gate is exactly [10, 14] days-until-start inclusive; short pause duration."""
+    _make_participant_with_user(monday_program, suffix=f"b{days_until_start}")
+
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    frozen_now = opens_at + timedelta(minutes=1)
+
+    pause_start = frozen_now + timedelta(days=days_until_start)
+    ProgramPause.objects.create(
+        pause_start=pause_start,
+        pause_end=pause_start + timedelta(days=5),
+        reason="Boundary pause",
+    )
+
+    mock_send = _run_task_frozen_at(frozen_now)
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["is_double_week"] is expect_double
+    assert call_kwargs["is_triple_week"] is expect_triple
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +601,61 @@ def test_email_log_created_on_full_pipeline(monday_program, email_type):
     assert monday_program.name in html_body
     assert "Monday, June 3 at 9:00 AM" in html_body
     assert participant.customer_number in html_body
+
+
+# ---------------------------------------------------------------------------
+# 13b. Double-week reminder — the conditional actually renders/hides
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_double_week_reminder_renders_only_when_flag_true(monday_program, email_type):
+    """
+    Prove {% if is_double_week %} in staff-authored content actually gates
+    the reminder — asserting only the True case would also pass if the
+    marker were unconditionally in the template.
+    """
+    from django.test.utils import override_settings as _override
+    from apps.account.tasks.email import send_order_window_opened_notification
+    from core.models import EmailSettings
+
+    EmailSettings.get_settings()
+
+    email_type.html_content += "{% if is_double_week %}<p>DOUBLE-WEEK-MARKER</p>{% endif %}"
+    email_type.text_content += "{% if is_double_week %}DOUBLE-WEEK-MARKER{% endif %}"
+    email_type.save()
+
+    participant = _make_participant_with_user(monday_program, suffix="dwrender")
+
+    with _override(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
+        mail.outbox = []
+        send_order_window_opened_notification(
+            user_id=participant.user.id,
+            program_name=monday_program.name,
+            closes_at_str="Monday, June 3 at 9:00 AM",
+            is_double_week=True,
+            is_triple_week=False,
+            force=True,
+        )
+        assert len(mail.outbox) == 1
+        sent_true = mail.outbox[0]
+        assert "DOUBLE-WEEK-MARKER" in sent_true.body
+        html_body_true, _ = sent_true.alternatives[0]
+        assert "DOUBLE-WEEK-MARKER" in html_body_true
+
+        mail.outbox = []
+        send_order_window_opened_notification(
+            user_id=participant.user.id,
+            program_name=monday_program.name,
+            closes_at_str="Monday, June 3 at 9:00 AM",
+            is_double_week=False,
+            is_triple_week=False,
+            force=True,
+        )
+        assert len(mail.outbox) == 1
+        sent_false = mail.outbox[0]
+        assert "DOUBLE-WEEK-MARKER" not in sent_false.body
+        html_body_false, _ = sent_false.alternatives[0]
+        assert "DOUBLE-WEEK-MARKER" not in html_body_false
 
 
 # ---------------------------------------------------------------------------
