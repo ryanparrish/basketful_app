@@ -96,57 +96,18 @@
   const products = JSON.parse("{{ products_json|escapejs }}");
   const allProducts = JSON.parse("{{ all_products_json|escapejs }}");
   const sessionCart = JSON.parse("{{ session_cart|escapejs }}");
+  const cartToken = "{{ cart_token|escapejs }}";
 </script>
 
-<!-- Cart + Filter JS -->
+<!-- Cart data/persistence logic lives in cart.js (unit tested separately) -->
+<script src="{% static 'js/cart.js' %}"></script>
+
+<!-- Page-specific cart rendering + filter JS -->
 <script>
 (() => {
-  // ---------- CSRF & Cart Setup ----------
-  function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      for (let cookie of document.cookie.split(';')) {
-        cookie = cookie.trim();
-        if (cookie.startsWith(name + '=')) {
-          cookieValue = decodeURIComponent(cookie.slice(name.length + 1));
-          break;
-        }
-      }
-    }
-    return cookieValue;
-  }
-
-  const csrftoken = getCookie('csrftoken');
-  
-  // Initialize cart - the server's session cart is always authoritative
-  let cart = initializeCart();
-
-  function initializeCart() {
-    // sessionCart is always provided by the server, even as {} (e.g. right
-    // after a successful checkout) — trust it. localStorage has no way to
-    // tell "an abandoned cart worth restoring" apart from "just cleared",
-    // so falling back to it whenever the session looks empty resurrects
-    // old items after every checkout.
-    if (sessionCart != null) {
-      localStorage.setItem('cart', JSON.stringify(sessionCart));
-      return sessionCart;
-    }
-    return loadCartFromStorage();
-  }
-
-  function saveCartToStorage() {
-    localStorage.setItem('cart', JSON.stringify(cart));
-  }
-
-  function loadCartFromStorage() {
-    try {
-      const stored = localStorage.getItem('cart');
-      return stored ? JSON.parse(stored) : {};
-    } catch (e) {
-      console.warn("Cart data in localStorage is invalid.");
-      return {};
-    }
-  }
+  // Populate cart.js's module-level cart from the session (or a recovered
+  // local cart — see initializeCart in cart.js for the TTL/token logic).
+  setCart(initializeCart(sessionCart, cartToken));
 
   // ---------- Filter State Management ----------
   function saveFilterState(activeCategory) {
@@ -210,7 +171,7 @@
     mobileCartList.innerHTML = '';
     let total = 0;
 
-    for (const [productId, quantity] of Object.entries(cart)) {
+    for (const [productId, quantity] of Object.entries(getCart())) {
       const product = allProducts[productId];
       if (!product) continue;
 
@@ -241,8 +202,7 @@
     mobileCartList.querySelectorAll('.remove-item').forEach(button => {
       button.onclick = () => {
         const id = button.dataset.productId;
-        delete cart[id];
-        saveCartToStorage();
+        removeFromCart(id, cartToken);
         renderCart();
       };
     });
@@ -256,8 +216,7 @@
       const quantity = parseInt(quantityInput.value);
 
       if (quantity > 0) {
-        cart[productId] = (cart[productId] || 0) + quantity;
-        saveCartToStorage();
+        addToCart(productId, quantity, cartToken);
         quantityInput.value = 0;
         renderCart();
       }
@@ -267,28 +226,17 @@
   // ---------- Submit Order ----------
   function submitOrder() {
     // First, ensure cart is not empty
-    if (Object.keys(cart).length === 0) {
+    if (Object.keys(getCart()).length === 0) {
       alert("Your cart is empty. Please add items before submitting.");
       return;
     }
 
-    fetch("{% url 'update_cart' %}", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": csrftoken
-      },
-      body: JSON.stringify(cart)
-    })
-    .then(res => {
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      return res.json();
-    })
+    // Sync once more before redirecting — add/remove already syncs on
+    // every change, but this guarantees the session reflects the cart
+    // before checkout reads it, rather than trusting an in-flight sync.
+    syncCartWithServer(getCart())
     .then(data => {
       if (data.status === "ok") {
-        // Cart has been saved to session, now redirect
         window.location.href = "{% url 'review_order' %}";
       } else {
         alert("There was a problem submitting your cart: " + (data.message || "Unknown error"));

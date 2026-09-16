@@ -4,9 +4,12 @@
  */
 
 const {
+  CART_TTL_MS,
   initializeCart,
   saveCartToStorage,
   loadCartFromStorage,
+  cartStorageKey,
+  cartTimestampKey,
   addToCart,
   removeFromCart,
   updateCartQuantity,
@@ -333,6 +336,66 @@ describe('Cart Edge Cases - Session vs localStorage Conflicts', () => {
 
     const cart = initializeCart({});
     expect(cart).toEqual({});
+  });
+});
+
+describe('Cart Edge Cases - Reload/Back-Swipe Recovery (TTL + Session Token)', () => {
+  beforeEach(() => {
+    setCart({});
+    localStorage.clear();
+  });
+
+  test('recovers a fresh local cart when the session cart is empty (reload/back-swipe)', () => {
+    // Mirrors real shopping: add-to-cart persisted locally and synced, but
+    // a reload lands before the server round-trip is reflected back —
+    // sessionCart still looks empty even though the local cart is seconds old.
+    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
+    localStorage.setItem(cartTimestampKey('tok'), String(Date.now() - 1000));
+
+    expect(initializeCart({}, 'tok')).toEqual({ '1': 2 });
+    // Recovering re-syncs to the server so a second reload doesn't lose it again.
+    expect(global.fetch).toHaveBeenCalledWith('/update-cart/', expect.any(Object));
+  });
+
+  test('does not recover a local cart older than CART_TTL_MS', () => {
+    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
+    localStorage.setItem(cartTimestampKey('tok'), String(Date.now() - CART_TTL_MS - 1000));
+
+    expect(initializeCart({}, 'tok')).toEqual({});
+  });
+
+  test('does not recover a local cart with no recorded timestamp at all', () => {
+    // e.g. written before this fix shipped, or by a caller that bypassed
+    // saveCartToStorage. No freshness signal means treat it as stale.
+    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
+
+    expect(initializeCart({}, 'tok')).toEqual({});
+  });
+
+  test('scopes carts by token so a shared device cannot inherit another session\'s cart', () => {
+    localStorage.setItem(cartStorageKey('participant-a'), JSON.stringify({ '1': 5 }));
+    localStorage.setItem(cartTimestampKey('participant-a'), String(Date.now()));
+
+    // participant-b logs in on the same browser with a different token and
+    // an empty session cart — must not see participant-a's items.
+    expect(initializeCart({}, 'participant-b')).toEqual({});
+  });
+
+  test('addToCart/removeFromCart persist under the token-scoped key', () => {
+    addToCart('1', 3, 'tok');
+    expect(JSON.parse(localStorage.getItem(cartStorageKey('tok')))).toEqual({ '1': 3 });
+    expect(localStorage.getItem(cartStorageKey())).toBeNull();
+
+    removeFromCart('1', 'tok');
+    expect(JSON.parse(localStorage.getItem(cartStorageKey('tok')))).toEqual({});
+  });
+
+  test('every add/remove syncs to the server, not just Submit', () => {
+    addToCart('1', 1, 'tok');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    removeFromCart('1', 'tok');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });
 

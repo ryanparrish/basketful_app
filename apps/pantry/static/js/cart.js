@@ -3,6 +3,17 @@
  * Extracted from create_order.html for testing
  */
 
+// A local cart younger than this survives a session cart that looks empty
+// (a reload or back-swipe racing ahead of syncCartToServer). Older than
+// this, it's treated as genuinely abandoned and dropped — this is what
+// stops a stale cart from resurrecting the way it did before the fix in
+// commit c23d6a7. 30 minutes: OWASP's Session Management Cheat Sheet puts
+// idle timeouts for low-risk applications at 15-30 minutes, and cart
+// abandonment research treats ~30-60 minutes as the point a cart shifts
+// from "still shopping" to "abandoned but recoverable" — this sits at the
+// intersection of both.
+const CART_TTL_MS = 30 * 60 * 1000;
+
 // Cart state
 let cart = {};
 
@@ -24,39 +35,87 @@ function getCookie(name) {
 }
 
 /**
+ * localStorage key for a cart, scoped to cartToken when given. Scoping by
+ * a per-session token means a shared/kiosk device never hands one
+ * participant's leftover cart to the next person who logs in on it.
+ */
+function cartStorageKey(cartToken) {
+  return cartToken ? `cart:${cartToken}` : 'cart';
+}
+
+function cartTimestampKey(cartToken) {
+  return `${cartStorageKey(cartToken)}:updatedAt`;
+}
+
+function isLocalCartFresh(cartToken) {
+  const updatedAt = Number(localStorage.getItem(cartTimestampKey(cartToken)) || 0);
+  return updatedAt > 0 && (Date.now() - updatedAt) < CART_TTL_MS;
+}
+
+/**
  * Initialize cart from session or localStorage.
  *
- * sessionCart is always provided by the server, even as {} (e.g. right
- * after a successful checkout) — trust it. localStorage has no way to
- * tell "an abandoned cart worth restoring" apart from "just cleared", so
- * falling back to it whenever the session looks empty resurrects old
- * items after every checkout.
+ * A non-empty sessionCart is always authoritative — the browser already
+ * synced it, or checkout just cleared it server-side.
+ *
+ * An empty sessionCart is ambiguous: "nothing added yet", "just checked
+ * out", or "a reload/back-swipe raced ahead of the last add/remove's
+ * sync". Recover a *fresh* local cart (see CART_TTL_MS) rather than
+ * assume abandonment; anything older is dropped, same as before.
+ *
+ * sessionCart === null means no server signal was provided at all
+ * (defensive/legacy call sites) — fall back to localStorage unconditionally.
  */
-function initializeCart(sessionCart) {
-  if (sessionCart != null) {
-    localStorage.setItem('cart', JSON.stringify(sessionCart));
+function initializeCart(sessionCart, cartToken) {
+  if (sessionCart != null && Object.keys(sessionCart).length > 0) {
+    localStorage.setItem(cartStorageKey(cartToken), JSON.stringify(sessionCart));
+    localStorage.setItem(cartTimestampKey(cartToken), String(Date.now()));
     return sessionCart;
   }
-  return loadCartFromStorage();
+
+  if (sessionCart === null) {
+    return loadCartFromStorage(cartToken);
+  }
+
+  if (isLocalCartFresh(cartToken)) {
+    const localCart = loadCartFromStorage(cartToken);
+    if (Object.keys(localCart).length > 0) {
+      syncCartWithServer(localCart).catch(error => {
+        console.error('Error re-syncing recovered cart:', error);
+      });
+      return localCart;
+    }
+  }
+
+  localStorage.setItem(cartStorageKey(cartToken), JSON.stringify({}));
+  localStorage.setItem(cartTimestampKey(cartToken), String(Date.now()));
+  return {};
 }
 
 /**
  * Save cart to localStorage
  */
-function saveCartToStorage(cartData) {
-  localStorage.setItem('cart', JSON.stringify(cartData || cart));
-  
+function saveCartToStorage(cartData, cartToken) {
+  const data = cartData || cart;
+  localStorage.setItem(cartStorageKey(cartToken), JSON.stringify(data));
+  localStorage.setItem(cartTimestampKey(cartToken), String(Date.now()));
+
   // Send cart to server and get updated balances
-  syncCartWithServer(cartData || cart);
+  syncCartWithServer(data).catch(error => {
+    console.error('Error syncing cart:', error);
+  });
 }
 
 /**
- * Sync cart with server and update balance display
+ * Sync cart with server and update balance display. Returns the fetch
+ * promise so callers that need to know success/failure (e.g. before
+ * redirecting to checkout) can chain their own .then()/.catch() — callers
+ * that don't care can fire-and-forget with their own .catch(console.error).
  */
 function syncCartWithServer(cartData) {
   const csrftoken = getCookie('csrftoken');
-  
-  fetch('/update-cart/', {
+
+  return fetch('/update-cart/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -69,9 +128,7 @@ function syncCartWithServer(cartData) {
     if (data.status === 'ok' && data.balances) {
       updateCartBalances(data.balances);
     }
-  })
-  .catch(error => {
-    console.error('Error syncing cart:', error);
+    return data;
   });
 }
 
@@ -104,9 +161,9 @@ function updateCartBalances(balances) {
 /**
  * Load cart from localStorage
  */
-function loadCartFromStorage() {
+function loadCartFromStorage(cartToken) {
   try {
-    const stored = localStorage.getItem('cart');
+    const stored = localStorage.getItem(cartStorageKey(cartToken));
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
     console.warn("Cart data in localStorage is invalid.");
@@ -117,7 +174,7 @@ function loadCartFromStorage() {
 /**
  * Add item to cart
  */
-function addToCart(productId, quantity) {
+function addToCart(productId, quantity, cartToken) {
   // Validate product ID
   if (!productId || productId === 'undefined' || productId === 'null') {
     console.error('Invalid product ID');
@@ -152,27 +209,27 @@ function addToCart(productId, quantity) {
   }
   
   cart[productId] = (cart[productId] || 0) + quantity;
-  saveCartToStorage(cart);
+  saveCartToStorage(cart, cartToken);
   return true;
 }
 
 /**
  * Remove item from cart
  */
-function removeFromCart(productId) {
+function removeFromCart(productId, cartToken) {
   delete cart[productId];
-  saveCartToStorage(cart);
+  saveCartToStorage(cart, cartToken);
 }
 
 /**
  * Update item quantity in cart
  */
-function updateCartQuantity(productId, quantity) {
+function updateCartQuantity(productId, quantity, cartToken) {
   if (quantity <= 0) {
-    removeFromCart(productId);
+    removeFromCart(productId, cartToken);
   } else {
     cart[productId] = quantity;
-    saveCartToStorage(cart);
+    saveCartToStorage(cart, cartToken);
   }
 }
 
@@ -202,9 +259,9 @@ function calculateCartTotal(products) {
 /**
  * Clear entire cart
  */
-function clearCart() {
+function clearCart(cartToken) {
   cart = {};
-  saveCartToStorage(cart);
+  saveCartToStorage(cart, cartToken);
 }
 
 /**
@@ -224,9 +281,14 @@ function setCart(newCart) {
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    CART_TTL_MS,
     getCookie,
+    cartStorageKey,
+    cartTimestampKey,
+    isLocalCartFresh,
     initializeCart,
     saveCartToStorage,
+    syncCartWithServer,
     loadCartFromStorage,
     addToCart,
     removeFromCart,

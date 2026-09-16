@@ -1,6 +1,7 @@
 """Views for food ordering application."""
 # views.py
 # Standard library
+import hashlib
 import json
 import logging
 
@@ -149,10 +150,10 @@ def product_view(request):
     
     # Get existing cart from session for persistence
     session_cart = request.session.get("cart", {})
-    
+
     # Get participant balances for cart drawer
     participant_balances = participant.balances()
-    
+
     logger.info(f"Total products to display: {len(products_by_category)}")
 
     return render(
@@ -165,8 +166,21 @@ def product_view(request):
             "query": query,
             "session_cart": json.dumps(session_cart),
             "participant_balances": participant_balances,
+            "cart_token": get_cart_token(request),
         },
     )
+
+
+def get_cart_token(request):
+    """
+    Opaque identifier for this session's cart, scoped to the client's
+    localStorage key so a reload/back-swipe can recover an in-progress
+    cart without a shared/kiosk device handing one participant's leftover
+    cart to the next person who logs in on it.
+    """
+    if not request.session.session_key:
+        request.session.save()
+    return hashlib.sha256(request.session.session_key.encode()).hexdigest()[:16]
 
 
 @require_POST

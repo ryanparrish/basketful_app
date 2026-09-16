@@ -26,11 +26,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    { name: 'setup', testMatch: /auth\.setup\.ts/, testIgnore: /legacy\// },
     {
       name: 'chromium',
       use: { storageState: 'e2e/.auth/state.json' },
       dependencies: ['setup'],
+      testIgnore: /legacy\//,
+    },
+    // Regression tests against the legacy Django-rendered site (the cart
+    // participants actually use — the React cart above is not deployed).
+    // These log in via the plain Django form directly, so they skip the
+    // React auth.setup/storageState chain and hit :8000 with absolute URLs.
+    {
+      name: 'legacy',
+      testDir: './e2e/legacy',
     },
   ],
   webServer: {
