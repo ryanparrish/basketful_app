@@ -404,7 +404,8 @@ class TestEmailTasks:
         )
         
         # Mock create_email_log to track that it was called and update sent tracker
-        def mock_create_email_log(user, email_type, subject, status="sent", error_message=""):
+        def mock_create_email_log(user, email_type, subject, status="sent", error_message="",
+                                   message_id=None, is_test=False):
             email_sent_tracker["sent"] = True
             return mocker.MagicMock()
         
