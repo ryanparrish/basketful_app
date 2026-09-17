@@ -116,3 +116,25 @@ test('a cart older than CART_TTL_MS is not resurrected', async ({ page }) => {
   await page.waitForURL(`${BASE_URL}/create-order/`);
   await expect(page.locator('body')).toContainText('Your cart is empty');
 });
+
+test('a sync failure at Submit shows an error and does not proceed to checkout', async ({ page }) => {
+  // Guards against a regression where a failed sync silently "succeeds"
+  // and sends the participant to review-order with an empty/stale
+  // session cart — this is the failure mode symptom 1 and 3 originally
+  // described ("freezes"/"kicked out"), so the fix must fail loudly and
+  // stay put instead of proceeding.
+  await login(page);
+  await page.goto(`${BASE_URL}/create-order/`);
+  await addProductToCartWithoutSubmitting(page);
+
+  await page.route('**/update-cart/', (route) => route.abort());
+
+  const dialogPromise = page.waitForEvent('dialog');
+  await page.click('#mobile-submit-order');
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toContain('Error submitting order');
+  await dialog.accept();
+
+  // Must still be on create-order, not bounced forward to checkout.
+  await expect(page).toHaveURL(`${BASE_URL}/create-order/`);
+});

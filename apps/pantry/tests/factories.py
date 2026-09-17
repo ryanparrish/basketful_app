@@ -164,36 +164,41 @@ class ParticipantFactory(factory.django.DjangoModelFactory):
     @factory.post_generation
     def high_balance(self, create, extracted, **kwargs):
         """
-        Optional hook to create high-multiplier vouchers for sufficient test balance.
-        Use ParticipantFactory(high_balance=True) to enable.
+        Optional hook to give a participant a large available balance, for
+        tests (e.g. category/subcategory limit tests) that need to not be
+        constrained by balance at all. Use ParticipantFactory(high_balance=True).
+
+        Sets AccountBalance.base_balance directly rather than voucher
+        multiplier — Voucher.voucher_amnt (apps/voucher/utils.py) is just
+        account.base_balance, and calculate_available_balance() (since
+        commit 281dee0) applies only a live ProgramPause-derived multiplier,
+        never a per-voucher one, so inflating voucher.multiplier no longer
+        has any effect on available balance.
         """
         if not create or not extracted:
             return
-        
+
         # Get the account
         account = AccountBalance.objects.get(participant=self)
-        
-        # Ensure vouchers have sufficient balance for testing.
-        # Vouchers are created by signals, so we just update their multipliers.
-        # With base_balance=20 and multiplier=50, 2 vouchers = 2 * (20*50) = 2000 available balance.
+
+        # With base_balance=1000, up to 2 applied grocery vouchers counted
+        # at multiplier=1 (no active pause) => available_balance = 2000.
+        account.base_balance = Decimal('1000.00')
+        account.save(update_fields=['base_balance'])
+
+        # Ensure there are at least 2 applied grocery vouchers to count
+        # toward the balance calculation's limit=2 default.
         from apps.voucher.models import Voucher
-        existing_vouchers = list(account.vouchers.filter(state="applied", voucher_type="grocery").order_by('created_at')[:2])
-        
-        # Update existing vouchers to have high multipliers
-        for voucher in existing_vouchers:
-            voucher.multiplier = 50
-            voucher.save()
-        
-        # Create additional vouchers if needed to reach 2 total
-        if len(existing_vouchers) < 2:
-            for i in range(2 - len(existing_vouchers)):
-                Voucher.objects.create(
-                    account=account,
-                    voucher_type="grocery",
-                    state="applied",
-                    active=True,
-                    multiplier=50
-                )
+        existing_count = account.vouchers.filter(
+            state="applied", voucher_type="grocery"
+        ).count()
+        for _ in range(max(0, 2 - existing_count)):
+            Voucher.objects.create(
+                account=account,
+                voucher_type="grocery",
+                state="applied",
+                active=True,
+            )
 
 # --- Factory for the Voucher Model ---
 

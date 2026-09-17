@@ -9,12 +9,17 @@ The symptom:
 Two distinct root causes are captured here:
 
   1. BACKEND (test_cart_blocked_when_voucher_multiplier_not_updated):
-     validate-cart uses account.available_balance, which multiplies each
-     voucher's base_balance by voucher.multiplier.  If the signal that sets
-     multiplier=2 never fired (or hasn't fired yet), the endpoint still sees
-     the *single-week* available_balance and correctly raises a balance
-     violation — but the user was *expecting* the doubled amount, so the
-     rejection feels like a bug.
+     validate-cart uses account.available_balance. As of commit 281dee0,
+     calculate_available_balance() computes the multiplier live from
+     whichever ProgramPause is currently in its pre-pause gate window
+     (10-14 days before pause_start) — see
+     apps/account/utils/balance_utils.py::_get_current_pause_multiplier —
+     rather than reading a per-voucher `multiplier` field. This test
+     covers the ordinary case where no such pause is active: the endpoint
+     correctly sees the *single-week* available_balance and raises a
+     balance violation — but the user was *expecting* a doubled amount
+     because they're inside the gate window without realizing checkout
+     still isn't doubled yet, so the rejection feels like a bug.
 
   2. FRONTEND (TestIsOverBudgetLogicBug):
      useCartValidation.isOverBudget computes
@@ -31,11 +36,14 @@ Two distinct root causes are captured here:
      it isn't.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.lifeskills.models import ProgramPause
 from apps.orders.tests.factories import (
     CategoryFactory,
     ParticipantFactory,
@@ -62,7 +70,15 @@ def required_singletons(db):
 
 
 def _make_participant(base_balance: Decimal, num_vouchers: int, multiplier: int):
-    """Return (user, participant, account) with the specified voucher setup."""
+    """Return (user, participant, account) with the specified voucher setup.
+
+    `multiplier` does NOT set Voucher.multiplier — calculate_available_balance
+    (apps/account/utils/balance_utils.py, since commit 281dee0) computes the
+    "double week" multiplier live from any ProgramPause currently in its
+    pre-pause gate window, not from a per-voucher field. So `multiplier > 1`
+    here creates a real ProgramPause in that gate window instead, the same
+    pattern apps/account/tests/test_account_balance.py uses.
+    """
     user = UserFactory()
     participant = ParticipantFactory(user=user)
     account = participant.accountbalance
@@ -77,8 +93,20 @@ def _make_participant(base_balance: Decimal, num_vouchers: int, multiplier: int)
             account=account,
             state='applied',
             voucher_type='grocery',
-            multiplier=multiplier,
         )
+
+    if multiplier > 1:
+        # 12 days out is inside the 10-14 day pre-pause gate; duration <14
+        # days -> multiplier 2, >=14 days -> multiplier 3 (see
+        # ProgramPause.calculate_multiplier_for_duration).
+        pause_start = timezone.now() + timedelta(days=12)
+        pause_duration = timedelta(days=5) if multiplier == 2 else timedelta(days=20)
+        ProgramPause.objects.create(
+            pause_start=pause_start,
+            pause_end=pause_start + pause_duration,
+            reason='Double week' if multiplier == 2 else 'Extended pause',
+        )
+
     return user, participant, account
 
 
@@ -102,16 +130,17 @@ class TestValidateCartDoubleWeek:
         """
         BUG REPRODUCTION — replicates the "$29 over" error from Issue #63.
 
-        The ProgramPause signal that sets multiplier=2 on vouchers has not
-        fired (race condition, signal failure, or manual staff setup gap).
-        Vouchers still carry multiplier=1, so available_balance=$100.
-        The participant adds $129 of food.  Backend returns valid=false with
-        "Food balance exceeded by $29.00", blocking checkout.
+        No ProgramPause is currently in its pre-pause gate window, so the
+        live multiplier is 1 and available_balance=$100. The participant
+        adds $129 of food. Backend returns valid=false with "Food balance
+        exceeded by $29.00", blocking checkout — this is the ordinary,
+        correct outcome; it only reads as a "bug" when the participant
+        mistakenly expects a doubled balance that isn't active yet.
         """
         user, _, account = _make_participant(
             base_balance=Decimal('50.00'),
             num_vouchers=2,
-            multiplier=1,  # ← bug condition: NOT doubled
+            multiplier=1,  # ← no active pause gate: NOT doubled
         )
         # Verify starting balance so the test is self-documenting.
         assert account.available_balance == Decimal('100.00'), (
@@ -144,16 +173,17 @@ class TestValidateCartDoubleWeek:
 
     def test_cart_passes_when_voucher_multiplier_is_doubled(self):
         """
-        CORRECT BEHAVIOUR — voucher multiplier properly set to 2 for double week.
+        CORRECT BEHAVIOUR — a ProgramPause is in its pre-pause gate window.
 
         Same cart ($129), same base balance ($50/voucher × 2 vouchers), but
-        multiplier=2 → available_balance=$200.  Backend returns valid=true.
-        This is what SHOULD happen during a double-order week.
+        with a live pause multiplier of 2 → available_balance=$200. Backend
+        returns valid=true. This is what SHOULD happen during a double-order
+        week.
         """
         user, _, account = _make_participant(
             base_balance=Decimal('50.00'),
             num_vouchers=2,
-            multiplier=2,  # ← correctly doubled
+            multiplier=2,  # ← creates a real ProgramPause in the gate window
         )
         assert account.available_balance == Decimal('200.00'), (
             "Available balance should be $200 with 2 vouchers × $50 × multiplier=2"

@@ -8,8 +8,6 @@ const {
   initializeCart,
   saveCartToStorage,
   loadCartFromStorage,
-  cartStorageKey,
-  cartTimestampKey,
   addToCart,
   removeFromCart,
   updateCartQuantity,
@@ -345,21 +343,42 @@ describe('Cart Edge Cases - Reload/Back-Swipe Recovery (TTL + Session Token)', (
     localStorage.clear();
   });
 
+  // These write/read the literal localStorage keys directly (not via
+  // cartStorageKey/cartTimestampKey) so a regression in that helper — e.g.
+  // one that silently ignores the token — can't make setup and assertion
+  // agree with each other by construction and hide the bug.
   test('recovers a fresh local cart when the session cart is empty (reload/back-swipe)', () => {
     // Mirrors real shopping: add-to-cart persisted locally and synced, but
     // a reload lands before the server round-trip is reflected back —
     // sessionCart still looks empty even though the local cart is seconds old.
-    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
-    localStorage.setItem(cartTimestampKey('tok'), String(Date.now() - 1000));
+    localStorage.setItem('cart:tok', JSON.stringify({ '1': 2 }));
+    localStorage.setItem('cart:tok:updatedAt', String(Date.now() - 1000));
 
     expect(initializeCart({}, 'tok')).toEqual({ '1': 2 });
-    // Recovering re-syncs to the server so a second reload doesn't lose it again.
-    expect(global.fetch).toHaveBeenCalledWith('/update-cart/', expect.any(Object));
+    // Recovering re-syncs to the server so a second reload doesn't lose it
+    // again — check the actual payload, not just that some fetch happened.
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/update-cart/',
+      expect.objectContaining({ body: JSON.stringify({ '1': 2 }) })
+    );
   });
 
   test('does not recover a local cart older than CART_TTL_MS', () => {
-    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
-    localStorage.setItem(cartTimestampKey('tok'), String(Date.now() - CART_TTL_MS - 1000));
+    localStorage.setItem('cart:tok', JSON.stringify({ '1': 2 }));
+    localStorage.setItem('cart:tok:updatedAt', String(Date.now() - CART_TTL_MS - 1000));
+
+    expect(initializeCart({}, 'tok')).toEqual({});
+    // And the stale entry shouldn't have been silently re-synced either.
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('does not recover a local cart exactly at the TTL boundary', () => {
+    // CART_TTL_MS itself: (Date.now() - updatedAt) < CART_TTL_MS is a
+    // strict inequality, so an entry exactly CART_TTL_MS old must be
+    // treated as stale, not fresh. Pins the boundary down explicitly
+    // rather than only testing safely-inside/outside values.
+    localStorage.setItem('cart:tok', JSON.stringify({ '1': 2 }));
+    localStorage.setItem('cart:tok:updatedAt', String(Date.now() - CART_TTL_MS));
 
     expect(initializeCart({}, 'tok')).toEqual({});
   });
@@ -367,35 +386,72 @@ describe('Cart Edge Cases - Reload/Back-Swipe Recovery (TTL + Session Token)', (
   test('does not recover a local cart with no recorded timestamp at all', () => {
     // e.g. written before this fix shipped, or by a caller that bypassed
     // saveCartToStorage. No freshness signal means treat it as stale.
-    localStorage.setItem(cartStorageKey('tok'), JSON.stringify({ '1': 2 }));
+    localStorage.setItem('cart:tok', JSON.stringify({ '1': 2 }));
 
     expect(initializeCart({}, 'tok')).toEqual({});
   });
 
   test('scopes carts by token so a shared device cannot inherit another session\'s cart', () => {
-    localStorage.setItem(cartStorageKey('participant-a'), JSON.stringify({ '1': 5 }));
-    localStorage.setItem(cartTimestampKey('participant-a'), String(Date.now()));
+    localStorage.setItem('cart:participant-a', JSON.stringify({ '1': 5 }));
+    localStorage.setItem('cart:participant-a:updatedAt', String(Date.now()));
 
     // participant-b logs in on the same browser with a different token and
-    // an empty session cart — must not see participant-a's items.
+    // an empty session cart — must not see participant-a's items, and
+    // participant-a's own entry must be untouched (not merged or cleared).
     expect(initializeCart({}, 'participant-b')).toEqual({});
+    expect(localStorage.getItem('cart:participant-b')).toBe('{}');
+    expect(JSON.parse(localStorage.getItem('cart:participant-a'))).toEqual({ '1': 5 });
   });
 
-  test('addToCart/removeFromCart persist under the token-scoped key', () => {
+  test('addToCart/removeFromCart persist under the literal token-scoped key, not the bare "cart" key', () => {
     addToCart('1', 3, 'tok');
-    expect(JSON.parse(localStorage.getItem(cartStorageKey('tok')))).toEqual({ '1': 3 });
-    expect(localStorage.getItem(cartStorageKey())).toBeNull();
+    expect(localStorage.getItem('cart:tok')).toBe(JSON.stringify({ '1': 3 }));
+    expect(localStorage.getItem('cart')).toBeNull();
 
     removeFromCart('1', 'tok');
-    expect(JSON.parse(localStorage.getItem(cartStorageKey('tok')))).toEqual({});
+    expect(localStorage.getItem('cart:tok')).toBe(JSON.stringify({}));
   });
 
-  test('every add/remove syncs to the server, not just Submit', () => {
+  test('every add/remove syncs the current cart contents to the server, not just a fixed payload', () => {
     addToCart('1', 1, 'tok');
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      '/update-cart/',
+      expect.objectContaining({ body: JSON.stringify({ '1': 1 }) })
+    );
+
+    addToCart('2', 5, 'tok');
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      '/update-cart/',
+      expect.objectContaining({ body: JSON.stringify({ '1': 1, '2': 5 }) })
+    );
 
     removeFromCart('1', 'tok');
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      3,
+      '/update-cart/',
+      expect.objectContaining({ body: JSON.stringify({ '2': 5 }) })
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  test('a sync failure is caught and does not throw out of addToCart/removeFromCart', async () => {
+    // The real risk of syncing on every mutation: if the network call
+    // rejects, it must not blow up the add/remove call site or leave the
+    // in-memory cart in a broken state — it should just log and move on.
+    global.fetch.mockImplementationOnce(() => Promise.reject(new Error('network down')));
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => addToCart('1', 1, 'tok')).not.toThrow();
+    expect(getCart()).toEqual({ '1': 1 });
+
+    // saveCartToStorage's sync call is fire-and-forget; flush microtasks so
+    // its rejection has actually been handled before asserting on it.
+    await Promise.resolve().then().then();
+    expect(consoleSpy).toHaveBeenCalledWith('Error syncing cart:', expect.any(Error));
+
+    consoleSpy.mockRestore();
   });
 });
 
