@@ -32,6 +32,7 @@ import {
   Confirm,
 } from 'react-admin';
 import { OrderCommandPalette } from '../components/OrderCommandPalette.tsx';
+import apiClient from '../lib/api/apiClient.ts';
 import { getOrderStatusColor } from '../lib/orderStatus.ts';
 import { ProgramMultiSelectFilter } from '../components/ProgramMultiSelectFilter.tsx';
 import { Box } from '@mui/material';
@@ -181,30 +182,35 @@ const ConfirmOrderButton = () => {
 };
 
 // Cancel Order Button Component
+//
+// Calls the dedicated POST /orders/{id}/cancel/ action rather than a plain
+// PATCH — that action rejects an already-completed/cancelled order with a
+// clear 400 before any save is attempted, rather than relying on model
+// validation to catch it implicitly.
 const CancelOrderButton = () => {
   const record = useRecordContext();
   const [open, setOpen] = useState(false);
+  const [isPending, setIsPending] = useState(false);
   const notify = useNotify();
   const refresh = useRefresh();
-  const [update, { isPending }] = useUpdate();
 
   if (!record || ['completed', 'cancelled'].includes(record.status)) return null;
 
-  const handleCancel = () => {
-    update(
-      'orders',
-      { id: record.id, data: { status: 'cancelled' }, previousData: record },
-      {
-        onSuccess: () => {
-          notify('Order cancelled', { type: 'info' });
-          refresh();
-        },
-        onError: (error: Error) => {
-          notify(`Error: ${error.message}`, { type: 'error' });
-        },
-      }
-    );
+  const handleCancel = async () => {
     setOpen(false);
+    setIsPending(true);
+    try {
+      await apiClient.post(`/orders/${record.id}/cancel/`);
+      notify('Order cancelled', { type: 'info' });
+      refresh();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to cancel order.';
+      notify(msg, { type: 'error' });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (

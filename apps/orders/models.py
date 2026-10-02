@@ -76,6 +76,11 @@ class FailedOrderAttempt(models.Model):
 class Order(models.Model):
     """A food order."""
 
+    # Statuses at which vouchers have been consumed and stock decremented —
+    # confirmation is the only point that happens, so cancelling from any of
+    # these (not just 'confirmed') must restore them. See save()/_restore_on_cancel().
+    RESOURCE_HOLDING_STATUSES = {'confirmed', 'packing', 'completed'}
+
     class Meta:
         permissions = [
             (
@@ -616,6 +621,33 @@ class Order(models.Model):
             if self.status == "confirmed" and old_status != "confirmed":
                 self._consume_vouchers()
                 self._decrement_stock()
+
+            # Restore vouchers/stock if a resource-holding order is cancelled.
+            # Mirrors the confirm branch above — centralizing this in save()
+            # (rather than leaving it to individual call sites) means every
+            # path that cancels an order gets it for free, uniformly.
+            if self.status == "cancelled" and old_status in self.RESOURCE_HOLDING_STATUSES:
+                self._restore_on_cancel()
+
+            # Audit every status transition, through every path that reaches
+            # save() — this is what the generic PATCH / "Cancel Order" button
+            # path was missing entirely, making a cancelled order impossible
+            # to attribute to anyone after the fact. _status_change_user is
+            # an optional instance attribute set by the view layer before
+            # save() is called (save() itself has no access to request.user),
+            # following the same convention as the existing _bypass_user.
+            if not is_new and old_status is not None and old_status != self.status:
+                try:
+                    OrderValidationLog.objects.create(
+                        order=self,
+                        user=getattr(self, '_status_change_user', None),
+                        log_type=OrderValidationLog.INFO,
+                        message=f"Status changed: {old_status} → {self.status}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to write status-change audit log for order %s", self.id
+                    )
 
 
 class OrderItem(models.Model):

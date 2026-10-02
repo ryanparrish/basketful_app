@@ -65,6 +65,14 @@ export interface HygieneSettings {
   enabled: boolean;
 }
 
+export interface ProgramSettings {
+  id: number;
+  grace_amount: number;
+  grace_enabled: boolean;
+  grace_message: string;
+  rules_version: string;
+}
+
 export interface LowInventoryAlertSettings {
   id: number;
   threshold: number;

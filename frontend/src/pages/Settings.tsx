@@ -15,12 +15,14 @@ import { VoucherTab } from './settings/components/tabs/VoucherTab';
 import { ProgramPausesTab } from './settings/components/tabs/ProgramPausesTab';
 import { HygieneTab } from './settings/components/tabs/HygieneTab';
 import { InventoryAlertsTab } from './settings/components/tabs/InventoryAlertsTab';
+import { GraceTab } from './settings/components/tabs/GraceTab';
 import type {
   BrandingSettings,
   EmailSettings,
   HygieneSettings,
   LowInventoryAlertSettings,
   OrderWindowSettings,
+  ProgramSettings,
   VoucherSettings,
 } from './settings/types';
 
@@ -48,6 +50,7 @@ export const Settings = () => {
   const [voucher, setVoucher] = useState<VoucherSettings | null>(null);
   const [hygiene, setHygiene] = useState<HygieneSettings | null>(null);
   const [inventoryAlerts, setInventoryAlerts] = useState<LowInventoryAlertSettings | null>(null);
+  const [grace, setGrace] = useState<ProgramSettings | null>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -59,6 +62,7 @@ export const Settings = () => {
           voucherResponse,
           hygieneResponse,
           inventoryAlertsResponse,
+          graceResponse,
         ] = await Promise.all([
           dataProvider.getOne('settings/order-window-settings', { id: 'current' }),
           dataProvider.getOne('settings/email-settings', { id: 'current' }),
@@ -70,6 +74,7 @@ export const Settings = () => {
           }),
           dataProvider.getOne('hygiene-settings', { id: 'current' }),
           dataProvider.getOne('low-inventory-alert-settings', { id: 'current' }),
+          dataProvider.getOne('settings/program-config', { id: 'current' }),
         ]);
 
         setOrderWindow(owResponse.data as OrderWindowSettings);
@@ -80,6 +85,7 @@ export const Settings = () => {
         }
         setHygiene(hygieneResponse.data as HygieneSettings);
         setInventoryAlerts(inventoryAlertsResponse.data as LowInventoryAlertSettings);
+        setGrace(graceResponse.data as ProgramSettings);
       } catch {
         notify('Error loading settings', { type: 'error' });
       }
@@ -187,6 +193,22 @@ export const Settings = () => {
     setSaving(false);
   };
 
+  const saveGrace = async () => {
+    if (!grace) return;
+    setSaving(true);
+    try {
+      await dataProvider.update('settings/program-config', {
+        id: 'current',
+        data: grace,
+        previousData: grace,
+      });
+      notify('Grace allowance settings saved', { type: 'success' });
+    } catch (err) {
+      notify(describeApiError(err) ?? 'Error saving settings', { type: 'error' });
+    }
+    setSaving(false);
+  };
+
   if (loading) return <Loading />;
 
   return (
@@ -203,6 +225,7 @@ export const Settings = () => {
             <Tab label="Program Pauses" />
             <Tab label="Hygiene" />
             <Tab label="Inventory Alerts" />
+            <Tab label="Grace Allowance" />
           </Tabs>
 
           <TabPanel value={tab} index={0}>
@@ -266,6 +289,12 @@ export const Settings = () => {
                 onSave={saveInventoryAlerts}
                 saving={saving}
               />
+            )}
+          </TabPanel>
+
+          <TabPanel value={tab} index={7}>
+            {grace && (
+              <GraceTab grace={grace} setGrace={setGrace} onSave={saveGrace} saving={saving} />
             )}
           </TabPanel>
         </CardContent>

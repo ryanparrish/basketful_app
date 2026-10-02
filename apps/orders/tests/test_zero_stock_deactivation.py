@@ -104,10 +104,12 @@ class TestZeroStockDeactivationOnConfirm:
         product.refresh_from_db()
         assert product.active is False
 
-        # Mirrors OrderViewSet.cancel(): status flip + _restore_on_cancel()
-        # in the same atomic block, exactly as the real cancel action does.
+        # Mirrors OrderViewSet.cancel(): Order.save() itself now restores
+        # vouchers/stock whenever it detects a transition out of a
+        # resource-holding status into 'cancelled' (see
+        # Order.RESOURCE_HOLDING_STATUSES) — no manual _restore_on_cancel()
+        # call needed or wanted here, since that would double-restore.
         order.status = 'cancelled'
-        order._restore_on_cancel()
         order.save(update_fields=['status', 'updated_at'])
 
         product.refresh_from_db()

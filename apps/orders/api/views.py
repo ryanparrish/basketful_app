@@ -164,6 +164,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         """
         instance = serializer.instance
         incoming_status = serializer.validated_data.get('status')
+        # Attribute every status change to the requesting user, not just
+        # bypass confirmations — this is what makes a plain status edit via
+        # PATCH (e.g. the "Cancel Order" button) traceable after the fact.
+        if incoming_status is not None and incoming_status != instance.status:
+            instance._status_change_user = self.request.user
         if (
             incoming_status == 'confirmed'
             and instance.status != 'confirmed'
@@ -191,6 +196,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Both modes write a WARNING audit record to OrderValidationLog.
         """
         order = self.get_object()
+        order._status_change_user = request.user
         if request.user.has_perm('orders.can_bypass_order_transitions'):
             order._bypass_balance_check = True
             order._bypass_user = request.user
@@ -218,14 +224,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {'error': f'Cannot cancel order with status: {order.status}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        was_confirmed = order.status == 'confirmed'
-        # Wrap status update + restoration in a single atomic block so that
-        # a failure mid-restore rolls back the status change too — preventing
-        # a permanently-cancelled order with un-restored vouchers/stock.
+        # Restoration (vouchers/stock) is handled uniformly by Order.save()
+        # itself when it detects a transition out of a resource-holding
+        # status into 'cancelled' — same discipline confirm() already
+        # follows for consumption. Wrapped in atomic() so a failure mid-save
+        # rolls back the status change too.
         with db_transaction.atomic():
             order.status = 'cancelled'
-            if was_confirmed:
-                order._restore_on_cancel()
+            order._status_change_user = request.user
             order.save(update_fields=['status', 'updated_at'])
         return Response(OrderSerializer(order).data)
 
@@ -382,41 +388,85 @@ class OrderViewSet(viewsets.ModelViewSet):
                 }
                 for order in orders:
                     if order.id in first_confirmation_ids:
+                        order._status_change_user = request.user
                         order.confirm()
+
+                # Mirror the same logic for cancellation: an order being
+                # cancelled out of a resource-holding status must go through
+                # Order.save() individually so it restores vouchers/stock
+                # (see Order.RESOURCE_HOLDING_STATUSES) — the raw update()
+                # below bypasses save() entirely and would otherwise silently
+                # abandon them, the same bug the confirm case above guards against.
+                resource_restoring_cancel_ids = {
+                    o.id for o in orders
+                    if o.id in updated_ids_set
+                    and new_status == 'cancelled'
+                    and o.status in Order.RESOURCE_HOLDING_STATUSES
+                }
+                for order in orders:
+                    if order.id in resource_restoring_cancel_ids:
+                        order.status = 'cancelled'
+                        order._status_change_user = request.user
+                        order.save(update_fields=['status', 'updated_at'])
 
                 # Every other transition (confirmed→packing, packing→completed,
                 # any bypass correction among already-active statuses, or a
                 # bypass re-confirm from packing/completed) represents a status
-                # correction, not a first confirmation — resources already
-                # moved the first time, so queryset.update() correctly bypasses
-                # save() here to avoid re-consuming them.
-                other_ids = [oid for oid in updated_ids if oid not in first_confirmation_ids]
+                # correction, not a first confirmation or a resource-restoring
+                # cancellation — resources already moved the first time, so
+                # queryset.update() correctly bypasses save() here.
+                other_ids = [
+                    oid for oid in updated_ids
+                    if oid not in first_confirmation_ids
+                    and oid not in resource_restoring_cancel_ids
+                ]
                 if other_ids:
                     Order.objects.filter(id__in=other_ids).update(
                         status=new_status,
                         updated_at=timezone.now(),
                     )
 
-            # Audit every bypassed transition to OrderValidationLog.
-            if bypassed_orders:
-                from apps.log.models import OrderValidationLog
-                logs = [
+            # Audit every transition to OrderValidationLog. Orders routed
+            # through confirm()/save() above (first_confirmation_ids,
+            # resource_restoring_cancel_ids) are already logged by that same
+            # call, inside Order.save() itself \u2014 only the raw queryset.update()
+            # bucket (other_ids) needs an explicit log here, since it never
+            # touches save() at all. Bypass transitions keep their existing
+            # WARNING-level message; everything else in that bucket gets a
+            # plain INFO entry \u2014 previously it wrote nothing at all.
+            from apps.log.models import OrderValidationLog
+            bypassed_ids = {o.id for o in bypassed_orders}
+            logs = [
+                OrderValidationLog(
+                    order=o,
+                    user=request.user,
+                    participant=None,  # account not loaded in bulk query; order FK is enough
+                    log_type=OrderValidationLog.WARNING,
+                    message=(
+                        f"Transition bypass by {request.user.username}: "
+                        f"{o.status} \u2192 {new_status}"
+                    ),
+                )
+                for o in bypassed_orders
+            ]
+            if updated_ids:
+                other_ids_set = set(other_ids)
+                logs.extend(
                     OrderValidationLog(
                         order=o,
                         user=request.user,
-                        participant=None,  # account not loaded in bulk query; order FK is enough
-                        log_type=OrderValidationLog.WARNING,
-                        message=(
-                            f"Transition bypass by {request.user.username}: "
-                            f"{o.status} \u2192 {new_status}"
-                        ),
+                        participant=None,
+                        log_type=OrderValidationLog.INFO,
+                        message=f"Status changed: {o.status} \u2192 {new_status}",
                     )
-                    for o in bypassed_orders
-                ]
+                    for o in orders
+                    if o.id in other_ids_set and o.id not in bypassed_ids
+                )
+            if logs:
                 try:
                     OrderValidationLog.objects.bulk_create(logs)
                 except Exception:
-                    logger.exception("Failed to write bypass audit logs for bulk_update_status")
+                    logger.exception("Failed to write audit logs for bulk_update_status")
 
         return Response({
             'updated_count': len(updated_ids),

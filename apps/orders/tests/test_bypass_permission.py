@@ -345,7 +345,12 @@ class TestConfirmBypass:
         voucher.refresh_from_db()
         assert voucher.state == 'applied', "Voucher must remain untouched on charitable confirm"
 
-        log = OrderValidationLog.objects.filter(order=order).latest('created_at')
-        assert log.log_type == OrderValidationLog.WARNING
+        # Every status change now also writes a plain INFO audit row
+        # (pending -> confirmed), alongside the charitable-bypass WARNING —
+        # filter specifically for the bypass log rather than assuming it's
+        # the only/latest entry for this order.
+        log = OrderValidationLog.objects.filter(
+            order=order, log_type=OrderValidationLog.WARNING
+        ).latest('created_at')
         assert 'charitable' in log.message.lower()
 
