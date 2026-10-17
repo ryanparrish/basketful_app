@@ -12,6 +12,11 @@ class ForcePasswordChangeMiddleware:
         # forced-change flow is a web-UI concern (M11).
         if request.path.startswith('/api/'):
             return self.get_response(request)
+        # Never gate logout or static assets (review #107): a user flagged
+        # for a forced change must still be able to log out, and the
+        # password-change page itself needs its CSS/JS.
+        if request.path == reverse('logout') or request.path.startswith('/static/'):
+            return self.get_response(request)
         if request.user.is_authenticated:
             # M11: the flag lives on UserProfile, not User.
             try:

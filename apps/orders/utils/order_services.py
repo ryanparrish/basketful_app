@@ -6,7 +6,6 @@ import hashlib
 import json
 import time
 from io import BytesIO
-from datetime import datetime, timedelta
 from contextlib import contextmanager
 from hashids import Hashids
 # Django imports
@@ -32,12 +31,13 @@ hashids = Hashids(salt=SALT, min_length=MIN_LENGTH)
 
 def generate_idempotency_key(participant_id: int, cart_items: list) -> str:
     """
-    Generate idempotency key from participant + cart + timestamp (5-minute buckets).
+    Generate idempotency key from participant + cart only.
 
-    The bucket matches the 300s TTL used by check_duplicate_submission, so a
-    double-submit anywhere inside the same 5-minute window produces the same
-    key (M5: minute-precision buckets both falsely flagged same-minute
-    retries and missed double-submits straddling a minute boundary).
+    No timestamp component (review #107): wall-clock buckets keep the
+    boundary bug at every 5 minutes (10:04:59 vs 10:05:01 get different
+    keys). The 300s cache TTL in check_duplicate_submission defines the
+    dedup window instead. Since the key is marked only after the order is
+    successfully created, a stale key can't block a legitimate retry.
 
     Args:
         participant_id: The participant's ID
@@ -50,13 +50,8 @@ def generate_idempotency_key(participant_id: int, cart_items: list) -> str:
     sorted_cart = sorted(cart_items, key=lambda x: x.get('product_id', 0))
     cart_str = json.dumps(sorted_cart, sort_keys=True)
 
-    # 5-minute bucket aligned to the wall clock, matching the 300s TTL.
-    now = datetime.now()
-    bucket_start = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
-    timestamp_bucket = bucket_start.strftime('%Y-%m-%d %H:%M')
-
     # Generate hash
-    key_data = f"{participant_id}:{cart_str}:{timestamp_bucket}"
+    key_data = f"{participant_id}:{cart_str}"
     return hashlib.sha256(key_data.encode()).hexdigest()
 
 

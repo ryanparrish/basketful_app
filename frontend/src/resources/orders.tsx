@@ -140,6 +140,10 @@ const OrderTitle = () => {
 const ConfirmOrderButton = () => {
   const record = useRecordContext();
   const [open, setOpen] = useState(false);
+  // Review #107: staff confirm short-balance orders as charitable exceptions
+  // via PATCH {status: 'confirmed'} — the backend needs an explicit
+  // bypass_balance flag (H3), which no UI sent until now.
+  const [bypassBalance, setBypassBalance] = useState(false);
   const notify = useNotify();
   const refresh = useRefresh();
   const [update, { isPending }] = useUpdate();
@@ -149,7 +153,14 @@ const ConfirmOrderButton = () => {
   const handleConfirm = () => {
     update(
       'orders',
-      { id: record.id, data: { status: 'confirmed' }, previousData: record },
+      {
+        id: record.id,
+        data: {
+          status: 'confirmed',
+          ...(bypassBalance ? { bypass_balance: true } : {}),
+        },
+        previousData: record,
+      },
       {
         onSuccess: () => {
           notify('Order confirmed successfully', { type: 'success' });
@@ -161,6 +172,7 @@ const ConfirmOrderButton = () => {
       }
     );
     setOpen(false);
+    setBypassBalance(false);
   };
 
   return (
@@ -173,9 +185,21 @@ const ConfirmOrderButton = () => {
       <Confirm
         isOpen={open}
         title="Confirm Order"
-        content="Are you sure you want to confirm this order? This will consume vouchers."
+        content={
+          <>
+            <p>Are you sure you want to confirm this order? This will consume vouchers.</p>
+            <label>
+              <input
+                type="checkbox"
+                checked={bypassBalance}
+                onChange={(e) => setBypassBalance(e.target.checked)}
+              />{' '}
+              Bypass balance check (charitable exception)
+            </label>
+          </>
+        }
         onConfirm={handleConfirm}
-        onClose={() => setOpen(false)}
+        onClose={() => { setOpen(false); setBypassBalance(false); }}
       />
     </>
   );

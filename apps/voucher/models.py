@@ -104,6 +104,11 @@ class Voucher(models.Model):
         editable=False
     )
     program_pause_flag = models.BooleanField(default=False)
+    # Source of truth (review #107): the ORDER's pause_multiplier_at_creation
+    # drives voucher consumption in Order._consume_vouchers, not this stored
+    # column. This flag/multiplier are set by the pause scheduling signal for
+    # display and balance-preview purposes only; vouchers created after a
+    # pause is saved keep multiplier=1 here and still consume correctly.
     multiplier = models.IntegerField(default=1, editable=False)
     notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
