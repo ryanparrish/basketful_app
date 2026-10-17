@@ -1,6 +1,6 @@
 # Combined Order Creation Feature
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 
@@ -74,11 +74,13 @@ assigned.
 ### Key Models (`apps/orders/models.py`)
 
 - **`CombinedOrder`** — `program`, `orders` (M2M), `split_strategy`, `week`/`year`
-  (auto-populated **from the creation time**, not from the selected date range — this
-  means two combined orders can't be created for the same program in the same ISO week,
-  enforced by the `unique_program_per_week` constraint, even if their source date ranges
-  don't overlap), `is_parent` (set by the automated weekly task, `False` for
-  manually-created ones), `summarized_data`.
+  (auto-populated **from the creation time**, not from the selected date range; `year` is
+  the ISO year, so it matches the ISO `week` around New Year). `is_parent` is set by the
+  automated weekly task, and is `False` for manually-created ones. The
+  `unique_program_week_is_parent` constraint on `(program, week, year, is_parent)` allows
+  one parent and one non-parent combined order per program per ISO week. (Before migration
+  `orders 0013` the constraint left out `is_parent`, so the weekly task's parent row
+  collided with the child row it had just created.) `summarized_data` holds the totals.
 - **`PackingSplitRule`** — maps a `(program, packer)` pair to the `categories`/`subcategories`
   that packer is responsible for; used for the `by_category` strategy.
 - **`PackingList`** — one per packer per `CombinedOrder`, holding its assigned `orders`,

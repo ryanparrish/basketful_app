@@ -111,6 +111,15 @@ def handle_program_pause(sender, instance, created, **kwargs):
         logger.debug("Skip signal flag detected; exiting to avoid recursion")
         return
 
+    # An archived pause must never (re)activate voucher flags — archive()
+    # cleans flags then saves, which re-fires this signal (review #107).
+    if getattr(instance, "archived", False):
+        logger.debug(
+            "ProgramPause ID=%s is archived; skipping voucher flag scheduling",
+            instance.id,
+        )
+        return
+
     # Only active vouchers with active accounts
     vouchers = Voucher.objects.filter(active=True, account__active=True)
     if not vouchers.exists():
@@ -125,10 +134,16 @@ def handle_program_pause(sender, instance, created, **kwargs):
     pause_start_est = get_est_date(instance.pause_start)
     days_until_start = (pause_start_est - today_est).days
 
-    # Check if we're in the 11-14 day ordering window
-    if 10 <= days_until_start <= 14:
+    # Check if we're in the double-week gate (ordering window).
+    # Review #107: pauses less than 10 days away used to fall into the
+    # else branch below, which scheduled activation at pause_start - 14d —
+    # already in the past — so flags turned on immediately and stayed on
+    # until pause_end with no smart deactivation. Near-term (but not yet
+    # started) pauses get the same immediate-activation +
+    # earliest-window-close deactivation as the 10-14 day gate.
+    if 0 <= days_until_start <= 14:
         logger.info(
-            "ProgramPause ID=%s is within 10-14 day ordering window "
+            "ProgramPause ID=%s is within the double-week gate "
             "(starts in %d days). Flagging vouchers immediately.",
             instance.id,
             days_until_start
@@ -192,18 +207,28 @@ def handle_program_pause(sender, instance, created, **kwargs):
                 instance.id
             )
     else:
-        # Outside ordering window - use original scheduling logic
+        # More than 14 days out - use original scheduling logic
         logger.info(
-            "ProgramPause ID=%s is outside 11-14 day window (starts in %d days). "
+            "ProgramPause ID=%s is outside the double-week gate (starts in %d days). "
             "Scheduling tasks for future execution.",
             instance.id,
             days_until_start
         )
         try:
+            # M14: flags must activate when the pause ENTERS the 10-14-day
+            # double-week gate (pause_start - 14d), not at pause_start (the
+            # no-order week) — otherwise double-week orders get no flags.
+            # The multiplier is computed from the actual pause dates; it
+            # cannot be derived from the shifted activate_time.
+            from datetime import timedelta
+            multiplier = ProgramPause.calculate_multiplier_for_duration(
+                instance.pause_start, instance.pause_end
+            )
             schedule_voucher_tasks(
                 vouchers,
-                activate_time=instance.pause_start,
+                activate_time=instance.pause_start - timedelta(days=14),
                 deactivate_time=instance.pause_end,
+                multiplier=multiplier,
             )
             logger.debug(
                 "Tasks scheduled successfully for ProgramPause ID=%s affecting %d vouchers",

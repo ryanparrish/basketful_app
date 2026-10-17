@@ -218,6 +218,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.pantry.middleware.ForcePasswordChangeMiddleware',  # M11: was never registered
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.SecurityHeadersMiddleware',
@@ -415,6 +416,8 @@ REST_FRAMEWORK = {
         'user': '100/minute',
         'login': '5/minute',
         'order_submission': '3/minute',  # Order submission rate limiting
+        'order_submission_hourly': '10/hour',  # M8: documented hourly cap
+        'order_submission_daily': '50/day',  # M8: documented daily cap
         'bulk_create': '20/hour',         # Per-user bulk participant creation
     },
     'DEFAULT_PAGINATION_CLASS': 'apps.api.pagination.StandardResultsSetPagination',

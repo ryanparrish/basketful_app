@@ -32,11 +32,11 @@ urlpatterns = [
 
     # Legacy participant-facing views
     path('', index, name='index'),
+    # L15: was plain auth_views.LoginView (no brute-force protection);
+    # custom_login_view adds captcha after 3 failures.
     path(
         'login/',
-        auth_views.LoginView.as_view(
-            template_name='registration/login.html'
-        ),
+        account_views.custom_login_view,
         name='login',
     ),
     path(

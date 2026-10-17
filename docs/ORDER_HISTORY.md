@@ -1,6 +1,6 @@
 # Order History & Validation Logs
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 This document describes order tracking and validation logging.
 
@@ -22,7 +22,7 @@ The system maintains detailed records of orders and their validation history for
 | `status` | CharField | Order status — see below |
 | `paid` | BooleanField | Set `True` when vouchers are consumed at confirmation |
 | `go_fresh_total` | DecimalField | Go Fresh subtotal, calculated and persisted in `Order.confirm()` |
-| `program_pause_at_creation` / `pause_multiplier_at_creation` | CharField / IntegerField (nullable) | Snapshot of an active program pause at the time the order was created, for audit |
+| `program_pause_at_creation` / `pause_multiplier_at_creation` | CharField / IntegerField (nullable) | Snapshot of an active program pause at the time the order was created. `pause_multiplier_at_creation` is also the multiplier `_consume_vouchers()` uses at confirmation, so confirmation agrees with the balance the order was validated against |
 | `success_viewed` | BooleanField | Whether the participant has seen the order-success page |
 | `order_date` | DateTimeField | Set on creation (`auto_now_add`) |
 | `created_at` / `updated_at` | DateTimeField | Standard timestamps |
@@ -47,7 +47,7 @@ Staff with the `orders.can_bypass_order_transitions` permission can move an orde
 
 Fields: `order`, `product`, `quantity`, `price`, `price_at_order`, `created_at`.
 
-`price_at_order` is set once, the first time the item is saved, and never changes — a true snapshot. `price`, however, is **overwritten to the product's current price on every save** (`OrderItem.save()`), and `total_price()` (`quantity * price`) uses that mutable field. In practice this rarely matters (order items aren't normally re-saved after creation), but it means `price` is not a reliable historical snapshot the way `price_at_order` is — use `price_at_order` when you need the price actually charged.
+`price_at_order` and `price` are both set from the product's price when the item is first saved, and never re-priced after that: re-saving a line (for example, staff changing the quantity in the admin) keeps its original price. `total_price()` is `quantity * price_at_order`, falling back to `price` for rows created before the snapshot existed. `OrderItem.save()` runs `full_clean()` before writing.
 
 ## Order Vouchers
 

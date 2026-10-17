@@ -30,6 +30,41 @@ class LoginRateThrottle(AnonRateThrottle):
     scope = 'login'
 
 
+# H7: reuse-grace window for refresh-token rotation. When the server rotates
+# a refresh token but the client never receives the new cookies (two tabs
+# refreshing at once, or a retry after a network blip), the client presents
+# the already-blacklisted old token. Only ROTATION writes the reuse cache
+# below; logout blacklists without writing it, so a logged-out token gets
+# no grace and 401s (H6 stays intact).
+REFRESH_REUSE_GRACE_SECONDS = 60
+REFRESH_REUSE_CACHE_KEY = "refresh_reuse:{jti}"
+
+
+def _cache_rotated_tokens(old_jti, access_token, refresh_token, user_id):
+    """Cache old_jti -> (new access, new refresh, user_id) for the reuse
+    grace window, so a retried rotation returns the SAME tokens."""
+    from django.core.cache import cache
+    cache.set(
+        REFRESH_REUSE_CACHE_KEY.format(jti=old_jti),
+        (str(access_token), str(refresh_token), user_id),
+        REFRESH_REUSE_GRACE_SECONDS,
+    )
+
+
+def _cached_rotated_tokens(raw_token):
+    """Return (access, refresh, user_id) cached at rotation time for
+    raw_token's jti, else None. Malformed/expired tokens get no grace."""
+    from django.core.cache import cache
+    from rest_framework_simplejwt.tokens import UntypedToken
+    try:
+        jti = UntypedToken(raw_token).get("jti")
+    except TokenError:
+        return None
+    if not jti:
+        return None
+    return cache.get(REFRESH_REUSE_CACHE_KEY.format(jti=jti))
+
+
 def get_cookie_settings():
     """Get cookie settings from Django settings."""
     jwt_settings = settings.SIMPLE_JWT
@@ -235,33 +270,74 @@ class CookieTokenRefreshView(APIView):
                         {'detail': 'User not found', 'code': 'user_not_found'},
                         status=status.HTTP_401_UNAUTHORIZED
                     )
+                # H7 (review): cache old_jti -> new tokens for the reuse
+                # grace window. A retried rotation returns these SAME
+                # tokens. Logout never writes this cache, so logged-out
+                # tokens get no grace. NOTE: str() each token ONCE —
+                # new_refresh.access_token builds a fresh token per access.
+                access_str = str(new_refresh.access_token)
+                refresh_str = str(new_refresh)
+                _cache_rotated_tokens(
+                    refresh['jti'],
+                    access_str,
+                    refresh_str,
+                    user.id,
+                )
             else:
                 new_refresh = refresh
             
             # Create response
             response = Response({'message': 'Token refreshed'})
-            set_token_cookies(response, str(new_refresh.access_token), str(new_refresh))
+            set_token_cookies(response, access_str, refresh_str)
             
             return response
             
         except TokenError as e:
-            return Response(
-                {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            # Rotation race (H7): the client presents a refresh token the
+            # server already rotated but the client never received the new
+            # cookies for. Only rotation writes the reuse cache — a token
+            # blacklisted by logout is not in it, so logged-out sessions
+            # 401 here and H6 stays intact.
+            cached = _cached_rotated_tokens(refresh_token)
+            if cached is None:
+                return Response(
+                    {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            access_str, refresh_str, user_id = cached
+            from django.contrib.auth.models import User
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                user = None
+            if user is None or not user.is_active:
+                return Response(
+                    {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            # Return the SAME tokens issued at rotation time, not newly
+            # minted ones, so concurrent retries converge.
+            response = Response({'message': 'Token refreshed'})
+            set_token_cookies(response, access_str, refresh_str)
+            return response
 
 
 class CookieTokenLogoutView(APIView):
     """
     Logout endpoint that blacklists refresh token and clears cookies.
-    
+
     POST /api/auth/logout/
-    
+
+    Deliberately AllowAny (H6): the view body only blacklists the refresh
+    cookie and clears cookies — it never uses request.user. Requiring
+    IsAuthenticated meant an expired 60-min access token 401'd before the
+    body ran, leaving the 7-day refresh cookie alive on shared computers.
+
     Response:
     - Blacklists the refresh token
     - Clears access_token and refresh_token cookies
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         jwt_settings = settings.SIMPLE_JWT

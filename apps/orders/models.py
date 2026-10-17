@@ -249,10 +249,26 @@ class Order(models.Model):
         # check against the now-zero available_balance would always raise a
         # false positive and cause a 500 on any PATCH to a confirmed order.
         _old_status = getattr(self, '_old_status', None)
+        if _old_status is None and self.pk:
+            # M2: direct full_clean() calls (e.g. Django admin's ModelForm)
+            # bypass save(), which is where _old_status is normally stashed.
+            # Fall back to the persisted status so the skip still applies.
+            _old_status = Order.objects.filter(pk=self.pk).values_list(
+                'status', flat=True
+            ).first()
         if _old_status in ('confirmed', 'packing', 'completed', 'cancelled'):
             return
 
         errors = []
+
+        # A charitable bypass waives vouchers entirely (permission- and
+        # reason-checked by the API, audited in _consume_vouchers), so the
+        # balance checks below don't apply to it. Category limits still do.
+        charitable = getattr(self, '_charitable_bypass', False)
+        # Otherwise balances may be exceeded only by the global grace
+        # allowance (0 when grace is off); there is no per-order override.
+        from core.models import ProgramSettings
+        grace = ProgramSettings.grace_allowance()
 
         # --- Available balance (food items) ---
         food_items = [
@@ -261,7 +277,7 @@ class Order(models.Model):
         ]
         food_total = sum(item.total_price() for item in food_items)
         available_balance = getattr(self.account, "available_balance", 0)
-        if food_total > available_balance:
+        if not charitable and food_total > available_balance + grace:
             errors.append(
                 _("Food balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': food_total, 'balance': available_balance,
@@ -275,7 +291,7 @@ class Order(models.Model):
         ]
         hygiene_total = sum(item.total_price() for item in hygiene_items)
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
-        if hygiene_total > hygiene_balance:
+        if not charitable and hygiene_total > hygiene_balance + grace:
             errors.append(
                 _("Hygiene balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': hygiene_total, 'balance': hygiene_balance,
@@ -290,7 +306,11 @@ class Order(models.Model):
         go_fresh_total = sum(item.total_price() for item in go_fresh_items)
         go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
         # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
-        if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
+        if (
+            not charitable
+            and go_fresh_balance > 0
+            and go_fresh_total > go_fresh_balance + grace
+        ):
             errors.append(
                 _("Go Fresh balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': f"{go_fresh_total:.2f}",
@@ -414,6 +434,14 @@ class Order(models.Model):
                 ", ".join(name for _, name in deactivated),
             )
 
+    def _bypass_reason_suffix(self) -> str:
+        """The staff reason for a charitable bypass, for its audit message.
+
+        Set as ``_bypass_reason`` by the API, which requires one.
+        """
+        reason = getattr(self, '_bypass_reason', None)
+        return f" Reason: {reason}" if reason else ""
+
     def _consume_vouchers(self):
         """
         Consume vouchers when order is confirmed.
@@ -424,12 +452,11 @@ class Order(models.Model):
               still decremented (Order.save() calls _decrement_stock()
               after this method returns).  Requires _bypass_user to be set.
               Writes a WARNING to OrderValidationLog.
-          _bypass_balance_check=True  — skips the balance >= total guard.
-              Vouchers are still consumed (up to all available).  Used when
-              the participant's balance is slightly short and the admin
-              chooses to confirm as a charitable exception while still
-              recording voucher consumption.  Requires _bypass_user.
-              Writes a WARNING to OrderValidationLog.
+
+        There is no per-order balance override (H3). An order over its
+        voucher balance confirms only within the global grace allowance
+        (ProgramSettings.grace_allowance(), 0 when grace is off): all its
+        vouchers are consumed and the shortfall is the grace.
 
         Normal flow (no flags set):
           - order total ≤ 1 voucher amount → consume 1 voucher
@@ -467,6 +494,7 @@ class Order(models.Model):
                         f"Charitable bypass by {getattr(bypass_user, 'username', 'unknown')}: "
                         f"voucher consumption waived for order total ${order_total:.2f}. "
                         f"Stock decremented. No vouchers consumed."
+                        f"{self._bypass_reason_suffix()}"
                     ),
                 )
             except Exception:
@@ -487,9 +515,26 @@ class Order(models.Model):
         if not active_vouchers:
             return
 
+        # The multiplier this order was validated against at creation —
+        # NOT the live one. Orders are created pending and confirmed later;
+        # the double-week gate may have closed in between, and checking the
+        # live multiplier then would fail a correctly-validated order
+        # (H1 review). pause_multiplier_at_creation is set at creation and
+        # is None when the multiplier was 1.
+        multiplier = self.pause_multiplier_at_creation or 1
+
         def _effective_amount(v):
-            """Voucher base amount multiplied by pause multiplier."""
-            return (v.voucher_amnt or Decimal('0')) * (getattr(v, 'multiplier', Decimal('1')) or Decimal('1'))
+            """Voucher base amount multiplied by the order's creation-time
+            pause multiplier.
+
+            Must agree with the balance this order was validated against
+            (calculate_available_balance() at creation time, recorded on
+            the order as pause_multiplier_at_creation). The per-voucher
+            stored `multiplier` column is only set by a one-shot batch job
+            when a ProgramPause is saved, so vouchers created afterward keep
+            multiplier=1 and would disagree with the validated balance.
+            """
+            return (v.voucher_amnt or Decimal('0')) * Decimal(multiplier)
 
         # Calculate single voucher amount (they should all be the same)
         single_voucher_amount = _effective_amount(active_vouchers[0])
@@ -497,38 +542,34 @@ class Order(models.Model):
         # Calculate total available voucher balance (respects pause multiplier)
         total_voucher_balance = sum(_effective_amount(v) for v in active_vouchers)
 
-        # Validate order doesn't exceed voucher balance.
-        # Staff with can_bypass_order_transitions may override this check —
-        # they set _bypass_balance_check=True (and optionally _bypass_user)
-        # on the instance before calling save().
+        # Validate order doesn't exceed voucher balance by more than the
+        # global grace allowance (0 when grace is off).
         if order_total > total_voucher_balance:
             participant = getattr(self.account, 'participant', None)
-            if getattr(self, '_bypass_balance_check', False):
-                bypass_user = getattr(self, '_bypass_user', None)
-                logger.warning(
-                    "BYPASS: order=%s user=%s total=$%s exceeds voucher balance=$%s — "
-                    "proceeding under can_bypass_order_transitions permission",
-                    self.id,
-                    getattr(bypass_user, 'username', 'unknown'),
-                    order_total,
-                    total_voucher_balance,
+            from core.models import ProgramSettings
+            amount_over = order_total - total_voucher_balance
+            if amount_over <= ProgramSettings.grace_allowance():
+                logger.info(
+                    "Order %s: total $%s is $%s over voucher balance $%s, "
+                    "within the grace allowance",
+                    self.id, order_total, amount_over, total_voucher_balance,
                 )
                 try:
                     from apps.log.models import OrderValidationLog
                     OrderValidationLog.objects.create(
                         order=self,
-                        user=bypass_user,
+                        user=getattr(self, '_status_change_user', None),
                         participant=participant,
-                        log_type=OrderValidationLog.WARNING,
+                        log_type=OrderValidationLog.INFO,
                         message=(
-                            f"Balance check bypassed by {getattr(bypass_user, 'username', 'unknown')}: "
-                            f"order total ${order_total:.2f} > voucher balance "
-                            f"${total_voucher_balance:.2f}"
+                            f"Confirmed within the grace allowance: order total "
+                            f"${order_total:.2f} is ${amount_over:.2f} over voucher "
+                            f"balance ${total_voucher_balance:.2f}"
                         ),
                     )
                 except Exception:
                     pass  # Never block order processing on audit log failure
-                # Consume all available vouchers (up to what exists)
+                # Consume all available vouchers; the shortfall is the grace.
                 vouchers_to_consume = active_vouchers
             else:
                 logger.error(
@@ -660,8 +701,13 @@ class OrderItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def total_price(self):
-        """Calculate total price for this order item."""
-        return self.quantity * self.price
+        """Calculate total price for this order item.
+
+        Uses the price snapshotted at order time (price_at_order), falling
+        back to price for rows created before the snapshot existed.
+        """
+        unit = self.price_at_order if self.price_at_order is not None else self.price
+        return self.quantity * unit
 
     def clean(self):
         if self.pk:
@@ -674,7 +720,9 @@ class OrderItem(models.Model):
             raise ValidationError(f"OrderItem {self.pk or '[new]'} cannot be created before parent order")
 
     def save(self, *args, **kwargs):
-        # Ensure price_at_order is set
+        # Snapshot prices once, at creation — never re-price a saved line
+        # (H2: re-saving a historical line used to overwrite its price with
+        # today's product price, mutating the recorded order total).
         if self.product_id:
             from django.apps import apps
             Product = apps.get_model("pantry", "Product")
@@ -682,9 +730,12 @@ class OrderItem(models.Model):
             if product:
                 if self.price_at_order is None:
                     self.price_at_order = product.price
-                self.price = product.price
-        super().save(*args, **kwargs)
+                if self.pk is None:
+                    self.price = product.price
+        # L7: validate BEFORE the write. full_clean() after super().save()
+        # left invalid rows committed ("validation theater").
         self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class CombinedOrder(models.Model):
@@ -733,8 +784,10 @@ class CombinedOrder(models.Model):
         if self.pk is None:
             from django.utils import timezone
             now = self.created_at or timezone.now()
+            # M13: ISO year, not calendar year — isocalendar()[1] is the ISO
+            # week, which can belong to the adjacent calendar year.
             self.week = now.isocalendar()[1]
-            self.year = now.year
+            self.year = now.isocalendar()[0]
             if not self.name:
                 strategy_label = dict(self.SPLIT_STRATEGY_CHOICES).get(
                     self.split_strategy, self.split_strategy
@@ -779,8 +832,12 @@ class CombinedOrder(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['program', 'week', 'year'],
-                name='unique_program_per_week'
+                # H9: is_parent is part of the key — each program/week has one
+                # parent aggregate AND (child) packing rows. Without it, the
+                # Monday job's parent get_or_create missed the child row and
+                # died on IntegrityError every week.
+                fields=['program', 'week', 'year', 'is_parent'],
+                name='unique_program_week_is_parent'
             )
         ]
 

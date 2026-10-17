@@ -1,6 +1,6 @@
 # Program Pauses
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 This document describes the program pause functionality.
 
@@ -143,11 +143,13 @@ days_until_start = (pause_start_est - today_est).days
 
 ### 1. Pre-Pause Ordering Window — Voucher/Go Fresh Multiplier Boost
 
-During the 10–14 day window before `pause_start`, the `post_save` signal in `apps/lifeskills/signals.py::handle_program_pause()` flags every active voucher (`program_pause_flag=True`) with `multiplier=2` or `multiplier=3` (via `apps.lifeskills.tasks.program_pause.update_voucher_flag_task`). If the pause is created outside that window, `schedule_voucher_tasks()` schedules the same flagging for `pause_start` instead of doing it immediately.
+During the 10–14 day window before `pause_start`, the `post_save` signal in `apps/lifeskills/signals.py::handle_program_pause()` flags every active voucher (`program_pause_flag=True`) with `multiplier=2` or `multiplier=3` (via `apps.lifeskills.tasks.program_pause.update_voucher_flag_task`). A pause created 0–14 days before it starts is flagged immediately the same way (pauses fewer than 10 days out used to be flagged until `pause_end` with no early clean-up). A pause created more than 14 days out is scheduled by `schedule_voucher_tasks()` to flag at `pause_start - 14 days`, when the double-order window opens, with the multiplier computed from the pause's own dates. An archived pause never re-flags vouchers.
 
-`calculate_available_balance()` (`apps/account/utils/balance_utils.py`) always multiplies each selected voucher's amount by that voucher's own `multiplier` field, so a flagged voucher counts double or triple toward available balance **for the duration it stays flagged** — this is a genuine budget increase, not a restriction. `calculate_go_fresh_balance()` applies the same boost via `_get_current_pause_multiplier()`, which takes the highest `multiplier` across all non-archived pauses.
+`calculate_available_balance()` (`apps/account/utils/balance_utils.py`) multiplies each selected voucher's amount by the **live** pause multiplier from `_get_current_pause_multiplier()` (the highest `multiplier` across all non-archived pauses), not by the voucher's own stored `multiplier` field — so vouchers created after a pause was saved still get the boost. This is a genuine budget increase, not a restriction. `calculate_go_fresh_balance()` applies the same boost. The per-voucher flags are bookkeeping; they don't drive balances or consumption.
 
-`calculate_available_balance()` also has a `gate_active` code path that restricts the voucher selection to `program_pause_flag=True` vouchers whenever a pause is `is_active_gate` **and** currently in progress (`pause_start <= now <= pause_end`). In practice this filter never engages: `is_active_gate` requires `10 <= days_until_start <= 14`, which is impossible once `pause_start` has already passed. This is called out explicitly in `core/utils.py::get_in_progress_pause()`'s docstring. Voucher flags get cleared automatically once the participant's own order window closes (`deactivate_expired_pause_vouchers` task) or, at the latest, after `pause_end` (`final_cleanup_after_pause_end`, which also archives the pause) or via the daily `cleanup_expired_pause_flags` safety-net task.
+At confirmation, `Order._consume_vouchers()` uses the multiplier recorded on the order when it was placed (`Order.pause_multiplier_at_creation`), so an order placed in the double-order window and confirmed after it closes is consumed at the multiplier it was validated against.
+
+Voucher flags get cleared automatically once the participant's own order window closes (`deactivate_expired_pause_vouchers` task) or, at the latest, after `pause_end` (`final_cleanup_after_pause_end`, which also archives the pause) or via the daily `cleanup_expired_pause_flags` safety-net task.
 
 ### 2. During the Pause — Hard Order Block
 

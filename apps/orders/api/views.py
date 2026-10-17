@@ -17,6 +17,7 @@ from django.utils.translation import gettext as _
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import action
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -37,7 +38,6 @@ from apps.orders.api.serializers import (
     OrderListSerializer,
     OrderCreateSerializer,
     OrderItemSerializer,
-    OrderItemCreateSerializer,
     OrderValidationLogSerializer,
     FailedOrderAttemptSerializer,
     CombinedOrderSerializer,
@@ -47,10 +47,67 @@ from apps.orders.api.serializers import (
     WarehouseInventoryListSerializer,
 )
 from apps.orders.api.filters import OrderFilter
-from apps.orders.api.throttles import OrderSubmissionThrottle
+from apps.orders.api.throttles import (
+    OrderSubmissionThrottle,
+    OrderSubmissionHourlyThrottle,
+    OrderSubmissionDailyThrottle,
+)
 from core.models import ProgramSettings
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_int_query_param(value, default, max_value, param_name):
+    """Parse an integer query param, raising a 400 ValidationError on garbage.
+
+    L8: several analytics endpoints did int(...) with no ValueError catch,
+    turning ?limit=abc into a 500.
+    """
+    try:
+        parsed = int(value) if value is not None else default
+    except (ValueError, TypeError):
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+        raise DRFValidationError(
+            {param_name: f"Must be an integer."}
+        )
+    return min(parsed, max_value)
+
+
+class CharitableBypassRefused(APIException):
+    """A charitable bypass the request may not have. Renders as
+    ``{"error": message}``, the shape the admin's order buttons read."""
+
+    def __init__(self, message, status_code):
+        self.status_code = status_code
+        super().__init__({'error': message})
+
+
+def _apply_charitable_bypass(order, request):
+    """Apply a charitable bypass (vouchers waived) if the request asks for one.
+
+    It needs orders.can_bypass_order_transitions and a ``bypass_reason``,
+    which goes into the order's audit log. Asking without either raises
+    CharitableBypassRefused (403 / 400) rather than being silently ignored.
+
+    There is no per-order balance override (H3): going over balance is
+    governed only by the global grace allowance (ProgramSettings).
+    """
+    if not request.data.get('charitable'):
+        return
+    if not request.user.has_perm('orders.can_bypass_order_transitions'):
+        raise CharitableBypassRefused(
+            _("You don't have permission to waive vouchers for this order."),
+            status.HTTP_403_FORBIDDEN,
+        )
+    reason = str(request.data.get('bypass_reason') or '').strip()
+    if not reason:
+        raise CharitableBypassRefused(
+            _("Give a reason for waiving vouchers for this order."),
+            status.HTTP_400_BAD_REQUEST,
+        )
+    order._bypass_user = request.user
+    order._bypass_reason = reason
+    order._charitable_bypass = True
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -99,7 +156,12 @@ class OrderViewSet(viewsets.ModelViewSet):
     def get_throttles(self):
         """Apply throttling only to create action."""
         if self.action == 'create':
-            return [OrderSubmissionThrottle()]
+            # M8: enforce all three documented rates (per minute/hour/day).
+            return [
+                OrderSubmissionThrottle(),
+                OrderSubmissionHourlyThrottle(),
+                OrderSubmissionDailyThrottle(),
+            ]
         return super().get_throttles()
 
     def create(self, request, *args, **kwargs):
@@ -152,15 +214,15 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """Set bypass flags on the instance before saving.
 
-        When a staff member with can_bypass_order_transitions confirms an order
-        via PATCH (status → 'confirmed'), two bypass modes are available:
+        Confirming via PATCH (status → 'confirmed') checks the balance like
+        any confirmation: an order over balance goes through only within the
+        global grace allowance (H3: there is no per-order balance override).
 
-        - Default bypass (no extra flag): skips the balance check, vouchers are
-          still consumed.  Used for charitable exceptions where the participant
-          is slightly short but staff choose to proceed.
-        - Charitable bypass (request body ``charitable=true``): waives voucher
-          consumption entirely.  Stock is still decremented.  Used for fully
-          benevolent orders.  Both modes write a WARNING to OrderValidationLog.
+        A staff member with can_bypass_order_transitions may instead send
+        ``charitable=true`` with a ``bypass_reason`` to waive voucher
+        consumption entirely (stock is still decremented); it writes a
+        WARNING with the reason to OrderValidationLog. See
+        _apply_charitable_bypass.
         """
         instance = serializer.instance
         incoming_status = serializer.validated_data.get('status')
@@ -169,39 +231,26 @@ class OrderViewSet(viewsets.ModelViewSet):
         # PATCH (e.g. the "Cancel Order" button) traceable after the fact.
         if incoming_status is not None and incoming_status != instance.status:
             instance._status_change_user = self.request.user
-        if (
-            incoming_status == 'confirmed'
-            and instance.status != 'confirmed'
-            and self.request.user.has_perm('orders.can_bypass_order_transitions')
-        ):
-            instance._bypass_balance_check = True
-            instance._bypass_user = self.request.user
-            if self.request.data.get('charitable'):
-                instance._charitable_bypass = True
+        if incoming_status == 'confirmed' and instance.status != 'confirmed':
+            _apply_charitable_bypass(instance, self.request)
         serializer.save()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def confirm(self, request, pk=None):
         """Confirm an order (staff only).
 
-        Users with can_bypass_order_transitions may confirm orders using two
-        bypass modes:
+        An order over its balance confirms only within the global grace
+        allowance (H3: there is no per-order balance override).
 
-        - Default bypass: skips the voucher balance check; vouchers are still
-          consumed.  For charitable exceptions where the balance is short.
-        - Charitable bypass (request body ``{"charitable": true}``): waives
-          voucher consumption entirely.  Stock is still decremented.  For
-          fully benevolent orders where no vouchers should be consumed.
-
-        Both modes write a WARNING audit record to OrderValidationLog.
+        Users with can_bypass_order_transitions may send
+        ``{"charitable": true, "bypass_reason": "..."}`` to waive voucher
+        consumption entirely (stock is still decremented). It writes a
+        WARNING audit record with the reason to OrderValidationLog. Asking
+        for it without the permission is a 403, and without a reason a 400.
         """
         order = self.get_object()
         order._status_change_user = request.user
-        if request.user.has_perm('orders.can_bypass_order_transitions'):
-            order._bypass_balance_check = True
-            order._bypass_user = request.user
-            if request.data.get('charitable'):
-                order._charitable_bypass = True
+        _apply_charitable_bypass(order, request)
         try:
             order.confirm()
             return Response(OrderSerializer(order).data)
@@ -229,10 +278,21 @@ class OrderViewSet(viewsets.ModelViewSet):
         # status into 'cancelled' — same discipline confirm() already
         # follows for consumption. Wrapped in atomic() so a failure mid-save
         # rolls back the status change too.
-        with db_transaction.atomic():
-            order.status = 'cancelled'
-            order._status_change_user = request.user
-            order.save(update_fields=['status', 'updated_at'])
+        try:
+            with db_transaction.atomic():
+                order.status = 'cancelled'
+                order._status_change_user = request.user
+                order.save(update_fields=['status', 'updated_at'])
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            # M6: never leak a raw 500 — staff must be able to tell the
+            # cancel did not apply (atomicity guarantees it didn't).
+            logger.exception("Unexpected error cancelling order pk=%s", pk)
+            return Response(
+                {'error': 'An unexpected error occurred while cancelling the order.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         return Response(OrderSerializer(order).data)
 
     @action(detail=False, methods=['get'])
@@ -279,6 +339,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "order_ids": [1, 2, 3],
                 "new_status": "confirmed"
             }
+
+        Confirmations check balances like any other: over balance goes
+        through only within the global grace allowance. An order that fails
+        is reported in ``failed_ids``.
 
         Allowed transitions (mirrors client-side ALLOWED_TRANSITIONS const)::
 
@@ -329,6 +393,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         updated_ids: list[int] = []
         skipped_ids: list[int] = []
+        # H4: per-order confirm failures (order_id -> error message). One bad
+        # order must not roll back the whole batch.
+        failed_ids: dict[int, str] = {}
 
         with db_transaction.atomic():
             orders = list(
@@ -389,7 +456,20 @@ class OrderViewSet(viewsets.ModelViewSet):
                 for order in orders:
                     if order.id in first_confirmation_ids:
                         order._status_change_user = request.user
-                        order.confirm()
+                        try:
+                            order.confirm()
+                        except ValidationError as exc:
+                            # Per-order failure: record it and keep going
+                            # instead of rolling back the whole batch.
+                            # confirm() runs in its own savepoint, so the
+                            # outer transaction stays healthy. Unexpected
+                            # (non-domain) exceptions still propagate and
+                            # roll back, as they should.
+                            failed_ids[order.id] = str(exc)
+                if failed_ids:
+                    updated_ids = [
+                        oid for oid in updated_ids if oid not in failed_ids
+                    ]
 
                 # Mirror the same logic for cancellation: an order being
                 # cancelled out of a resource-holding status must go through
@@ -435,6 +515,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             # WARNING-level message; everything else in that bucket gets a
             # plain INFO entry \u2014 previously it wrote nothing at all.
             from apps.log.models import OrderValidationLog
+            # Review #107: a confirm that FAILED must not leave a spurious
+            # "Transition bypass … → confirmed" WARNING in the audit log —
+            # the transition never happened.
+            bypassed_orders = [
+                o for o in bypassed_orders if o.id not in failed_ids
+            ]
             bypassed_ids = {o.id for o in bypassed_orders}
             logs = [
                 OrderValidationLog(
@@ -473,6 +559,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'skipped_count': len(skipped_ids),
             'updated_ids': updated_ids,
             'skipped_ids': skipped_ids,
+            'failed_ids': failed_ids,
         })
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='validate-cart')
@@ -532,6 +619,40 @@ class OrderViewSet(viewsets.ModelViewSet):
         participant_id = request.data.get('participant_id')
         items_data = request.data.get('items', [])
 
+        # M9: coerce and validate inputs up front. Malformed values used to
+        # raise uncaught ValueError / DataError / AttributeError (500);
+        # the create endpoint already 400s these cleanly.
+        def _input_error(message):
+            return Response(
+                {'error': _(message)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if participant_id is not None:
+            try:
+                participant_id = int(participant_id)
+            except (TypeError, ValueError):
+                return _input_error('participant_id must be an integer.')
+
+        if not isinstance(items_data, list):
+            return _input_error('items must be a list.')
+
+        clean_items = []
+        for idx, item_data in enumerate(items_data):
+            if not isinstance(item_data, dict):
+                return _input_error(f'items[{idx}] must be an object.')
+            try:
+                product_id = int(item_data.get('product_id'))
+            except (TypeError, ValueError):
+                return _input_error(f'items[{idx}].product_id must be an integer.')
+            try:
+                quantity = int(item_data.get('quantity', 1))
+            except (TypeError, ValueError):
+                return _input_error(f'items[{idx}].quantity must be an integer.')
+            if quantity < 1:
+                return _input_error(f'items[{idx}].quantity must be at least 1.')
+            clean_items.append({'product_id': product_id, 'quantity': quantity})
+        items_data = clean_items
+
         # Get participant and account.
         # participant_id is optional for authenticated participants — if not supplied,
         # derive from the authenticated user (same pattern as me_balances).
@@ -577,7 +698,28 @@ class OrderViewSet(viewsets.ModelViewSet):
                     user=request.user,
                     status='pending',
                 )
-                temp_order.save()
+                # M1: the duplicate-active-order guard fires here when the
+                # participant already has a pending/confirmed/packing order.
+                # Validate against in-memory items instead of blowing up with
+                # a malformed 400 the cart drawer can't render.
+                duplicate_violation = None
+                try:
+                    temp_order.save()
+                except ValidationError as e:
+                    duplicate_violation = {
+                        'type': 'limit',
+                        'severity': 'error',
+                        'message': str(e),
+                        'amount_over': 0,
+                        'grace_allowed': False,
+                    }
+                    # Unsaved stand-in: downstream validation only reads
+                    # attributes (product, quantity, price), never the DB.
+                    temp_order = Order(
+                        account=account,
+                        user=request.user,
+                        status='pending',
+                    )
 
                 temp_items = []
                 total_price = Decimal('0.00')
@@ -587,11 +729,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                     quantity = item_data.get('quantity', 1)
                     try:
                         product = Product.objects.get(id=product_id)
-                        item = OrderItem.objects.create(
+                        # In-memory only: nothing here needs a DB row, and
+                        # the sentinel rolls everything back anyway.
+                        item = OrderItem(
                             order=temp_order,
                             product=product,
                             quantity=quantity,
-                            price=product.price
+                            price=product.price,
+                            price_at_order=product.price,
                         )
                         temp_items.append(item)
                         total_price += item.total_price()
@@ -603,6 +748,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
                 # Now run validation
                 violations = []
+                if duplicate_violation:
+                    violations.append(duplicate_violation)
 
                 # Program pause blocks all ordering during the off week
                 # (Issue #78), unless staff force-opened the program's window.
@@ -807,7 +954,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
         category_id = request.query_params.get('category')
-        limit = min(int(request.query_params.get('limit', 20)), 100)
+        limit = _parse_int_query_param(
+            request.query_params.get('limit'), 20, 100, 'limit'
+        )
 
         qs = OrderItem.objects.filter(
             order__order_date__date__gte=week_start,
@@ -866,8 +1015,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         from calendar import month_abbr
         from django.db.models.functions import TruncMonth
 
-        months_back = min(int(request.query_params.get('months', 6)), 12)
-        top_n = min(int(request.query_params.get('top', 5)), 10)
+        months_back = _parse_int_query_param(
+            request.query_params.get('months'), 6, 12, 'months'
+        )
+        top_n = _parse_int_query_param(
+            request.query_params.get('top'), 5, 10, 'top'
+        )
         category_id = request.query_params.get('category')
 
         default_statuses = ['pending', 'confirmed', 'packing', 'completed']
@@ -991,7 +1144,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             else default_statuses
         )
         category_id = request.query_params.get('category')
-        limit = min(int(request.query_params.get('limit', 20)), 50)
+        limit = _parse_int_query_param(
+            request.query_params.get('limit'), 20, 50, 'limit'
+        )
 
         today = timezone.now()
 
@@ -1094,7 +1249,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         - top_participants: Participants with most failures
         - balance_issues: Count of balance-related failures
         """
-        days = min(int(request.query_params.get('days', 7)), 90)
+        days = _parse_int_query_param(
+            request.query_params.get('days'), 7, 90, 'days'
+        )
         participant_id = request.query_params.get('participant_id')
         
         since = timezone.now() - timedelta(days=days)
@@ -1186,7 +1343,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         - limit: Number of records (default: 50, max: 200)
         - participant_id: Filter by participant
         """
-        limit = min(int(request.query_params.get('limit', 50)), 200)
+        limit = _parse_int_query_param(
+            request.query_params.get('limit'), 50, 200, 'limit'
+        )
         participant_id = request.query_params.get('participant_id')
         
         qs = FailedOrderAttempt.objects.select_related(
@@ -1206,22 +1365,24 @@ class OrderViewSet(viewsets.ModelViewSet):
         })
 
 
-class OrderItemViewSet(viewsets.ModelViewSet):
-    """ViewSet for OrderItem model."""
+class OrderItemViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for OrderItem model (read-only).
+
+    M10: write actions are not exposed — OrderItemCreateSerializer had no
+    `order` field while OrderItem.order is NOT NULL, so every POST died
+    with IntegrityError → 500. Items are created through the order-creation
+    flow (OrderOrchestration), never through this endpoint.
+    """
     queryset = OrderItem.objects.all().select_related(
         'order', 'product__category', 'product__subcategory'
     )
+    serializer_class = OrderItemSerializer
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['order', 'product']
     ordering_fields = ['quantity', 'price', 'created_at']
     ordering = ['created_at']
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return OrderItemCreateSerializer
-        return OrderItemSerializer
 
     def get_queryset(self):
         """Filter items based on user permissions."""
@@ -1275,6 +1436,14 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
         """Add orders to this combined order."""
         combined_order = self.get_object()
         order_ids = request.data.get('order_ids', [])
+        # L10: non-integer IDs raise DataError on Postgres → 500. Validate.
+        try:
+            order_ids = [int(i) for i in order_ids]
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'order_ids must be a list of integers.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         orders = Order.objects.filter(id__in=order_ids)
         combined_order.orders.add(*orders)
         return Response(CombinedOrderSerializer(combined_order).data)
@@ -1284,6 +1453,14 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
         """Remove orders from this combined order."""
         combined_order = self.get_object()
         order_ids = request.data.get('order_ids', [])
+        # L10: see add_orders.
+        try:
+            order_ids = [int(i) for i in order_ids]
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'order_ids must be a list of integers.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         orders = Order.objects.filter(id__in=order_ids)
         combined_order.orders.remove(*orders)
         return Response(CombinedOrderSerializer(combined_order).data)
@@ -1438,6 +1615,13 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
             )
         try:
             program = Program.objects.get(id=program_id)
+        except Program.DoesNotExist:
+            # L9: was an uncaught DoesNotExist → 500.
+            return Response(
+                {'error': 'Program not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        try:
             orders = list(Order.objects.filter(id__in=order_ids))
             if not orders:
                 return Response(

@@ -1,6 +1,6 @@
 # Customer Number System
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 The customer number system generates spoken-friendly, warehouse-optimized identifiers for participants. These numbers are designed to be easily communicated verbally in noisy environments while including error detection.
@@ -109,9 +109,13 @@ rather than a generic "not found" message.
 ### Login
 Participants can log in with **either** their customer number or their
 Django username — `FlexibleTokenObtainPairSerializer`
-(`apps/account/api/jwt_serializers.py`) detects which one was entered (an
-identifier starting with `C` and at least 5 characters is treated as a
-customer number) and resolves it to the linked `User` account. The
+(`apps/account/api/jwt_serializers.py`) first looks for an exact username
+match, so usernames that start with `C` (generated names like
+`Christina-anchor`) log in normally. Only when no username matches is an
+identifier starting with `C` and at least 5 characters treated as a customer
+number and resolved to the linked `User` account. The password is then
+checked through Django's `authenticate()` (so failed logins fire
+`user_login_failed`), and `last_login` is updated. The
 onboarding email (see `apps/log` `EmailType` "onboarding") currently leads
 with the username and lists the customer number as a secondary credential —
 this was changed back from customer-number-first in migration

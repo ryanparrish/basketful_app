@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 This Django project follows a modular app layout. High-level apps of interest:
 
@@ -18,16 +18,16 @@ This Django project follows a modular app layout. High-level apps of interest:
 `AccountBalance` (`apps/account/models.py`) is a `OneToOneField` to `Participant` and exposes four balance types as computed **properties** (not stored columns) that call into `apps/account/utils/balance_utils.py`:
 
 1. **Full Balance** - Total value of all grocery vouchers not yet consumed or expired
-2. **Available Balance** - Sum of up to 2 oldest applied grocery vouchers (multiplied by their multipliers)
+2. **Available Balance** - Sum of up to 2 oldest applied grocery vouchers (multiplied by the live program-pause multiplier)
 3. **Hygiene Balance** - Configurable ratio (default 1/3) of available balance, reserved for hygiene products
 4. **Go Fresh Balance** - Fixed per-order budget for fresh food based on household size, scaled by any active program-pause multiplier
 
 ### Balance Calculation Models
 
 **Voucher-based (Available):** `calculate_available_balance()` sums up to N oldest applied vouchers
-- `available_balance = sum(voucher.voucher_amnt * voucher.multiplier for oldest N applied grocery vouchers)`
+- `available_balance = sum(voucher.voucher_amnt * _get_current_pause_multiplier() for oldest N applied grocery vouchers)`
 - Default limit is 2 vouchers
-- Respects ProgramPause gate logic (only includes `program_pause_flag=True` vouchers while a pause gate is active)
+- The pause multiplier is applied live (2 or 3 during the double/triple-order window, else 1), not read from each voucher's stored `multiplier`
 - Implementation: `apps/account/utils/balance_utils.py`
 
 **Percentage-based (Hygiene):** `calculate_hygiene_balance()` calculated as a ratio of available balance

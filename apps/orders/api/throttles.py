@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 class OrderSubmissionThrottle(UserRateThrottle):
     """
     Throttle for order submissions with exponential backoff after failures.
-    
-    Rates:
-    - 3 submissions per minute
-    - 10 submissions per hour  
-    - 50 submissions per day
+
+    Rates (enforced together — see get_throttles on the order viewset):
+    - 3 submissions per minute  (this class, scope 'order_submission')
+    - 10 submissions per hour   (OrderSubmissionHourlyThrottle)
+    - 50 submissions per day    (OrderSubmissionDailyThrottle)
     """
     scope = 'order_submission'
     
@@ -41,6 +41,18 @@ class OrderSubmissionThrottle(UserRateThrottle):
                 return False
         
         return True
+
+
+class OrderSubmissionHourlyThrottle(UserRateThrottle):
+    """10 order submissions per hour (M8: the documented hourly cap)."""
+
+    scope = 'order_submission_hourly'
+
+
+class OrderSubmissionDailyThrottle(UserRateThrottle):
+    """50 order submissions per day (M8: the documented daily cap)."""
+
+    scope = 'order_submission_daily'
 
 
 def get_backoff_time(user_id: int) -> int:

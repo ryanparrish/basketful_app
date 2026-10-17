@@ -1,6 +1,6 @@
 # Go Fresh Budget Feature Documentation
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 
@@ -119,7 +119,9 @@ Go Fresh budget is enforced in **three separate places**, each with slightly dif
      ```json
      {"type": "balance", "severity": "error", "message": "Go Fresh balance exceeded by $X.XX", "amount_over": X.XX, "grace_allowed": false}
      ```
-   - Like the food/hygiene balance checks in this endpoint, an over-budget Go Fresh total can be downgraded to a `"warning"` (grace-allowed) if the overage is within `ProgramSettings.grace_amount`. Go Fresh does not currently get its own grace rule — it shares the program-wide grace allowance.
+   - Like the food/hygiene balance checks in this endpoint, an over-budget Go Fresh total can be downgraded to a `"warning"` (grace-allowed) if the overage is within the grace amount.
+
+All three places allow the same overage: the **global grace allowance** (`ProgramSettings.grace_allowance()`; Settings → Grace, one site-wide switch, off by default). With grace on, an order up to the grace amount over its Go Fresh, hygiene or food balance is accepted at checkout and at confirmation; with grace off, none is. Go Fresh has no grace rule of its own.
 
 **Important:** Go Fresh items must pass BOTH validations in every path above:
 - Go Fresh-specific budget (per-order limit)

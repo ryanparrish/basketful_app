@@ -1,6 +1,6 @@
 # Order Window Feature
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 
@@ -74,6 +74,22 @@ and passes the `(can_order, context)` result into `food_orders/participant_dashb
 and `food_orders/order_detail.html`, which use it to disable the "Place a New Order" /
 "Duplicate this order" actions and show timing information (next class, when the window
 opens/closes, hours remaining).
+
+### Server-Side Enforcement
+
+The window is also enforced when an order is submitted, so a direct API call can't get
+around a closed window: `OrderCreateSerializer.validate()` (`apps/orders/api/serializers.py`)
+and the legacy `submit_order` view (`apps/orders/views.py`) call `can_place_order()` for
+non-staff users and reject the order when it returns `False`. A participant with no program
+assigned can't order. Staff are exempt, since they place orders on participants' behalf and
+have the force-open override for legitimate off-window orders.
+
+### Public Global Status
+
+`OrderWindowSettingsSerializer` (`core/api/serializers.py`) derives the global `is_open`,
+`next_opens_at` and `next_closes_at` from the per-program engine
+(`core.utils.get_program_window_status`): the window is open when any program's window is
+open, and the next open/close times are the earliest upcoming ones across programs.
 
 ## Technical Implementation
 

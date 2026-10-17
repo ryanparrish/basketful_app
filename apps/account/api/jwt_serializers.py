@@ -11,10 +11,13 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
     JWT serializer that accepts either customer_number or username for authentication.
     
     Authentication Flow:
-    1. Check if input looks like customer_number (format: C-XXX-D)
-    2. If yes, look up Participant → User
-    3. If no, use standard username authentication
-    4. Validate password for found user
+    1. Exact username match always wins — generated usernames are
+       {Name}-{noun} (e.g. "Christina-anchor"), and routing on a "starts
+       with C" heuristic misrouted them to customer-number validation (H5).
+    2. Otherwise, check if input looks like customer_number (format: C-XXX-D)
+    3. If yes, look up Participant → User
+    4. If no, standard username-not-found error
+    5. Validate password for found user
     
     Error codes returned:
     - customer_not_found: Customer number doesn't exist
@@ -30,9 +33,26 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get('password', '')
         
         user = None
-        
-        # Check if identifier looks like customer number (C-XXX-D format)
-        if identifier.startswith('C-') or (identifier.upper().startswith('C') and len(identifier) >= 5):
+
+        # Username login takes precedence: an exact username match always
+        # wins. (H5: the old "starts with C" heuristic below routed generated
+        # usernames like "Christina-anchor" into customer-number validation,
+        # 401ing every user whose name starts with C.)
+        try:
+            user = User.objects.get(username=identifier)
+        except User.DoesNotExist:
+            user = None
+
+        if user is None:
+            # No exact username match — maybe a customer number (C-XXX-D).
+            if not (
+                identifier.startswith('C-')
+                or (identifier.upper().startswith('C') and len(identifier) >= 5)
+            ):
+                raise AuthenticationFailed({
+                    'detail': 'Username not found.',
+                    'code': 'username_not_found'
+                })
             # Customer number login — normalize first, then validate
             from apps.account.models import Participant
             from apps.account.utils.warehouse_id import (
@@ -66,28 +86,36 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
                     'detail': 'Customer number not found.',
                     'code': 'customer_not_found'
                 })
-        else:
-            # Standard username login
-            try:
-                user = User.objects.get(username=identifier)
-            except User.DoesNotExist:
-                raise AuthenticationFailed({
-                    'detail': 'Username not found.',
-                    'code': 'username_not_found'
-                })
         
-        # Validate password
-        if user and not user.check_password(password):
+        # Validate password via the AUTHENTICATION_BACKENDS chain (M12) —
+        # the old direct check_password() bypassed it, so no
+        # user_login_failed signal fired and backends were skipped.
+        from django.contrib.auth import authenticate
+        from django.contrib.auth.models import update_last_login
+
+        authenticated_user = authenticate(
+            request=self.context.get('request'),
+            username=user.username,
+            password=password,
+        )
+        if authenticated_user is None:
+            # authenticate() rejects inactive users as well; check is_active
+            # here (not before) to keep the pre-M12 ordering: the password is
+            # validated first, then the disabled notice (review #107).
+            if not user.is_active:
+                raise AuthenticationFailed({
+                    'detail': 'Account is disabled.',
+                    'code': 'account_disabled'
+                })
             raise AuthenticationFailed({
                 'detail': 'Incorrect password.',
                 'code': 'invalid_password'
             })
-        
-        if not user or not user.is_active:
-            raise AuthenticationFailed({
-                'detail': 'Account is disabled.',
-                'code': 'account_disabled'
-            })
+        user = authenticated_user
+        # JWT logins never call django.contrib.auth.login(), so the
+        # user_logged_in receiver never runs — update last_login explicitly
+        # (known issue #102: no JWT login was ever recorded).
+        update_last_login(None, user)
         
         # Set the user for token generation
         self.user = user

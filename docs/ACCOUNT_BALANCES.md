@@ -1,6 +1,6 @@
 # Account Balances
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 This document describes the balance system used for participant accounts.
 
@@ -22,15 +22,17 @@ The amount a participant can spend on their current order. Limited to the sum of
 
 **Calculation:** 
 ```python
-sum(voucher.voucher_amnt * voucher.multiplier 
+multiplier = _get_current_pause_multiplier()   # live: 2 or 3 in a double/triple week, else 1
+sum(voucher.voucher_amnt * multiplier
     for voucher in oldest_N_applied_grocery_vouchers)
 ```
 
 **Default limit:** 2 vouchers
 
 **Special behavior:**
-- During active ProgramPause periods with gate logic, only vouchers with `program_pause_flag=True` are included
-- Respects voucher multipliers
+- Applies the **live** program-pause multiplier, not each voucher's stored `multiplier`/`program_pause_flag` (those are set by a one-off job when a pause is saved, so vouchers created afterwards would miss them). No voucher is excluded during a pause.
+- An order may exceed it only by the global grace allowance (Settings → Grace, off by default); see [VOUCHER_SYSTEM.md](VOUCHER_SYSTEM.md#voucher-consumption).
+- At confirmation, vouchers are consumed using the multiplier recorded on the order when it was placed (`pause_multiplier_at_creation`), not the live one.
 
 **Implementation:** `apps/account/utils/balance_utils.py::calculate_available_balance()`
 
