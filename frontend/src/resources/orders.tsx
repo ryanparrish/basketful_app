@@ -26,7 +26,6 @@ import {
   ArrayField,
   FunctionField,
   Button,
-  useUpdate,
   useNotify,
   useRefresh,
   Confirm,
@@ -35,7 +34,8 @@ import { OrderCommandPalette } from '../components/OrderCommandPalette.tsx';
 import apiClient from '../lib/api/apiClient.ts';
 import { getOrderStatusColor } from '../lib/orderStatus.ts';
 import { ProgramMultiSelectFilter } from '../components/ProgramMultiSelectFilter.tsx';
-import { Box } from '@mui/material';
+import { usePermissionContext } from '../contexts/PermissionContext.tsx';
+import { Box, Checkbox, FormControlLabel, TextField as MuiTextField } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PrintIcon from '@mui/icons-material/Print';
@@ -137,42 +137,54 @@ const OrderTitle = () => {
 };
 
 // Confirm Order Button Component
+//
+// Calls the dedicated POST /orders/{id}/confirm/ action (like Cancel below),
+// so the backend's reason for a refusal reaches the toast.
+//
+// H3: confirming a short-balance order as a charitable exception needs an
+// explicit override with a reason, and only staff with
+// orders.can_bypass_order_transitions see the option.
 const ConfirmOrderButton = () => {
   const record = useRecordContext();
+  const { hasPermission } = usePermissionContext();
+  const canOverride = hasPermission('orders.can_bypass_order_transitions');
   const [open, setOpen] = useState(false);
-  // Review #107: staff confirm short-balance orders as charitable exceptions
-  // via PATCH {status: 'confirmed'} — the backend needs an explicit
-  // bypass_balance flag (H3), which no UI sent until now.
+  const [isPending, setIsPending] = useState(false);
   const [bypassBalance, setBypassBalance] = useState(false);
+  const [reason, setReason] = useState('');
   const notify = useNotify();
   const refresh = useRefresh();
-  const [update, { isPending }] = useUpdate();
 
   if (!record || record.status !== 'pending') return null;
 
-  const handleConfirm = () => {
-    update(
-      'orders',
-      {
-        id: record.id,
-        data: {
-          status: 'confirmed',
-          ...(bypassBalance ? { bypass_balance: true } : {}),
-        },
-        previousData: record,
-      },
-      {
-        onSuccess: () => {
-          notify('Order confirmed successfully', { type: 'success' });
-          refresh();
-        },
-        onError: (error: Error) => {
-          notify(`Error: ${error.message}`, { type: 'error' });
-        },
-      }
-    );
+  const close = () => {
     setOpen(false);
     setBypassBalance(false);
+    setReason('');
+  };
+
+  const handleConfirm = async () => {
+    if (bypassBalance && !reason.trim()) {
+      notify('Give a reason for overriding the balance check.', { type: 'warning' });
+      return;
+    }
+    const body = bypassBalance
+      ? { bypass_balance: true, bypass_reason: reason.trim() }
+      : {};
+    close();
+    setIsPending(true);
+    try {
+      await apiClient.post(`/orders/${record.id}/confirm/`, body);
+      notify('Order confirmed successfully', { type: 'success' });
+      refresh();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to confirm order.';
+      notify(msg, { type: 'error' });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -188,18 +200,36 @@ const ConfirmOrderButton = () => {
         content={
           <>
             <p>Are you sure you want to confirm this order? This will consume vouchers.</p>
-            <label>
-              <input
-                type="checkbox"
-                checked={bypassBalance}
-                onChange={(e) => setBypassBalance(e.target.checked)}
-              />{' '}
-              Bypass balance check (charitable exception)
-            </label>
+            {canOverride && (
+              <>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={bypassBalance}
+                      onChange={(e) => setBypassBalance(e.target.checked)}
+                    />
+                  }
+                  label="Override the balance check (charitable exception)"
+                />
+                {bypassBalance && (
+                  <MuiTextField
+                    label="Reason (saved to the audit log)"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    autoFocus
+                    sx={{ mt: 1 }}
+                  />
+                )}
+              </>
+            )}
           </>
         }
         onConfirm={handleConfirm}
-        onClose={() => { setOpen(false); setBypassBalance(false); }}
+        onClose={close}
       />
     </>
   );

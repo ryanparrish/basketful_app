@@ -261,6 +261,13 @@ class Order(models.Model):
 
         errors = []
 
+        # A staff balance override (H3) is permission- and reason-checked by
+        # the API and audited in _consume_vouchers, so the balance checks
+        # below must not reject it. Category limits still apply.
+        balance_override = getattr(self, '_bypass_balance_check', False) or getattr(
+            self, '_charitable_bypass', False
+        )
+
         # --- Available balance (food items) ---
         food_items = [
             item for item in self.items.select_related("product")
@@ -268,7 +275,7 @@ class Order(models.Model):
         ]
         food_total = sum(item.total_price() for item in food_items)
         available_balance = getattr(self.account, "available_balance", 0)
-        if food_total > available_balance:
+        if not balance_override and food_total > available_balance:
             errors.append(
                 _("Food balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': food_total, 'balance': available_balance,
@@ -282,7 +289,7 @@ class Order(models.Model):
         ]
         hygiene_total = sum(item.total_price() for item in hygiene_items)
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
-        if hygiene_total > hygiene_balance:
+        if not balance_override and hygiene_total > hygiene_balance:
             errors.append(
                 _("Hygiene balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': hygiene_total, 'balance': hygiene_balance,
@@ -297,7 +304,11 @@ class Order(models.Model):
         go_fresh_total = sum(item.total_price() for item in go_fresh_items)
         go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
         # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
-        if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
+        if (
+            not balance_override
+            and go_fresh_balance > 0
+            and go_fresh_total > go_fresh_balance
+        ):
             errors.append(
                 _("Go Fresh balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': f"{go_fresh_total:.2f}",
@@ -421,6 +432,14 @@ class Order(models.Model):
                 ", ".join(name for _, name in deactivated),
             )
 
+    def _bypass_reason_suffix(self) -> str:
+        """The staff reason for a balance override, for its audit message.
+
+        Set as ``_bypass_reason`` by the API (H3: every override needs one).
+        """
+        reason = getattr(self, '_bypass_reason', None)
+        return f" Reason: {reason}" if reason else ""
+
     def _consume_vouchers(self):
         """
         Consume vouchers when order is confirmed.
@@ -474,6 +493,7 @@ class Order(models.Model):
                         f"Charitable bypass by {getattr(bypass_user, 'username', 'unknown')}: "
                         f"voucher consumption waived for order total ${order_total:.2f}. "
                         f"Stock decremented. No vouchers consumed."
+                        f"{self._bypass_reason_suffix()}"
                     ),
                 )
             except Exception:
@@ -548,6 +568,7 @@ class Order(models.Model):
                             f"Balance check bypassed by {getattr(bypass_user, 'username', 'unknown')}: "
                             f"order total ${order_total:.2f} > voucher balance "
                             f"${total_voucher_balance:.2f}"
+                            f"{self._bypass_reason_suffix()}"
                         ),
                     )
                 except Exception:

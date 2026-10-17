@@ -23,8 +23,11 @@ import {
 import {
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Chip,
+  FormControlLabel,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -120,6 +123,16 @@ export const OrderCommandPalette = () => {
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // H3: balance override for a bulk confirm (permission holders only).
+  // Needs a reason, which goes into each order's audit log.
+  const [overrideBalance, setOverrideBalance] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  useEffect(() => {
+    setOverrideBalance(false);
+    setOverrideReason('');
+  }, [pendingStatus]);
+  const showOverride = canBypass && pendingStatus === 'confirmed';
+
   // Slide-in animation
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -136,6 +149,9 @@ export const OrderCommandPalette = () => {
   validTransitionsRef.current = validTransitions;
   const pendingStatusRef = useRef(pendingStatus);
   pendingStatusRef.current = pendingStatus;
+  // Read by executeUpdate, which the Enter shortcut calls from a stale closure.
+  const overrideRef = useRef({ on: false, reason: '' });
+  overrideRef.current = { on: showOverride && overrideBalance, reason: overrideReason };
 
   useEffect(() => {
     if (selectionCount === 0) return;
@@ -177,11 +193,19 @@ export const OrderCommandPalette = () => {
 
   // ── API call ───────────────────────────────────────────────────────────
   const executeUpdate = async (newStatus: OrderStatus) => {
+    const override = overrideRef.current;
+    if (override.on && !override.reason.trim()) {
+      notify('Give a reason for overriding the balance check.', { type: 'warning' });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await apiClient.post('/orders/bulk_update_status/', {
         order_ids: selectedIds,
         new_status: newStatus,
+        ...(override.on
+          ? { bypass_balance: true, bypass_reason: override.reason.trim() }
+          : {}),
       });
       const { updated_count, skipped_count, failed_ids } = res.data as {
         updated_count: number;
@@ -354,6 +378,38 @@ export const OrderCommandPalette = () => {
               )}
             </Typography>
           </Box>
+
+          {showOverride && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={overrideBalance}
+                    onChange={(e) => setOverrideBalance(e.target.checked)}
+                    sx={{ color: '#aaa', '&.Mui-checked': { color: '#fff' } }}
+                  />
+                }
+                label="Override balance"
+                sx={{ mr: 0, '& .MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
+              />
+              {overrideBalance && (
+                <TextField
+                  size="small"
+                  placeholder="Reason (audit log)"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  autoFocus
+                  inputProps={{ 'aria-label': 'Reason for overriding the balance check' }}
+                  sx={{
+                    minWidth: 200,
+                    '& .MuiInputBase-input': { color: '#fff', fontSize: '0.8rem', py: 0.5 },
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#555' },
+                  }}
+                />
+              )}
+            </Box>
+          )}
 
           <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
             <Button

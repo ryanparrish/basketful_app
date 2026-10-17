@@ -337,7 +337,7 @@ class TestConfirmBypass:
 
         resp = client.post(
             f'/api/v1/orders/{order.id}/confirm/',
-            {'charitable': True},
+            {'charitable': True, 'bypass_reason': 'Gift approved by director'},
             format='json',
         )
 

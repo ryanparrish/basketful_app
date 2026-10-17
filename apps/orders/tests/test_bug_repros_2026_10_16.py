@@ -213,12 +213,190 @@ def test_h3_staff_confirm_requires_explicit_bypass_flag(singletons):
     # Explicit flag: bypass works and is audit-logged.
     resp = client.post(
         f"/api/v1/orders/{order.id}/confirm/",
-        {"bypass_balance": True},
+        {"bypass_balance": True, "bypass_reason": "Short $40, approved by director"},
         format="json",
     )
     assert resp.status_code == 200, f"explicit bypass confirm failed: {getattr(resp, 'data', None)}"
     order.refresh_from_db()
     assert order.status == "confirmed"
+
+
+def _short_balance_order():
+    """A pending $50 order against a $10 balance."""
+    category = CategoryFactory(name="H3 Override Grocery")
+    product = ProductFactory(
+        category=category, price=Decimal("50.00"), quantity_in_stock=100
+    )
+    _, _, account = _account_with_vouchers(
+        base_balance=Decimal("10.00"), num_vouchers=1, stored_multiplier=1
+    )
+    order = Order(account=account, status="pending")
+    order.save()
+    OrderItem.objects.create(order=order, product=product, quantity=1)
+    return order
+
+
+def _staff_client(with_bypass_perm):
+    from django.contrib.auth.models import Permission, User as AuthUser
+
+    staff = UserFactory(is_staff=True)
+    if with_bypass_perm:
+        staff.user_permissions.add(
+            Permission.objects.get(codename="can_bypass_order_transitions")
+        )
+    staff = AuthUser.objects.get(pk=staff.pk)  # clear the permission cache
+    client = APIClient()
+    client.force_authenticate(user=staff)
+    return client
+
+
+@pytest.mark.django_db
+def test_h3_override_without_permission_is_refused_not_ignored(singletons):
+    """Staff without can_bypass_order_transitions who ask for the override
+    get a 403 saying so, instead of a confusing balance error."""
+    order = _short_balance_order()
+    client = _staff_client(with_bypass_perm=False)
+
+    resp = client.post(
+        f"/api/v1/orders/{order.id}/confirm/",
+        {"bypass_balance": True, "bypass_reason": "approved"},
+        format="json",
+    )
+
+    assert resp.status_code == 403, getattr(resp, "data", None)
+    assert "permission" in resp.data["error"].lower()
+    order.refresh_from_db()
+    assert order.status == "pending"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("reason", [None, "", "   "])
+def test_h3_override_requires_a_reason(singletons, reason):
+    order = _short_balance_order()
+    client = _staff_client(with_bypass_perm=True)
+    body = {"bypass_balance": True}
+    if reason is not None:
+        body["bypass_reason"] = reason
+
+    resp = client.post(f"/api/v1/orders/{order.id}/confirm/", body, format="json")
+
+    assert resp.status_code == 400, getattr(resp, "data", None)
+    assert "reason" in resp.data["error"].lower()
+    order.refresh_from_db()
+    assert order.status == "pending"
+
+
+@pytest.mark.django_db
+def test_h3_override_reason_is_in_the_audit_log(singletons):
+    from apps.log.models import OrderValidationLog
+
+    order = _short_balance_order()
+    client = _staff_client(with_bypass_perm=True)
+
+    resp = client.post(
+        f"/api/v1/orders/{order.id}/confirm/",
+        {"bypass_balance": True, "bypass_reason": "Family emergency, per Maria"},
+        format="json",
+    )
+
+    assert resp.status_code == 200, getattr(resp, "data", None)
+    log = OrderValidationLog.objects.filter(
+        order=order, log_type=OrderValidationLog.WARNING
+    ).latest("created_at")
+    assert "Balance check bypassed" in log.message
+    assert "Reason: Family emergency, per Maria" in log.message
+
+
+@pytest.mark.django_db
+def test_h3_patch_confirm_applies_the_same_rules(singletons):
+    """The admin's PATCH {status: 'confirmed'} path enforces the same rules."""
+    order = _short_balance_order()
+
+    resp = _staff_client(with_bypass_perm=False).patch(
+        f"/api/v1/orders/{order.id}/",
+        {"status": "confirmed", "bypass_balance": True, "bypass_reason": "x"},
+        format="json",
+    )
+    assert resp.status_code == 403, getattr(resp, "data", None)
+
+    client = _staff_client(with_bypass_perm=True)
+    resp = client.patch(
+        f"/api/v1/orders/{order.id}/",
+        {"status": "confirmed", "bypass_balance": True},
+        format="json",
+    )
+    assert resp.status_code == 400, getattr(resp, "data", None)
+
+    resp = client.patch(
+        f"/api/v1/orders/{order.id}/",
+        {"status": "confirmed", "bypass_balance": True, "bypass_reason": "approved"},
+        format="json",
+    )
+    assert resp.status_code == 200, getattr(resp, "data", None)
+    order.refresh_from_db()
+    assert order.status == "confirmed"
+
+
+@pytest.mark.django_db
+def test_h3_bulk_confirm_with_override(singletons):
+    """Bulk confirm can apply the override to a short-balance order."""
+    from apps.log.models import OrderValidationLog
+
+    order = _short_balance_order()
+    client = _staff_client(with_bypass_perm=True)
+
+    resp = client.post(
+        "/api/v1/orders/bulk_update_status/",
+        {
+            "order_ids": [order.id],
+            "new_status": "confirmed",
+            "bypass_balance": True,
+            "bypass_reason": "Approved at Tuesday huddle",
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 200, getattr(resp, "data", None)
+    assert resp.data["failed_ids"] == {}
+    order.refresh_from_db()
+    assert order.status == "confirmed"
+    assert OrderValidationLog.objects.filter(
+        order=order, message__contains="Reason: Approved at Tuesday huddle"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_h3_bulk_override_refused_leaves_batch_untouched(singletons):
+    """A refused bulk override changes nothing, even orders that didn't need it."""
+    order = _short_balance_order()
+
+    resp = _staff_client(with_bypass_perm=False).post(
+        "/api/v1/orders/bulk_update_status/",
+        {
+            "order_ids": [order.id],
+            "new_status": "confirmed",
+            "bypass_balance": True,
+            "bypass_reason": "approved",
+        },
+        format="json",
+    )
+    assert resp.status_code == 403, getattr(resp, "data", None)
+    order.refresh_from_db()
+    assert order.status == "pending"
+
+    resp = _staff_client(with_bypass_perm=True).post(
+        "/api/v1/orders/bulk_update_status/",
+        {
+            "order_ids": [order.id],
+            "new_status": "confirmed",
+            "charitable": True,
+            "bypass_reason": "approved",
+        },
+        format="json",
+    )
+    assert resp.status_code == 400, getattr(resp, "data", None)
+    order.refresh_from_db()
+    assert order.status == "pending"
 
 
 @pytest.mark.django_db
