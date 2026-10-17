@@ -431,6 +431,42 @@ def test_login_failure_count_survives_cookie_clear(client):
 
 
 @pytest.mark.django_db
+def test_login_failures_are_counted_per_client_behind_the_proxy(client):
+    """Behind the proxy every request shares REMOTE_ADDR (the proxy), so the
+    IP counter must use the address the proxy appends to X-Forwarded-For.
+    Otherwise three failures from anyone show everyone the captcha.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    proxy = {"REMOTE_ADDR": "10.0.0.1"}
+
+    # Three failures from one client, each for a different (unknown) username.
+    for n in range(3):
+        client.post(
+            "/login/",
+            {"username": f"nobody{n}", "password": "wrong"},
+            HTTP_X_FORWARDED_FOR="203.0.113.7",
+            **proxy,
+        )
+
+    # That client now gets the captcha...
+    resp = client.get("/login/", HTTP_X_FORWARDED_FOR="203.0.113.7", **proxy)
+    assert resp.context["show_captcha"] is True
+
+    # ...but another client behind the same proxy does not.
+    resp = client.get("/login/", HTTP_X_FORWARDED_FOR="198.51.100.9", **proxy)
+    assert resp.context["show_captcha"] is False
+
+    # And the first client can't dodge it by forging an earlier hop: the
+    # proxy appends the real address last.
+    resp = client.get(
+        "/login/", HTTP_X_FORWARDED_FOR="1.2.3.4, 203.0.113.7", **proxy
+    )
+    assert resp.context["show_captcha"] is True
+
+
+@pytest.mark.django_db
 def test_login_honors_next_parameter(client):
     """Review #107 (core/urls.py:39): custom_login_view must honor ?next=.
 

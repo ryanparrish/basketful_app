@@ -22,6 +22,22 @@ class CustomPasswordChangeView(PasswordChangeView):
         return response
 
 
+def _client_ip(request):
+    """The client's IP as seen by our proxy.
+
+    Basketful runs behind exactly one proxy (nginx in docker-compose,
+    Render's load balancer on Render), and both append the address they saw
+    to the END of X-Forwarded-For. Entries to its left come from the client
+    and can be forged, and REMOTE_ADDR is the proxy itself, shared by
+    everyone. Falls back to REMOTE_ADDR when there is no proxy (local dev).
+    """
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+    if hops:
+        return hops[-1]
+    return request.META.get("REMOTE_ADDR", "unknown")
+
+
 def custom_login_view(request):
     """Login view with captcha enabled after 3 failed attempts."""
     from django.core.cache import cache
@@ -35,8 +51,7 @@ def custom_login_view(request):
         username = (request.POST.get("username") or "").strip().lower()
         if username:
             keys.append(f"login_failures:user:{username}")
-        ip = request.META.get("REMOTE_ADDR", "unknown")
-        keys.append(f"login_failures:ip:{ip}")
+        keys.append(f"login_failures:ip:{_client_ip(request)}")
         return keys
 
     def _failure_count():
