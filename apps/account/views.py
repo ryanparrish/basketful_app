@@ -24,7 +24,26 @@ class CustomPasswordChangeView(PasswordChangeView):
 
 def custom_login_view(request):
     """Login view with captcha enabled after 3 failed attempts."""
-    show_captcha = request.session.get("login_failures", 0) >= 3
+    from django.core.cache import cache
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    def _failure_keys():
+        # Review #107: count failures per username/IP in the cache, not
+        # the session — clearing the session cookie reset the session
+        # count and the captcha never appeared.
+        keys = []
+        username = (request.POST.get("username") or "").strip().lower()
+        if username:
+            keys.append(f"login_failures:user:{username}")
+        ip = request.META.get("REMOTE_ADDR", "unknown")
+        keys.append(f"login_failures:ip:{ip}")
+        return keys
+
+    def _failure_count():
+        return max([cache.get(k, 0) for k in _failure_keys()] or [0])
+
+    show_captcha = _failure_count() >= 3
+    next_url = request.POST.get("next") or request.GET.get("next")
 
     if request.method == "POST":
         form = CustomLoginForm(
@@ -32,19 +51,25 @@ def custom_login_view(request):
         )
         if form.is_valid():
             login(request, form.get_user())
-            request.session["login_failures"] = 0
+            for k in _failure_keys():
+                cache.delete(k)
+            # Review #107: honor ?next= (e.g. login_required redirects from
+            # /admin/...) instead of always landing on participant_dashboard.
+            if next_url and url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={request.get_host()}
+            ):
+                return redirect(next_url)
             return redirect("participant_dashboard")
         else:
-            request.session["login_failures"] = request.session.get(
-                "login_failures", 0
-            ) + 1
+            for k in _failure_keys():
+                cache.set(k, cache.get(k, 0) + 1, 3600)
     else:
         form = CustomLoginForm(use_captcha=show_captcha)
 
     return render(
         request,
         "registration/login.html",
-        {"form": form, "show_captcha": show_captcha},
+        {"form": form, "show_captcha": show_captcha, "next": next_url},
     )
 
 

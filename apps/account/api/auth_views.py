@@ -33,46 +33,36 @@ class LoginRateThrottle(AnonRateThrottle):
 # H7: reuse-grace window for refresh-token rotation. When the server rotates
 # a refresh token but the client never receives the new cookies (two tabs
 # refreshing at once, or a retry after a network blip), the client presents
-# the already-blacklisted old token. Honoring it within this window keeps
-# the session alive instead of 401ing with a misleading "Session expired".
+# the already-blacklisted old token. Only ROTATION writes the reuse cache
+# below; logout blacklists without writing it, so a logged-out token gets
+# no grace and 401s (H6 stays intact).
 REFRESH_REUSE_GRACE_SECONDS = 60
+REFRESH_REUSE_CACHE_KEY = "refresh_reuse:{jti}"
 
 
-def _user_from_recently_rotated_token(raw_token):
-    """Return the user if raw_token is a refresh token blacklisted within the
-    reuse-grace window (i.e. the server rotated it moments ago but the client
-    never got the new cookies); otherwise None.
+def _cache_rotated_tokens(old_jti, access_token, refresh_token, user_id):
+    """Cache old_jti -> (new access, new refresh, user_id) for the reuse
+    grace window, so a retried rotation returns the SAME tokens."""
+    from django.core.cache import cache
+    cache.set(
+        REFRESH_REUSE_CACHE_KEY.format(jti=old_jti),
+        (str(access_token), str(refresh_token), user_id),
+        REFRESH_REUSE_GRACE_SECONDS,
+    )
 
-    Only honors tokens that still verify (signature + expiry) — malformed or
-    genuinely expired tokens get no grace.
-    """
-    from django.utils import timezone
-    from rest_framework_simplejwt.settings import api_settings
+
+def _cached_rotated_tokens(raw_token):
+    """Return (access, refresh, user_id) cached at rotation time for
+    raw_token's jti, else None. Malformed/expired tokens get no grace."""
+    from django.core.cache import cache
     from rest_framework_simplejwt.tokens import UntypedToken
-    from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
-
     try:
-        untoken = UntypedToken(raw_token)
+        jti = UntypedToken(raw_token).get("jti")
     except TokenError:
         return None
-    jti = untoken.get('jti')
-    user_id = untoken.get(api_settings.USER_ID_CLAIM)
-    if not jti or not user_id:
+    if not jti:
         return None
-    try:
-        blacklisted = BlacklistedToken.objects.select_related('token').get(
-            token__jti=jti
-        )
-    except BlacklistedToken.DoesNotExist:
-        return None
-    age = (timezone.now() - blacklisted.blacklisted_at).total_seconds()
-    if age > REFRESH_REUSE_GRACE_SECONDS:
-        return None
-    from django.contrib.auth.models import User
-    try:
-        return User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return None
+    return cache.get(REFRESH_REUSE_CACHE_KEY.format(jti=jti))
 
 
 def get_cookie_settings():
@@ -280,31 +270,56 @@ class CookieTokenRefreshView(APIView):
                         {'detail': 'User not found', 'code': 'user_not_found'},
                         status=status.HTTP_401_UNAUTHORIZED
                     )
+                # H7 (review): cache old_jti -> new tokens for the reuse
+                # grace window. A retried rotation returns these SAME
+                # tokens. Logout never writes this cache, so logged-out
+                # tokens get no grace. NOTE: str() each token ONCE —
+                # new_refresh.access_token builds a fresh token per access.
+                access_str = str(new_refresh.access_token)
+                refresh_str = str(new_refresh)
+                _cache_rotated_tokens(
+                    refresh['jti'],
+                    access_str,
+                    refresh_str,
+                    user.id,
+                )
             else:
                 new_refresh = refresh
             
             # Create response
             response = Response({'message': 'Token refreshed'})
-            set_token_cookies(response, str(new_refresh.access_token), str(new_refresh))
+            set_token_cookies(response, access_str, refresh_str)
             
             return response
             
         except TokenError as e:
             # Rotation race (H7): the client presents a refresh token the
-            # server already rotated. If it was blacklisted within the reuse
-            # grace window, issue fresh tokens instead of killing the session.
-            user = _user_from_recently_rotated_token(refresh_token)
-            if user is not None:
-                new_refresh = RefreshToken.for_user(user)
-                response = Response({'message': 'Token refreshed'})
-                set_token_cookies(
-                    response, str(new_refresh.access_token), str(new_refresh)
+            # server already rotated but the client never received the new
+            # cookies for. Only rotation writes the reuse cache — a token
+            # blacklisted by logout is not in it, so logged-out sessions
+            # 401 here and H6 stays intact.
+            cached = _cached_rotated_tokens(refresh_token)
+            if cached is None:
+                return Response(
+                    {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
-                return response
-            return Response(
-                {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            access_str, refresh_str, user_id = cached
+            from django.contrib.auth.models import User
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                user = None
+            if user is None or not user.is_active:
+                return Response(
+                    {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            # Return the SAME tokens issued at rotation time, not newly
+            # minted ones, so concurrent retries converge.
+            response = Response({'message': 'Token refreshed'})
+            set_token_cookies(response, access_str, refresh_str)
+            return response
 
 
 class CookieTokenLogoutView(APIView):

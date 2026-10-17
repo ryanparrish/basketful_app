@@ -275,3 +275,239 @@ def test_m12_jwt_login_uses_authenticate_and_updates_last_login():
         assert "access" in data and "refresh" in data
     finally:
         user_login_failed.disconnect(receiver)
+
+
+@pytest.mark.django_db
+def test_h7_rotation_retry_returns_identical_tokens():
+    """H7 review (PR #106/#107): a retried rotation must return the SAME
+    tokens issued at rotation time, not newly minted ones.
+
+    Two tabs refreshing at once (or a retry after a network blip) present
+    the already-rotated R1. The server must answer with the R2 cookies from
+    the first rotation so concurrent retries converge instead of each
+    minting a fresh session.
+    """
+    from django.conf import settings
+    from django.core.cache import cache
+    from rest_framework_simplejwt.tokens import RefreshToken
+
+    cache.clear()
+    user = User.objects.create_user(username="h7sametokens", password="<redacted>")
+    refresh = RefreshToken.for_user(user)
+    refresh_cookie = settings.SIMPLE_JWT.get("AUTH_COOKIE_REFRESH", "refresh_token")
+    access_cookie = settings.SIMPLE_JWT.get("AUTH_COOKIE", "access_token")
+
+    client = APIClient()
+    client.cookies[refresh_cookie] = str(refresh)
+
+    resp1 = client.post("/api/v1/auth/refresh/")
+    assert resp1.status_code == 200, f"first refresh failed: {getattr(resp1, 'data', None)}"
+    r1_access = resp1.cookies[access_cookie].value
+    r1_refresh = resp1.cookies[refresh_cookie].value
+    assert r1_refresh != str(refresh), "rotation should issue a new refresh token"
+
+    # Client never received R2: retries with the blacklisted R1.
+    client.cookies[refresh_cookie] = str(refresh)
+    resp2 = client.post("/api/v1/auth/refresh/")
+    assert resp2.status_code == 200, (
+        f"retried refresh should succeed, got {resp2.status_code}: {getattr(resp2, 'data', None)}"
+    )
+    assert resp2.cookies[access_cookie].value == r1_access, (
+        "retry must return the SAME access token, not a newly minted one"
+    )
+    assert resp2.cookies[refresh_cookie].value == r1_refresh, (
+        "retry must return the SAME refresh token, not a newly minted one"
+    )
+
+
+@pytest.mark.django_db
+def test_h7_logout_blacklisted_token_gets_no_grace():
+    """H7/H6 interaction (PR #106/#107 blocker): a refresh token blacklisted
+    by LOGOUT must not be revived by the H7 reuse-grace window.
+
+    Logout blacklists the refresh token exactly like rotation does, but it
+    never writes the rotation reuse cache. Presenting the logged-out token
+    within 60s must 401 — otherwise logout on a shared computer hands the
+    next visitor a brand-new session.
+    """
+    from django.conf import settings
+    from django.core.cache import cache
+    from rest_framework_simplejwt.tokens import RefreshToken
+
+    cache.clear()
+    user = User.objects.create_user(username="h7logout", password="<redacted>")
+    refresh = RefreshToken.for_user(user)
+    refresh_cookie = settings.SIMPLE_JWT.get("AUTH_COOKIE_REFRESH", "refresh_token")
+
+    client = APIClient()
+    client.cookies[refresh_cookie] = str(refresh)
+
+    resp = client.post("/api/v1/auth/logout/")
+    assert resp.status_code == 200, f"logout failed: {getattr(resp, 'data', None)}"
+
+    # Immediately present the logged-out refresh token: no grace, 401.
+    client.cookies[refresh_cookie] = str(refresh)
+    resp2 = client.post("/api/v1/auth/refresh/")
+    assert resp2.status_code == 401, (
+        "a logout-blacklisted refresh token must NOT be honored by the "
+        f"reuse grace window, got {resp2.status_code}: {getattr(resp2, 'data', None)}"
+    )
+
+
+@pytest.mark.django_db
+def test_force_password_change_middleware_exempts_logout_and_static():
+    """Review #107 (core/settings.py:221 blocker): ForcePasswordChangeMiddleware
+    must not gate logout or static assets.
+
+    must_change_password defaults True and nothing ever cleared it, so on
+    deploy nearly every user would be flagged. A flagged user must still be
+    able to log out, and the password-change page needs its CSS/JS. Other
+    pages still redirect to password_change.
+    """
+    from django.test import RequestFactory
+    from django.contrib.auth.models import AnonymousUser
+    from apps.account.models import UserProfile
+    from apps.pantry.middleware import ForcePasswordChangeMiddleware
+
+    user = User.objects.create_user(username="pwflag", password="<redacted>")
+    UserProfile.objects.create(user=user, must_change_password=True)
+
+    def get_response(request):
+        from django.http import HttpResponse
+        return HttpResponse("ok")
+
+    mw = ForcePasswordChangeMiddleware(get_response)
+    factory = RequestFactory()
+
+    for path in ("/accounts/logout/", "/static/css/app.css"):
+        request = factory.get(path)
+        request.user = user
+        resp = mw(request)
+        assert resp.status_code == 200, (
+            f"{path} must not be gated by the forced-change redirect, "
+            f"got {resp.status_code}"
+        )
+
+    request = factory.get("/some-page/")
+    request.user = user
+    resp = mw(request)
+    assert resp.status_code == 302, (
+        f"other pages must still redirect to password_change, got {resp.status_code}"
+    )
+    assert "/password_change/" in resp["Location"]
+
+
+@pytest.mark.django_db
+def test_login_failure_count_survives_cookie_clear(client):
+    """Review #107 (core/urls.py:39): login failure count must live in the
+    cache, not the session.
+
+    Old code kept login_failures in the session — clearing the session
+    cookie reset the count and the captcha never appeared. New code counts
+    per username/IP in the cache.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    user = User.objects.create_user(username="bruteforce", password="<redacted>")
+
+    # 3 failed attempts (wrong password).
+    for _ in range(3):
+        resp = client.post(
+            "/login/",
+            {"username": "bruteforce", "password": "definitely-wrong"},
+        )
+        assert resp.status_code == 200  # re-rendered, not logged in
+
+    # Attacker clears the session cookie...
+    client.cookies.clear()
+
+    # ...but the captcha still shows, because the count is in the cache.
+    resp = client.get("/login/")
+    assert resp.status_code == 200
+    assert resp.context["show_captcha"] is True, (
+        "captcha must appear after 3 failures even with a fresh session"
+    )
+
+
+@pytest.mark.django_db
+def test_login_honors_next_parameter(client):
+    """Review #107 (core/urls.py:39): custom_login_view must honor ?next=.
+
+    Old code always redirected to participant_dashboard, so login_required
+    redirects (e.g. from /admin/...) lost their destination. next must be
+    validated with url_has_allowed_host_and_scheme — open redirects out.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    User.objects.create_user(username="nextuser", password="<redacted>")
+
+    # ?next= is exposed to the template (hidden field).
+    resp = client.get("/login/?next=/admin/")
+    assert resp.status_code == 200
+    assert resp.context["next"] == "/admin/"
+
+    # Successful login follows a safe next URL...
+    resp = client.post(
+        "/login/?next=/admin/",
+        {"username": "nextuser", "password": "<redacted>"},
+    )
+    assert resp.status_code == 302, f"login failed: {resp.status_code}"
+    assert resp["Location"] == "/admin/", f"next not honored: {resp['Location']}"
+
+    # ...but not an off-site one.
+    client.logout()
+    cache.clear()
+    resp = client.post(
+        "/login/",
+        {"username": "nextuser", "password": "<redacted>", "next": "http://evil.example/"},
+    )
+    assert resp.status_code == 302
+    assert "evil.example" not in resp["Location"], (
+        f"open redirect! Location: {resp['Location']}"
+    )
+
+
+@pytest.mark.django_db
+def test_jwt_login_checks_password_before_disabled_notice():
+    """Review #107 (minor): is_active must be checked AFTER authenticate().
+
+    Old order ran the is_active check first, so 'Account is disabled' was
+    returned without the password ever being validated (no authenticate()
+    call, no user_login_failed signal). New order: authenticate() runs
+    first; the disabled notice comes only after it fails.
+    """
+    from django.contrib.auth.signals import user_login_failed
+    from rest_framework_simplejwt.exceptions import AuthenticationFailed
+    from apps.account.api.jwt_serializers import FlexibleTokenObtainPairSerializer
+
+    user = User.objects.create_user(username="disabled1", password="<redacted>")
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    signals = []
+    def _receiver(sender, credentials, **kwargs):
+        signals.append(credentials)
+    user_login_failed.connect(_receiver, weak=False)
+    try:
+        from rest_framework.test import APIRequestFactory
+        rf_request = APIRequestFactory().post("/api/token/")
+        serializer = FlexibleTokenObtainPairSerializer(
+            context={"request": rf_request}
+        )
+        try:
+            serializer.validate({"username": "disabled1", "password": "<redacted>"})
+        except AuthenticationFailed as exc:
+            detail = exc.detail
+            code = detail.get("code") if isinstance(detail, dict) else detail
+        else:
+            code = None
+    finally:
+        user_login_failed.disconnect(_receiver)
+
+    assert code == "account_disabled", f"expected account_disabled, got {code}"
+    assert signals, (
+        "authenticate() must run before the disabled check so a failed "
+        "password attempt still fires user_login_failed"
+    )
