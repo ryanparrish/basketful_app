@@ -163,7 +163,9 @@ class Voucher(models.Model):
         
         # Validate voucher balance
         items_to_validate = items if items is not None else self.items.all()
-        order_total = Order.total_price(items_to_validate)
+        # M2: sum the items directly — Order.total_price is an instance method
+        # and calling it unbound with a QuerySet raised AttributeError.
+        order_total = sum(item.total_price() for item in items_to_validate)
         total_voucher_balance = self._calculate_total_voucher_balance(active_vouchers)
         
         self._validate_voucher_balance(account_balance, order_total, total_voucher_balance)

@@ -78,6 +78,13 @@ def submit_order(request):
         return redirect("create_order")
 
     participant = request.user.participant
+    # M15: enforce the order window server-side (the web UI hid closed
+    # programs, but nothing stopped a POST with the window closed).
+    if not request.user.is_staff:
+        can_order, _window_ctx = can_place_order(participant)
+        if not can_order:
+            messages.error(request, "Orders cannot be placed at this time.")
+            return redirect("create_order")
     account = AccountBalance.objects.select_for_update().get(participant=participant)
 
     products = Product.objects.in_bulk([int(pid) for pid in cart.keys()])
