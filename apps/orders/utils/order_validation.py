@@ -1,5 +1,6 @@
 # food_orders.utils.order_validation.py
 """Utilities for validating orders and order items."""
+from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext as _
 from typing import List, Any
@@ -32,12 +33,13 @@ class OrderValidation:
         return participant
   
     @staticmethod
-    def enforce_hygiene_balance(items, participant, account_balance):
-        """Ensure hygiene items do not exceed the participant’s hygiene balance."""
+    def enforce_hygiene_balance(items, participant, account_balance, grace=Decimal('0')):
+        """Ensure hygiene items do not exceed the participant’s hygiene balance
+        by more than the global grace allowance."""
         hygiene_total = OrderHelper.calculate_hygiene_total(items)
         hygiene_balance = getattr(account_balance, "hygiene_balance", 0)
 
-        if hygiene_total > hygiene_balance:
+        if hygiene_total > hygiene_balance + grace:
             msg = _(
                 "Hygiene items total $%(total)s, "
                 "exceeds hygiene balance $%(balance)s."
@@ -103,10 +105,19 @@ class OrderValidation:
         1. Category-level limits
         2. Hygiene balance
         3. Voucher balance
+
+        Balances may be exceeded by the global grace allowance
+        (ProgramSettings.grace_allowance(), 0 when grace is off).
+
+        Returns how far over balance the order is (0 when it's within
+        balance), i.e. how much of the grace allowance it used.
         """
         if not participant:
             logger.debug("[Validator] No participant found — skipping validation.")
-            return
+            return Decimal('0')
+
+        from core.models import ProgramSettings
+        grace = ProgramSettings.grace_allowance()
 
         logger.debug("[Validator] Validating for Participant: %s", participant)
 
@@ -117,7 +128,7 @@ class OrderValidation:
         CategoryLimitValidator.validate_category_limits(items, participant)
 
         # Step 2: Enforce hygiene balance
-        OrderValidation.enforce_hygiene_balance(items, participant, account_balance)
+        OrderValidation.enforce_hygiene_balance(items, participant, account_balance, grace)
 
         # Step 3: Validate available balance for food items (non-hygiene)
         food_items = [
@@ -127,7 +138,7 @@ class OrderValidation:
         food_total = sum(item.product.price * item.quantity for item in food_items)
         available_balance = getattr(account_balance, "available_balance", 0)
 
-        if food_total > available_balance:
+        if food_total > available_balance + grace:
             msg = _(
                 "Food items total $%(total)s exceeds available voucher "
                 "balance $%(balance)s."
@@ -148,7 +159,7 @@ class OrderValidation:
         ]
         hygiene_total = sum(item.product.price * item.quantity for item in hygiene_items)
         combined_total = food_total + hygiene_total
-        if combined_total > available_balance:
+        if combined_total > available_balance + grace:
             msg = _(
                 "Food and hygiene items total $%(total)s exceeds "
                 "available voucher balance $%(balance)s."
@@ -168,7 +179,7 @@ class OrderValidation:
             ]
             go_fresh_total = sum(item.product.price * item.quantity for item in go_fresh_items)
             
-            if go_fresh_total > go_fresh_balance:
+            if go_fresh_total > go_fresh_balance + grace:
                 msg = _(
                     "Go Fresh items total $%(total)s exceeds Go Fresh "
                     "balance $%(balance)s."
@@ -197,5 +208,15 @@ class OrderValidation:
             raise ValidationError(
                 f"[{participant}] " + _("Insufficient stock: %(detail)s") % {'detail': detail}
             )
+
+        # How far over balance the order is: the grace it uses. Food alone is
+        # covered by the combined food + hygiene total.
+        overages = [
+            hygiene_total - getattr(account_balance, "hygiene_balance", 0),
+            combined_total - available_balance,
+        ]
+        if go_fresh_balance > 0:
+            overages.append(go_fresh_total - go_fresh_balance)
+        return max([Decimal('0'), *overages])
 
 

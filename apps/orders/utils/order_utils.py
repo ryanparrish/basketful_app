@@ -152,8 +152,10 @@ class OrderOrchestration:
                 order_validator = OrderValidation()
                 participant = order_validator.validate_participant(account)
                 
-                # This validates all constraints: balance, hygiene, categories, vouchers
-                order_validator.validate_order_items(
+                # This validates all constraints: balance, hygiene, categories, vouchers.
+                # Returns how far over balance the order is (within the global
+                # grace allowance, else it raised).
+                grace_used = order_validator.validate_order_items(
                     order_items_data, participant, account
                 )
                 
@@ -185,6 +187,17 @@ class OrderOrchestration:
                         raise ValidationError(_("Order must have at least one valid item."))
 
                     OrderItem.objects.bulk_create(items_bulk)
+
+                    if grace_used and grace_used > 0:
+                        from apps.log.models import GraceAllowanceLog
+                        from core.models import ProgramSettings
+                        GraceAllowanceLog.objects.create(
+                            participant=participant,
+                            order=order,
+                            amount_over=grace_used,
+                            grace_message=ProgramSettings.get_settings().grace_message,
+                            proceeded=True,
+                        )
 
                 # STEP 3: Mark the idempotency key ONLY now that the order
                 # exists. Marking before validation poisoned retries: a

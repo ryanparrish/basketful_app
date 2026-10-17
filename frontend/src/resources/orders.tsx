@@ -34,8 +34,7 @@ import { OrderCommandPalette } from '../components/OrderCommandPalette.tsx';
 import apiClient from '../lib/api/apiClient.ts';
 import { getOrderStatusColor } from '../lib/orderStatus.ts';
 import { ProgramMultiSelectFilter } from '../components/ProgramMultiSelectFilter.tsx';
-import { usePermissionContext } from '../contexts/PermissionContext.tsx';
-import { Box, Checkbox, FormControlLabel, TextField as MuiTextField } from '@mui/material';
+import { Box } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PrintIcon from '@mui/icons-material/Print';
@@ -139,42 +138,23 @@ const OrderTitle = () => {
 // Confirm Order Button Component
 //
 // Calls the dedicated POST /orders/{id}/confirm/ action (like Cancel below),
-// so the backend's reason for a refusal reaches the toast.
-//
-// H3: confirming a short-balance order as a charitable exception needs an
-// explicit override with a reason, and only staff with
-// orders.can_bypass_order_transitions see the option.
+// so the backend's reason for a refusal reaches the toast. An order over
+// balance confirms only within the global grace allowance (Settings → Grace);
+// there is no per-order override (H3).
 const ConfirmOrderButton = () => {
   const record = useRecordContext();
-  const { hasPermission } = usePermissionContext();
-  const canOverride = hasPermission('orders.can_bypass_order_transitions');
   const [open, setOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
-  const [bypassBalance, setBypassBalance] = useState(false);
-  const [reason, setReason] = useState('');
   const notify = useNotify();
   const refresh = useRefresh();
 
   if (!record || record.status !== 'pending') return null;
 
-  const close = () => {
-    setOpen(false);
-    setBypassBalance(false);
-    setReason('');
-  };
-
   const handleConfirm = async () => {
-    if (bypassBalance && !reason.trim()) {
-      notify('Give a reason for overriding the balance check.', { type: 'warning' });
-      return;
-    }
-    const body = bypassBalance
-      ? { bypass_balance: true, bypass_reason: reason.trim() }
-      : {};
-    close();
+    setOpen(false);
     setIsPending(true);
     try {
-      await apiClient.post(`/orders/${record.id}/confirm/`, body);
+      await apiClient.post(`/orders/${record.id}/confirm/`);
       notify('Order confirmed successfully', { type: 'success' });
       refresh();
     } catch (err: unknown) {
@@ -197,39 +177,9 @@ const ConfirmOrderButton = () => {
       <Confirm
         isOpen={open}
         title="Confirm Order"
-        content={
-          <>
-            <p>Are you sure you want to confirm this order? This will consume vouchers.</p>
-            {canOverride && (
-              <>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={bypassBalance}
-                      onChange={(e) => setBypassBalance(e.target.checked)}
-                    />
-                  }
-                  label="Override the balance check (charitable exception)"
-                />
-                {bypassBalance && (
-                  <MuiTextField
-                    label="Reason (saved to the audit log)"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    required
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    autoFocus
-                    sx={{ mt: 1 }}
-                  />
-                )}
-              </>
-            )}
-          </>
-        }
+        content="Are you sure you want to confirm this order? This will consume vouchers."
         onConfirm={handleConfirm}
-        onClose={close}
+        onClose={() => setOpen(false)}
       />
     </>
   );

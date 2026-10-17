@@ -73,8 +73,8 @@ def _parse_int_query_param(value, default, max_value, param_name):
     return min(parsed, max_value)
 
 
-class BalanceOverrideRefused(APIException):
-    """A staff balance override the request may not have. Renders as
+class CharitableBypassRefused(APIException):
+    """A charitable bypass the request may not have. Renders as
     ``{"error": message}``, the shape the admin's order buttons read."""
 
     def __init__(self, message, status_code):
@@ -82,50 +82,32 @@ class BalanceOverrideRefused(APIException):
         super().__init__({'error': message})
 
 
-def _balance_override(request, allow_charitable=True):
-    """Validate the staff balance override a request asks for (H3).
+def _apply_charitable_bypass(order, request):
+    """Apply a charitable bypass (vouchers waived) if the request asks for one.
 
-    A bypass is never implicit: the request must ask for it
-    (``bypass_balance`` or ``charitable``), the user must hold
-    orders.can_bypass_order_transitions, and ``bypass_reason`` must say why
-    (it goes into the order's audit log).
+    It needs orders.can_bypass_order_transitions and a ``bypass_reason``,
+    which goes into the order's audit log. Asking without either raises
+    CharitableBypassRefused (403 / 400) rather than being silently ignored.
 
-    Returns the attributes to set on each order being confirmed, or None when
-    no override was asked for. Raises BalanceOverrideRefused (403 without the
-    permission, 400 without a reason) rather than silently ignoring the
-    request, so staff are told why the override didn't happen.
+    There is no per-order balance override (H3): going over balance is
+    governed only by the global grace allowance (ProgramSettings).
     """
-    wants_balance = bool(request.data.get('bypass_balance'))
-    wants_charitable = bool(request.data.get('charitable'))
-    if not (wants_balance or wants_charitable):
-        return None
-    if wants_charitable and not allow_charitable:
-        raise BalanceOverrideRefused(
-            _("A charitable bypass must be confirmed one order at a time."),
-            status.HTTP_400_BAD_REQUEST,
-        )
+    if not request.data.get('charitable'):
+        return
     if not request.user.has_perm('orders.can_bypass_order_transitions'):
-        raise BalanceOverrideRefused(
-            _("You don't have permission to override the balance check."),
+        raise CharitableBypassRefused(
+            _("You don't have permission to waive vouchers for this order."),
             status.HTTP_403_FORBIDDEN,
         )
     reason = str(request.data.get('bypass_reason') or '').strip()
     if not reason:
-        raise BalanceOverrideRefused(
-            _("Give a reason for overriding the balance check."),
+        raise CharitableBypassRefused(
+            _("Give a reason for waiving vouchers for this order."),
             status.HTTP_400_BAD_REQUEST,
         )
-    return {
-        '_bypass_user': request.user,
-        '_bypass_reason': reason,
-        '_bypass_balance_check': wants_balance,
-        '_charitable_bypass': wants_charitable,
-    }
-
-
-def _apply_balance_override(order, override):
-    for attr, value in override.items():
-        setattr(order, attr, value)
+    order._bypass_user = request.user
+    order._bypass_reason = reason
+    order._charitable_bypass = True
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -232,22 +214,15 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """Set bypass flags on the instance before saving.
 
-        When a staff member with can_bypass_order_transitions confirms an order
-        via PATCH (status → 'confirmed'), two bypass modes are available, both
-        requiring an EXPLICIT per-request flag and a ``bypass_reason`` (H3: the
-        balance bypass used to be automatic for any permission holder):
+        Confirming via PATCH (status → 'confirmed') checks the balance like
+        any confirmation: an order over balance goes through only within the
+        global grace allowance (H3: there is no per-order balance override).
 
-        - Balance bypass (request body ``bypass_balance=true``): skips the
-          balance check, vouchers are still consumed.  Used for charitable
-          exceptions where the participant is slightly short but staff choose
-          to proceed.
-        - Charitable bypass (request body ``charitable=true``): waives voucher
-          consumption entirely.  Stock is still decremented.  Used for fully
-          benevolent orders.  Both modes write a WARNING to OrderValidationLog
-          that includes the reason.
-
-        Asking for either without the permission is a 403, and without a
-        reason a 400 (see _balance_override).
+        A staff member with can_bypass_order_transitions may instead send
+        ``charitable=true`` with a ``bypass_reason`` to waive voucher
+        consumption entirely (stock is still decremented); it writes a
+        WARNING with the reason to OrderValidationLog. See
+        _apply_charitable_bypass.
         """
         instance = serializer.instance
         incoming_status = serializer.validated_data.get('status')
@@ -257,35 +232,25 @@ class OrderViewSet(viewsets.ModelViewSet):
         if incoming_status is not None and incoming_status != instance.status:
             instance._status_change_user = self.request.user
         if incoming_status == 'confirmed' and instance.status != 'confirmed':
-            override = _balance_override(self.request)
-            if override:
-                _apply_balance_override(instance, override)
+            _apply_charitable_bypass(instance, self.request)
         serializer.save()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStaffUser])
     def confirm(self, request, pk=None):
         """Confirm an order (staff only).
 
-        Users with can_bypass_order_transitions may confirm orders using two
-        bypass modes, both requiring an EXPLICIT per-request flag (H3: the
-        balance bypass used to be automatic for any permission holder):
+        An order over its balance confirms only within the global grace
+        allowance (H3: there is no per-order balance override).
 
-        - Balance bypass (request body ``{"bypass_balance": true}``): skips
-          the voucher balance check; vouchers are still consumed.  For
-          charitable exceptions where the balance is short.
-        - Charitable bypass (request body ``{"charitable": true}``): waives
-          voucher consumption entirely.  Stock is still decremented.  For
-          fully benevolent orders where no vouchers should be consumed.
-
-        Either mode also needs ``"bypass_reason"``. Both write a WARNING audit
-        record to OrderValidationLog that includes the reason. Asking for
-        either without the permission is a 403, and without a reason a 400.
+        Users with can_bypass_order_transitions may send
+        ``{"charitable": true, "bypass_reason": "..."}`` to waive voucher
+        consumption entirely (stock is still decremented). It writes a
+        WARNING audit record with the reason to OrderValidationLog. Asking
+        for it without the permission is a 403, and without a reason a 400.
         """
         order = self.get_object()
         order._status_change_user = request.user
-        override = _balance_override(request)
-        if override:
-            _apply_balance_override(order, override)
+        _apply_charitable_bypass(order, request)
         try:
             order.confirm()
             return Response(OrderSerializer(order).data)
@@ -372,15 +337,12 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             {
                 "order_ids": [1, 2, 3],
-                "new_status": "confirmed",
-                "bypass_balance": true,          # optional, confirm only
-                "bypass_reason": "..."           # required with bypass_balance
+                "new_status": "confirmed"
             }
 
-        ``bypass_balance`` applies the staff balance override (H3) to every
-        first confirmation in the batch; it needs
-        can_bypass_order_transitions and a reason, like the single-order
-        confirm. A charitable bypass is single-order only.
+        Confirmations check balances like any other: over balance goes
+        through only within the global grace allowance. An order that fails
+        is reported in ``failed_ids``.
 
         Allowed transitions (mirrors client-side ALLOWED_TRANSITIONS const)::
 
@@ -428,13 +390,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {'error': f'new_status "{new_status}" is not a valid order status.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # Checked before anything changes, so a refused override leaves the
-        # whole batch untouched.
-        balance_override = (
-            _balance_override(request, allow_charitable=False)
-            if new_status == 'confirmed' else None
-        )
 
         updated_ids: list[int] = []
         skipped_ids: list[int] = []
@@ -501,8 +456,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 for order in orders:
                     if order.id in first_confirmation_ids:
                         order._status_change_user = request.user
-                        if balance_override:
-                            _apply_balance_override(order, balance_override)
                         try:
                             order.confirm()
                         except ValidationError as exc:

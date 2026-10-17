@@ -261,12 +261,14 @@ class Order(models.Model):
 
         errors = []
 
-        # A staff balance override (H3) is permission- and reason-checked by
-        # the API and audited in _consume_vouchers, so the balance checks
-        # below must not reject it. Category limits still apply.
-        balance_override = getattr(self, '_bypass_balance_check', False) or getattr(
-            self, '_charitable_bypass', False
-        )
+        # A charitable bypass waives vouchers entirely (permission- and
+        # reason-checked by the API, audited in _consume_vouchers), so the
+        # balance checks below don't apply to it. Category limits still do.
+        charitable = getattr(self, '_charitable_bypass', False)
+        # Otherwise balances may be exceeded only by the global grace
+        # allowance (0 when grace is off); there is no per-order override.
+        from core.models import ProgramSettings
+        grace = ProgramSettings.grace_allowance()
 
         # --- Available balance (food items) ---
         food_items = [
@@ -275,7 +277,7 @@ class Order(models.Model):
         ]
         food_total = sum(item.total_price() for item in food_items)
         available_balance = getattr(self.account, "available_balance", 0)
-        if not balance_override and food_total > available_balance:
+        if not charitable and food_total > available_balance + grace:
             errors.append(
                 _("Food balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': food_total, 'balance': available_balance,
@@ -289,7 +291,7 @@ class Order(models.Model):
         ]
         hygiene_total = sum(item.total_price() for item in hygiene_items)
         hygiene_balance = getattr(self.account, "hygiene_balance", 0)
-        if not balance_override and hygiene_total > hygiene_balance:
+        if not charitable and hygiene_total > hygiene_balance + grace:
             errors.append(
                 _("Hygiene balance exceeded: $%(total)s > $%(balance)s") % {
                     'total': hygiene_total, 'balance': hygiene_balance,
@@ -305,9 +307,9 @@ class Order(models.Model):
         go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
         # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
         if (
-            not balance_override
+            not charitable
             and go_fresh_balance > 0
-            and go_fresh_total > go_fresh_balance
+            and go_fresh_total > go_fresh_balance + grace
         ):
             errors.append(
                 _("Go Fresh balance exceeded: $%(total)s > $%(balance)s") % {
@@ -433,9 +435,9 @@ class Order(models.Model):
             )
 
     def _bypass_reason_suffix(self) -> str:
-        """The staff reason for a balance override, for its audit message.
+        """The staff reason for a charitable bypass, for its audit message.
 
-        Set as ``_bypass_reason`` by the API (H3: every override needs one).
+        Set as ``_bypass_reason`` by the API, which requires one.
         """
         reason = getattr(self, '_bypass_reason', None)
         return f" Reason: {reason}" if reason else ""
@@ -450,12 +452,11 @@ class Order(models.Model):
               still decremented (Order.save() calls _decrement_stock()
               after this method returns).  Requires _bypass_user to be set.
               Writes a WARNING to OrderValidationLog.
-          _bypass_balance_check=True  — skips the balance >= total guard.
-              Vouchers are still consumed (up to all available).  Used when
-              the participant's balance is slightly short and the admin
-              chooses to confirm as a charitable exception while still
-              recording voucher consumption.  Requires _bypass_user.
-              Writes a WARNING to OrderValidationLog.
+
+        There is no per-order balance override (H3). An order over its
+        voucher balance confirms only within the global grace allowance
+        (ProgramSettings.grace_allowance(), 0 when grace is off): all its
+        vouchers are consumed and the shortfall is the grace.
 
         Normal flow (no flags set):
           - order total ≤ 1 voucher amount → consume 1 voucher
@@ -541,39 +542,34 @@ class Order(models.Model):
         # Calculate total available voucher balance (respects pause multiplier)
         total_voucher_balance = sum(_effective_amount(v) for v in active_vouchers)
 
-        # Validate order doesn't exceed voucher balance.
-        # Staff with can_bypass_order_transitions may override this check —
-        # they set _bypass_balance_check=True (and optionally _bypass_user)
-        # on the instance before calling save().
+        # Validate order doesn't exceed voucher balance by more than the
+        # global grace allowance (0 when grace is off).
         if order_total > total_voucher_balance:
             participant = getattr(self.account, 'participant', None)
-            if getattr(self, '_bypass_balance_check', False):
-                bypass_user = getattr(self, '_bypass_user', None)
-                logger.warning(
-                    "BYPASS: order=%s user=%s total=$%s exceeds voucher balance=$%s — "
-                    "proceeding under can_bypass_order_transitions permission",
-                    self.id,
-                    getattr(bypass_user, 'username', 'unknown'),
-                    order_total,
-                    total_voucher_balance,
+            from core.models import ProgramSettings
+            amount_over = order_total - total_voucher_balance
+            if amount_over <= ProgramSettings.grace_allowance():
+                logger.info(
+                    "Order %s: total $%s is $%s over voucher balance $%s, "
+                    "within the grace allowance",
+                    self.id, order_total, amount_over, total_voucher_balance,
                 )
                 try:
                     from apps.log.models import OrderValidationLog
                     OrderValidationLog.objects.create(
                         order=self,
-                        user=bypass_user,
+                        user=getattr(self, '_status_change_user', None),
                         participant=participant,
-                        log_type=OrderValidationLog.WARNING,
+                        log_type=OrderValidationLog.INFO,
                         message=(
-                            f"Balance check bypassed by {getattr(bypass_user, 'username', 'unknown')}: "
-                            f"order total ${order_total:.2f} > voucher balance "
-                            f"${total_voucher_balance:.2f}"
-                            f"{self._bypass_reason_suffix()}"
+                            f"Confirmed within the grace allowance: order total "
+                            f"${order_total:.2f} is ${amount_over:.2f} over voucher "
+                            f"balance ${total_voucher_balance:.2f}"
                         ),
                     )
                 except Exception:
                     pass  # Never block order processing on audit log failure
-                # Consume all available vouchers (up to what exists)
+                # Consume all available vouchers; the shortfall is the grace.
                 vouchers_to_consume = active_vouchers
             else:
                 logger.error(

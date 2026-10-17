@@ -320,8 +320,13 @@ class ProgramSettings(models.Model):
         help_text="Dollar amount over budget allowed as 'grace' for financial literacy learning (default $1.00)"
     )
     grace_enabled = models.BooleanField(
-        default=True,
-        help_text="Enable/disable grace allowance feature"
+        default=False,
+        help_text=(
+            "Site-wide switch. On: every order may go up to grace_amount over "
+            "balance, at checkout and at confirmation. Off: nothing over "
+            "balance goes through. There is no per-program or per-order "
+            "override."
+        ),
     )
     grace_message = models.TextField(
         default="This helps you practice staying within budget",
@@ -370,11 +375,24 @@ class ProgramSettings(models.Model):
             pk=1,
             defaults={
                 'grace_amount': Decimal('1.00'),
-                'grace_enabled': True,
+                'grace_enabled': False,
                 'grace_message': 'This helps you practice staying within budget'
             }
         )
         return obj
+
+    @classmethod
+    def grace_allowance(cls) -> Decimal:
+        """How far over balance any order may go: the grace amount when grace
+        is on, else 0.
+
+        The one place every balance check (cart, checkout, confirmation) reads
+        grace from, so the global switch governs them all.
+        """
+        settings_obj = cls.get_settings()
+        if not settings_obj.grace_enabled:
+            return Decimal('0')
+        return settings_obj.grace_amount
 
 
 class ThemeSettings(models.Model):
