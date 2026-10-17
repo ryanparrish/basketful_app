@@ -249,6 +249,13 @@ class Order(models.Model):
         # check against the now-zero available_balance would always raise a
         # false positive and cause a 500 on any PATCH to a confirmed order.
         _old_status = getattr(self, '_old_status', None)
+        if _old_status is None and self.pk:
+            # M2: direct full_clean() calls (e.g. Django admin's ModelForm)
+            # bypass save(), which is where _old_status is normally stashed.
+            # Fall back to the persisted status so the skip still applies.
+            _old_status = Order.objects.filter(pk=self.pk).values_list(
+                'status', flat=True
+            ).first()
         if _old_status in ('confirmed', 'packing', 'completed', 'cancelled'):
             return
 
@@ -487,9 +494,23 @@ class Order(models.Model):
         if not active_vouchers:
             return
 
+        # Live multiplier, not the stored per-voucher column (see below).
+        # Lazy import: apps.voucher.models imports apps.orders.models.
+        from apps.account.utils import balance_utils
+        multiplier = balance_utils._get_current_pause_multiplier()
+
         def _effective_amount(v):
-            """Voucher base amount multiplied by pause multiplier."""
-            return (v.voucher_amnt or Decimal('0')) * (getattr(v, 'multiplier', Decimal('1')) or Decimal('1'))
+            """Voucher base amount multiplied by the LIVE pause multiplier.
+
+            Must agree with calculate_available_balance()
+            (apps/account/utils/balance_utils.py), which applies the live
+            _get_current_pause_multiplier() rather than each voucher's
+            stored `multiplier` column — the stored value is only set by a
+            one-shot batch job when a ProgramPause is saved, so vouchers
+            created afterward keep multiplier=1 and would disagree with the
+            validated balance (H1: validation passes, confirmation fails).
+            """
+            return (v.voucher_amnt or Decimal('0')) * Decimal(multiplier)
 
         # Calculate single voucher amount (they should all be the same)
         single_voucher_amount = _effective_amount(active_vouchers[0])
@@ -660,8 +681,13 @@ class OrderItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def total_price(self):
-        """Calculate total price for this order item."""
-        return self.quantity * self.price
+        """Calculate total price for this order item.
+
+        Uses the price snapshotted at order time (price_at_order), falling
+        back to price for rows created before the snapshot existed.
+        """
+        unit = self.price_at_order if self.price_at_order is not None else self.price
+        return self.quantity * unit
 
     def clean(self):
         if self.pk:
@@ -674,7 +700,9 @@ class OrderItem(models.Model):
             raise ValidationError(f"OrderItem {self.pk or '[new]'} cannot be created before parent order")
 
     def save(self, *args, **kwargs):
-        # Ensure price_at_order is set
+        # Snapshot prices once, at creation — never re-price a saved line
+        # (H2: re-saving a historical line used to overwrite its price with
+        # today's product price, mutating the recorded order total).
         if self.product_id:
             from django.apps import apps
             Product = apps.get_model("pantry", "Product")
@@ -682,9 +710,12 @@ class OrderItem(models.Model):
             if product:
                 if self.price_at_order is None:
                     self.price_at_order = product.price
-                self.price = product.price
-        super().save(*args, **kwargs)
+                if self.pk is None:
+                    self.price = product.price
+        # L7: validate BEFORE the write. full_clean() after super().save()
+        # left invalid rows committed ("validation theater").
         self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class CombinedOrder(models.Model):
@@ -733,8 +764,10 @@ class CombinedOrder(models.Model):
         if self.pk is None:
             from django.utils import timezone
             now = self.created_at or timezone.now()
+            # M13: ISO year, not calendar year — isocalendar()[1] is the ISO
+            # week, which can belong to the adjacent calendar year.
             self.week = now.isocalendar()[1]
-            self.year = now.year
+            self.year = now.isocalendar()[0]
             if not self.name:
                 strategy_label = dict(self.SPLIT_STRATEGY_CHOICES).get(
                     self.split_strategy, self.split_strategy
@@ -779,8 +812,12 @@ class CombinedOrder(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['program', 'week', 'year'],
-                name='unique_program_per_week'
+                # H9: is_parent is part of the key — each program/week has one
+                # parent aggregate AND (child) packing rows. Without it, the
+                # Monday job's parent get_or_create missed the child row and
+                # died on IntegrityError every week.
+                fields=['program', 'week', 'year', 'is_parent'],
+                name='unique_program_week_is_parent'
             )
         ]
 
