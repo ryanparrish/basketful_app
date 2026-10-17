@@ -494,21 +494,24 @@ class Order(models.Model):
         if not active_vouchers:
             return
 
-        # Live multiplier, not the stored per-voucher column (see below).
-        # Lazy import: apps.voucher.models imports apps.orders.models.
-        from apps.account.utils import balance_utils
-        multiplier = balance_utils._get_current_pause_multiplier()
+        # The multiplier this order was validated against at creation —
+        # NOT the live one. Orders are created pending and confirmed later;
+        # the double-week gate may have closed in between, and checking the
+        # live multiplier then would fail a correctly-validated order
+        # (H1 review). pause_multiplier_at_creation is set at creation and
+        # is None when the multiplier was 1.
+        multiplier = self.pause_multiplier_at_creation or 1
 
         def _effective_amount(v):
-            """Voucher base amount multiplied by the LIVE pause multiplier.
+            """Voucher base amount multiplied by the order's creation-time
+            pause multiplier.
 
-            Must agree with calculate_available_balance()
-            (apps/account/utils/balance_utils.py), which applies the live
-            _get_current_pause_multiplier() rather than each voucher's
-            stored `multiplier` column — the stored value is only set by a
-            one-shot batch job when a ProgramPause is saved, so vouchers
-            created afterward keep multiplier=1 and would disagree with the
-            validated balance (H1: validation passes, confirmation fails).
+            Must agree with the balance this order was validated against
+            (calculate_available_balance() at creation time, recorded on
+            the order as pause_multiplier_at_creation). The per-voucher
+            stored `multiplier` column is only set by a one-shot batch job
+            when a ProgramPause is saved, so vouchers created afterward keep
+            multiplier=1 and would disagree with the validated balance.
             """
             return (v.voucher_amnt or Decimal('0')) * Decimal(multiplier)
 

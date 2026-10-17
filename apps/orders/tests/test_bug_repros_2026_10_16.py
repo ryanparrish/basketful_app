@@ -70,41 +70,53 @@ def _account_with_vouchers(base_balance: Decimal, num_vouchers: int, stored_mult
 def test_h1_confirm_must_agree_with_validation_on_multiplier(monkeypatch, singletons):
     """H1 — voucher multiplier mismatch: validation vs confirmation disagree.
 
-    apps/orders/models.py:490-495 (_consume_vouchers._effective_amount uses
-    each voucher's STORED multiplier column) vs
-    apps/account/utils/balance_utils.py:44-54 (calculate_available_balance
-    uses the LIVE _get_current_pause_multiplier()).
+    apps/orders/models.py (_consume_vouchers._effective_amount) must use the
+    multiplier the order was VALIDATED against at creation
+    (Order.pause_multiplier_at_creation, set by OrderOrchestration) — not the
+    live multiplier and not each voucher's stored column.
 
-    Repro: two $50 vouchers with stored multiplier=1 while the live pause
-    multiplier is 2. Validation reports $200 available, but confirming a
-    $150 order raises ValidationError("Order total $150.00 exceeds available
-    voucher balance $100.00") and the order is stuck in pending.
+    Repro: gate open (live multiplier 2), two $50 vouchers, $150 order
+    created pending with pause_multiplier_at_creation=2. Gate closes (live
+    multiplier back to 1) before staff confirm. Confirming must still use
+    the recorded 2 ($200 >= $150).
 
-    Expected: confirm() succeeds (it agrees with validation).
-    Actual (current code): ValidationError -> test FAILS, demonstrating H1.
+    Expected: confirm() succeeds.
+    Actual (live-multiplier code): ValidationError("Order total $150.00
+    exceeds available voucher balance $100.00") -> test FAILS,
+    demonstrating H1 as refined in review.
     """
     from apps.account.utils import balance_utils
     from apps.account.utils.balance_utils import calculate_available_balance
 
-    monkeypatch.setattr(balance_utils, "_get_current_pause_multiplier", lambda: 2)
+    live = {"mult": 2}
+    monkeypatch.setattr(
+        balance_utils, "_get_current_pause_multiplier", lambda: live["mult"]
+    )
 
     _, _, account = _account_with_vouchers(
         base_balance=Decimal("50.00"), num_vouchers=2, stored_multiplier=1
     )
 
-    # Validation side — what the participant sees: 2 x $50 x live 2 = $200.
+    # Validation side at creation time — what the participant sees.
     assert calculate_available_balance(account) == Decimal("200")
 
     category = CategoryFactory(name="H1 Grocery")
     product = ProductFactory(
         category=category, price=Decimal("50.00"), quantity_in_stock=100
     )
-    order = Order(account=account, status="pending")
+    # As OrderOrchestration.create_order does during the gate.
+    order = Order(
+        account=account, status="pending", pause_multiplier_at_creation=2
+    )
     order.save()  # pending: full_clean runs the duplicate-guard only
     OrderItem.objects.create(order=order, product=product, quantity=3)  # $150
     assert order.total_price() == Decimal("150.00")
 
-    # Confirming a $150 order against a $200 validated balance must work.
+    # Gate closes before staff confirm: live multiplier drops to 1.
+    live["mult"] = 1
+
+    # Confirm must use the recorded creation-time multiplier (2), not the
+    # live 1 and not the vouchers' stored 1.
     order.confirm()
     order.refresh_from_db()
     assert order.status == "confirmed"
@@ -972,43 +984,31 @@ def test_m5a_failed_attempt_must_not_poison_retry():
     assert check_duplicate_submission(retry_key) is False
 
 
-def test_m5b_key_changes_across_minute_boundary(monkeypatch):
-    """M5b — the flip side: a true double-submit across a minute boundary is
-    NOT detected.
+def test_m5b_key_changes_across_minute_boundary():
+    """M5b — idempotency key must not depend on wall-clock time at all.
 
-    generate_idempotency_key embeds '%Y-%m-%d %H:%M', so submitting at
-    10:00:59 and again at 10:01:01 yields different keys even though the
-    300s TTL claims a 5-minute dedup window.
+    Review #107: 5-minute wall-clock buckets kept the boundary bug, just
+    every 5 minutes instead of every minute (10:04:59 vs 10:05:01 still got
+    different keys; the old test passed only because its two times fell in
+    the same bucket). The key is now participant + cart only; the 300s cache
+    TTL defines the dedup window.
 
-    Expected: the two keys are equal (same 5-minute window).
-    Actual (current code): keys differ -> test FAILS, demonstrating M5.
+    Expected: identical keys regardless of when they are generated — the
+    function no longer reads the clock, so the old minute/bucket boundaries
+    (10:00:59 vs 10:01:01, 10:04:59 vs 10:05:01) cannot split it.
     """
     import apps.orders.utils.order_services as order_services
 
-    real_datetime = order_services.datetime
-
-    class _FrozenDateTime(real_datetime):
-        _now = None
-
-        @classmethod
-        def now(cls, tz=None):
-            return cls._now
-
     cart = [{"product_id": 1, "quantity": 2}]
-    frozen = _FrozenDateTime
-
-    frozen._now = real_datetime(2026, 10, 16, 10, 0, 59)
-    monkeypatch.setattr(order_services, "datetime", frozen)
-    key_before = order_services.generate_idempotency_key(
-        participant_id=4242, cart_items=cart
+    keys = {
+        order_services.generate_idempotency_key(participant_id=4242, cart_items=cart)
+        for _ in range(3)
+    }
+    # Sanity: the implementation must not consult the wall clock at all.
+    assert "datetime" not in dir(order_services), (
+        "generate_idempotency_key must not depend on wall-clock time"
     )
-
-    frozen._now = real_datetime(2026, 10, 16, 10, 1, 1)
-    key_after = order_services.generate_idempotency_key(
-        participant_id=4242, cart_items=cart
-    )
-
-    assert key_before == key_after
+    assert len(keys) == 1
 
 
 @pytest.mark.django_db
@@ -1040,4 +1040,97 @@ def test_m9_validate_cart_malformed_participant_id_is_400(singletons):
         )
     assert response.status_code == 400, (
         f"expected 400 for malformed participant_id, got {response.status_code}"
+    )
+
+
+@pytest.mark.django_db
+def test_h4_failed_bulk_confirm_writes_no_bypass_warning(singletons):
+    """Review #107 (apps/orders/api/views.py:446 blocker): a bulk-confirmed
+    order that FAILS must not leave a spurious "Transition bypass … →
+    confirmed" WARNING in the audit log.
+
+    A pending → confirmed bulk update by a can_bypass staffer routes through
+    the bypass path, but if order.confirm() then raises (over balance), the
+    transition never happened — logging a bypass WARNING for it is wrong
+    and makes staff think it confirmed.
+    """
+    from apps.log.models import OrderValidationLog
+
+    staff = UserFactory(is_staff=True, is_superuser=True)  # all perms incl. bypass
+    client = APIClient()
+    client.force_authenticate(user=staff)
+
+    category = CategoryFactory(name="H4 Audit Grocery")
+    pricey = ProductFactory(
+        category=category, price=Decimal("50.00"), quantity_in_stock=100
+    )
+
+    # Bad order: $50 item against $10 balance — confirm() will fail.
+    _, _, bad_account = _account_with_vouchers(
+        base_balance=Decimal("10.00"), num_vouchers=1
+    )
+    bad_order = Order(account=bad_account, status="pending")
+    bad_order.save()
+    OrderItem.objects.create(order=bad_order, product=pricey, quantity=1)
+
+    resp = client.post(
+        "/api/v1/orders/bulk_update_status/",
+        {"order_ids": [bad_order.id], "new_status": "confirmed"},
+        format="json",
+    )
+    assert resp.status_code == 200
+    assert bad_order.id in resp.data.get("failed_ids", {}), (
+        f"expected the bad order to fail: {resp.data}"
+    )
+    bad_order.refresh_from_db()
+    assert bad_order.status == "pending"
+
+    spurious = OrderValidationLog.objects.filter(
+        order=bad_order,
+        log_type=OrderValidationLog.WARNING,
+        message__contains="Transition bypass",
+    )
+    assert not spurious.exists(), (
+        "failed confirm must not leave a bypass WARNING in the audit log: "
+        f"{list(spurious.values_list('message', flat=True))}"
+    )
+
+
+@pytest.mark.django_db
+def test_pause_signal_near_term_pause_gets_immediate_activation(mocker):
+    """Review #107 (apps/lifeskills/signals.py:214): a pause less than 10
+    days away must take the immediate-activation path, not the
+    future-scheduling path.
+
+    Old code: the else branch scheduled activation at pause_start - 14d,
+    which is already past for a near-term pause, so flags turned on
+    immediately with NO smart deactivation (stayed on until pause_end).
+    New code: days_until_start <= 14 takes the immediate path with
+    earliest-window-close deactivation.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    import apps.lifeskills.signals as pause_signals
+    from apps.lifeskills.models import ProgramPause
+
+    # Signal exits early without active vouchers; give it one.
+    _account_with_vouchers(base_balance=Decimal("50.00"), num_vouchers=1)
+
+    mock_immediate = mocker.patch.object(
+        pause_signals.update_voucher_flag_task, "delay"
+    )
+    mock_scheduled = mocker.patch.object(pause_signals, "schedule_voucher_tasks")
+
+    now = timezone.now()
+    ProgramPause.objects.create(
+        pause_start=now + timedelta(days=5),
+        pause_end=now + timedelta(days=12),
+        reason="near-term test pause",
+    )
+
+    assert mock_immediate.called, (
+        "a pause 5 days out must take the immediate-activation path"
+    )
+    assert not mock_scheduled.called, (
+        "a pause 5 days out must NOT take the future-scheduling path"
     )
