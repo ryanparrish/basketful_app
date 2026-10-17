@@ -1,6 +1,6 @@
 # Signals & Automation System
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 Django signals provide automatic responses to model events, enabling seamless automation throughout Basketful. The system automatically handles account creation, voucher generation, user setup, coach/group sync, program-pause voucher flagging, rules-version cache invalidation, and login auditing.
@@ -164,13 +164,13 @@ def sync_coach_user_group(sender, instance, created, **kwargs): ...
 @receiver(post_save, sender=ProgramPause)
 def handle_program_pause(sender, instance, created, **kwargs): ...
 ```
-**Triggers**: `ProgramPause` create/update. Guarded by `instance._skip_signal` to avoid recursion.
+**Triggers**: `ProgramPause` create/update. Guarded by `instance._skip_signal` to avoid recursion, and skipped entirely for archived pauses (`archive()` saves the pause, which would otherwise re-flag vouchers it just cleared).
 
 **Actions**:
 1. Finds all `Voucher` objects with `active=True, account__active=True`; exits if none
 2. Converts `pause_start` to an EST calendar date (`get_est_date`) and computes `days_until_start`
-3. **If 10–14 days until the pause starts**: immediately dispatches `update_voucher_flag_task.delay(voucher_ids, multiplier=..., activate=True, program_pause_id=...)` with a multiplier from `ProgramPause.calculate_multiplier_for_duration()`, then schedules `deactivate_expired_pause_vouchers.apply_async(eta=...)` for shortly after the earliest affected participant's order window closes (via `OrderWindowSettings` + `get_next_class_datetime`, plus a 5-minute buffer)
-4. **Otherwise**: falls back to `schedule_voucher_tasks(vouchers, activate_time=pause_start, deactivate_time=pause_end)` for later Celery-beat-driven execution; logs a `VoucherLogger.error()` per voucher and re-raises on unexpected exceptions
+3. **If 0–14 days until the pause starts**: immediately dispatches `update_voucher_flag_task.delay(voucher_ids, multiplier=..., activate=True, program_pause_id=...)` with a multiplier from `ProgramPause.calculate_multiplier_for_duration()`, then schedules `deactivate_expired_pause_vouchers.apply_async(eta=...)` for shortly after the earliest affected participant's order window closes (via `OrderWindowSettings` + `get_next_class_datetime`, plus a 5-minute buffer)
+4. **More than 14 days out**: falls back to `schedule_voucher_tasks(vouchers, activate_time=pause_start - 14 days, deactivate_time=pause_end, multiplier=...)` for later Celery-driven execution, so flags turn on when the double-order window opens; the multiplier is computed from the pause's own dates because the shifted `activate_time` would distort it; logs a `VoucherLogger.error()` per voucher and re-raises on unexpected exceptions
 
 > ⚠️ This module hard-codes an EST/America-New-York assumption for the ordering-window calculation (see the `⚠️` warnings in the source).
 

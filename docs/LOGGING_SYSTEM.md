@@ -1,6 +1,6 @@
 # Logging & Audit System
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 Comprehensive audit logging system that tracks all significant events, changes, and actions throughout the Basketful application. Provides accountability, debugging capabilities, and compliance support. All log models live in `apps/log/models.py` (except `FailedOrderAttempt`, which lives in `apps/orders/models.py` — see `docs/FAILURE_ANALYTICS_GUIDE.md`).
@@ -70,11 +70,11 @@ Track authentication activity via Django's built-in auth signals.
 **Location**: Admin → Log → User Login Logs (read-only, no add/delete). Also `/api/v1/login-logs/`, with a `failed_logins` filter action.
 
 ### 5. Grace Allowance Logs
-Intended to record when a participant proceeds with an order that exceeds their balance by an amount within the configured "grace" tolerance (`ProgramSettings.grace_enabled`/`grace_amount`/`grace_message`, used by the `validate_cart` action in `apps/orders/api/views.py` to flag `grace_allowed` violations).
+Records each order placed over balance within the global grace allowance (`ProgramSettings.grace_enabled`/`grace_amount`/`grace_message`, read through `ProgramSettings.grace_allowance()`; Settings → Grace, off by default).
 
 **Model**: `GraceAllowanceLog` — `participant`, `order` (nullable), `amount_over`, `grace_message`, `proceeded`, `created_at`.
 
-**Current state**: the model, admin (`GraceAllowanceLogAdmin`), API (`/api/v1/grace-allowance-logs/`), React-Admin resource, and even a `post_save` notification signal (`core/signals.py::notify_admin_grace_usage`, which writes a `LogEntry` for every staff user when `proceeded=True`) are all built — but **nothing in the codebase currently calls `GraceAllowanceLog.objects.create(...)`**. `validate_cart` computes `grace_allowed` and returns it in the response; no order-confirmation code path persists a `GraceAllowanceLog` row yet. Treat this as a wired-but-not-yet-populated feature rather than a working audit trail.
+**Written by**: `OrderOrchestration.create_order()` (`apps/orders/utils/order_utils.py`), in the same transaction as the order, when `OrderValidation.validate_order_items()` reports the order is over balance. `amount_over` is the largest overage across the food + hygiene, hygiene and Go Fresh checks, and `proceeded=True`. The `post_save` signal `core/signals.py::notify_admin_grace_usage` then writes a `LogEntry` for every staff user. Confirming an order within grace adds an `INFO` entry to `OrderValidationLog` as well. Also available in the admin (`GraceAllowanceLogAdmin`), the API (`/api/v1/grace-allowance-logs/`) and React-Admin.
 
 ### 6. System Logs (via Python logging)
 Application-level logging for debugging, using standard `logging.getLogger(__name__)` per module (so logger names follow the module path, e.g. `apps.orders.models`, `apps.orders.utils.order_utils`, `apps.pantry.models`) rather than one logger per app.
@@ -319,7 +319,6 @@ def log_voucher(*args, **kwargs):
 ## Future Enhancements
 
 - Lock down the `OrderValidationLog` Django admin the same way as the other log models
-- Wire up `GraceAllowanceLog` creation in the order-confirmation flow (model/admin/API/notification signal already exist)
 - Log retention policies for models other than `FailedOrderAttempt` (which already has `cleanup_failed_attempts`)
 - Log export to external systems
 - Real-time alerting
