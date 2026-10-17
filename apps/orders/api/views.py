@@ -493,6 +493,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             # WARNING-level message; everything else in that bucket gets a
             # plain INFO entry \u2014 previously it wrote nothing at all.
             from apps.log.models import OrderValidationLog
+            # Review #107: a confirm that FAILED must not leave a spurious
+            # "Transition bypass … → confirmed" WARNING in the audit log —
+            # the transition never happened.
+            bypassed_orders = [
+                o for o in bypassed_orders if o.id not in failed_ids
+            ]
             bypassed_ids = {o.id for o in bypassed_orders}
             logs = [
                 OrderValidationLog(
