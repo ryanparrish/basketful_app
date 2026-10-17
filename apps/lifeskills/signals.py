@@ -200,10 +200,20 @@ def handle_program_pause(sender, instance, created, **kwargs):
             days_until_start
         )
         try:
+            # M14: flags must activate when the pause ENTERS the 10-14-day
+            # double-week gate (pause_start - 14d), not at pause_start (the
+            # no-order week) — otherwise double-week orders get no flags.
+            # The multiplier is computed from the actual pause dates; it
+            # cannot be derived from the shifted activate_time.
+            from datetime import timedelta
+            multiplier = ProgramPause.calculate_multiplier_for_duration(
+                instance.pause_start, instance.pause_end
+            )
             schedule_voucher_tasks(
                 vouchers,
-                activate_time=instance.pause_start,
+                activate_time=instance.pause_start - timedelta(days=14),
                 deactivate_time=instance.pause_end,
+                multiplier=multiplier,
             )
             logger.debug(
                 "Tasks scheduled successfully for ProgramPause ID=%s affecting %d vouchers",

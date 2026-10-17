@@ -30,6 +30,51 @@ class LoginRateThrottle(AnonRateThrottle):
     scope = 'login'
 
 
+# H7: reuse-grace window for refresh-token rotation. When the server rotates
+# a refresh token but the client never receives the new cookies (two tabs
+# refreshing at once, or a retry after a network blip), the client presents
+# the already-blacklisted old token. Honoring it within this window keeps
+# the session alive instead of 401ing with a misleading "Session expired".
+REFRESH_REUSE_GRACE_SECONDS = 60
+
+
+def _user_from_recently_rotated_token(raw_token):
+    """Return the user if raw_token is a refresh token blacklisted within the
+    reuse-grace window (i.e. the server rotated it moments ago but the client
+    never got the new cookies); otherwise None.
+
+    Only honors tokens that still verify (signature + expiry) — malformed or
+    genuinely expired tokens get no grace.
+    """
+    from django.utils import timezone
+    from rest_framework_simplejwt.settings import api_settings
+    from rest_framework_simplejwt.tokens import UntypedToken
+    from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+
+    try:
+        untoken = UntypedToken(raw_token)
+    except TokenError:
+        return None
+    jti = untoken.get('jti')
+    user_id = untoken.get(api_settings.USER_ID_CLAIM)
+    if not jti or not user_id:
+        return None
+    try:
+        blacklisted = BlacklistedToken.objects.select_related('token').get(
+            token__jti=jti
+        )
+    except BlacklistedToken.DoesNotExist:
+        return None
+    age = (timezone.now() - blacklisted.blacklisted_at).total_seconds()
+    if age > REFRESH_REUSE_GRACE_SECONDS:
+        return None
+    from django.contrib.auth.models import User
+    try:
+        return User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return None
+
+
 def get_cookie_settings():
     """Get cookie settings from Django settings."""
     jwt_settings = settings.SIMPLE_JWT
@@ -245,6 +290,17 @@ class CookieTokenRefreshView(APIView):
             return response
             
         except TokenError as e:
+            # Rotation race (H7): the client presents a refresh token the
+            # server already rotated. If it was blacklisted within the reuse
+            # grace window, issue fresh tokens instead of killing the session.
+            user = _user_from_recently_rotated_token(refresh_token)
+            if user is not None:
+                new_refresh = RefreshToken.for_user(user)
+                response = Response({'message': 'Token refreshed'})
+                set_token_cookies(
+                    response, str(new_refresh.access_token), str(new_refresh)
+                )
+                return response
             return Response(
                 {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -254,14 +310,19 @@ class CookieTokenRefreshView(APIView):
 class CookieTokenLogoutView(APIView):
     """
     Logout endpoint that blacklists refresh token and clears cookies.
-    
+
     POST /api/auth/logout/
-    
+
+    Deliberately AllowAny (H6): the view body only blacklists the refresh
+    cookie and clears cookies — it never uses request.user. Requiring
+    IsAuthenticated meant an expired 60-min access token 401'd before the
+    body ran, leaving the 7-day refresh cookie alive on shared computers.
+
     Response:
     - Blacklists the refresh token
     - Clears access_token and refresh_token cookies
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         jwt_settings = settings.SIMPLE_JWT

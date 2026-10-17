@@ -78,7 +78,9 @@ class UserViewSet(viewsets.ModelViewSet):
     def reset_password(self, request, pk=None):
         """Send password reset email to user."""
         user = self.get_object()
-        # TODO: Implement password reset email
+        # force=True: this is an explicit staff action, so bypass the
+        # lifetime "already sent" dedup (same as bulk_reset_password).
+        send_password_reset_email.delay(user.id, force=True)
         return Response({'status': 'password reset email sent'})
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])

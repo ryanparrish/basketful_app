@@ -7,12 +7,18 @@ from .forms import CustomLoginForm
 
 class CustomPasswordChangeView(PasswordChangeView):
     """Custom password change that resets the must_change_password flag."""
-    success_url = reverse_lazy("home")
+    # M11: was reverse_lazy("home") — no URL named 'home' exists, so a
+    # successful change crashed with NoReverseMatch.
+    success_url = reverse_lazy("participant_dashboard")
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        self.request.user.must_change_password = False
-        self.request.user.save()
+        # M11: the flag lives on UserProfile — setting it on User persisted
+        # nothing (User has no such field).
+        from .models import UserProfile
+        profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
+        profile.must_change_password = False
+        profile.save(update_fields=['must_change_password'])
         return response
 
 

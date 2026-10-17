@@ -171,3 +171,107 @@ def test_h8_reset_password_actually_sends_email(mocker):
 
     assert resp.status_code == 200, f"reset_password failed: {getattr(resp, 'data', None)}"
     mock_delay.assert_called_once_with(target.id, force=True)
+
+
+@pytest.mark.django_db
+def test_m11_forced_password_change_end_to_end():
+    """M11 — must_change_password enforcement is dead in three ways.
+
+    (1) apps/pantry/middleware.py reads the flag off request.user, but it
+    lives on UserProfile; (2) ForcePasswordChangeMiddleware isn't in
+    MIDDLEWARE at all; (3) CustomPasswordChangeView.form_valid "clears" it
+    by setting a transient attribute on User (no such field — save()
+    persists nothing).
+
+    Expected: a logged-in user with profile.must_change_password=True is
+    redirected to the password-change page, and completing the change
+    persistently clears the flag.
+    Actual (current code): no redirect; flag never clears -> test FAILS,
+    demonstrating M11.
+    """
+    from django.test import Client
+    from apps.account.models import UserProfile
+
+    user = User.objects.create_user(username="m11user", password="s3cret-pass")
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.must_change_password = True
+    profile.save()
+
+    client = Client()
+    client.force_login(user)
+
+    # Defects 1+2: the middleware must be active and read the profile flag.
+    resp = client.get("/dashboard/")
+    assert resp.status_code == 302, (
+        "expected redirect to the password-change page, "
+        f"got {resp.status_code}"
+    )
+    assert "password_change" in resp.url, f"unexpected redirect target: {resp.url}"
+
+    # Defect 3: completing the change must persistently clear the flag.
+    resp = client.post(
+        "/accounts/password_change/",
+        {
+            "old_password": "s3cret-pass",
+            "new_password1": "n3w-s3cret-pass!",
+            "new_password2": "n3w-s3cret-pass!",
+        },
+    )
+    assert resp.status_code == 302, (
+        f"password change should succeed, got {resp.status_code}"
+    )
+    profile.refresh_from_db()
+    assert profile.must_change_password is False, (
+        "must_change_password was not persistently cleared"
+    )
+
+
+@pytest.mark.django_db
+def test_m12_jwt_login_uses_authenticate_and_updates_last_login():
+    """M12 — JWT login bypasses authenticate().
+
+    apps/account/api/jwt_serializers.py — fetches the user and calls
+    check_password directly: the AUTHENTICATION_BACKENDS chain is bypassed,
+    no user_login_failed signal fires on bad passwords, and last_login is
+    never updated for JWT users.
+
+    Expected: validate() delegates credential checking to
+    django.contrib.auth.authenticate (so user_login_failed fires on bad
+    passwords) and updates last_login on success.
+    Actual (current code): check_password called directly; authenticate()
+    never invoked; last_login stays None -> test FAILS, demonstrating M12.
+    """
+    from django.contrib.auth.signals import user_login_failed
+    from rest_framework.test import APIRequestFactory
+
+    fired = []
+
+    def receiver(sender, credentials, request, **kwargs):
+        fired.append(credentials)
+
+    user_login_failed.connect(receiver, weak=False)
+    try:
+        user = User.objects.create_user(username="m12user", password="s3cret-pass")
+        # Mirror production: DRF views always put the request in context.
+        request = APIRequestFactory().post("/api/v1/token/")
+
+        # Wrong password → user_login_failed must fire (via authenticate()).
+        serializer = FlexibleTokenObtainPairSerializer(
+            context={"request": request}
+        )
+        with pytest.raises(AuthenticationFailed):
+            serializer.validate({"username": "m12user", "password": "wrong-pass"})
+        assert fired, "user_login_failed signal did not fire on bad password"
+
+        # Right password → last_login updated, tokens returned.
+        serializer = FlexibleTokenObtainPairSerializer(
+            context={"request": request}
+        )
+        data = serializer.validate(
+            {"username": "m12user", "password": "s3cret-pass"}
+        )
+        user.refresh_from_db()
+        assert user.last_login is not None, "last_login was not updated"
+        assert "access" in data and "refresh" in data
+    finally:
+        user_login_failed.disconnect(receiver)
