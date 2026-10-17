@@ -6,7 +6,7 @@ demonstrating the bug. Do NOT "fix" this test to pass — fix the code.
 Environment: run on SQLite via the test-only settings shim:
     DATABASE_URL="sqlite:////tmp/test_db.sqlite3" SECRET_KEY=x HASHIDS_SALT=y \
     DJANGO_SETTINGS_MODULE=apps.orders.tests.repro_sqlite_settings \
-    python -m pytest core/tests/test_bug_repros_2026_10_16.py
+    python -m pytest core/test_bug_repros_2026_10_16.py
 """
 
 from datetime import timedelta
