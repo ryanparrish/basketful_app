@@ -32,24 +32,31 @@ hashids = Hashids(salt=SALT, min_length=MIN_LENGTH)
 
 def generate_idempotency_key(participant_id: int, cart_items: list) -> str:
     """
-    Generate idempotency key from participant + cart + timestamp (minute precision).
-    
+    Generate idempotency key from participant + cart + timestamp (5-minute buckets).
+
+    The bucket matches the 300s TTL used by check_duplicate_submission, so a
+    double-submit anywhere inside the same 5-minute window produces the same
+    key (M5: minute-precision buckets both falsely flagged same-minute
+    retries and missed double-submits straddling a minute boundary).
+
     Args:
         participant_id: The participant's ID
         cart_items: List of dicts with 'product_id' and 'quantity'
-    
+
     Returns:
         SHA256 hash string to use as idempotency key
     """
     # Sort cart items by product_id for consistency
     sorted_cart = sorted(cart_items, key=lambda x: x.get('product_id', 0))
     cart_str = json.dumps(sorted_cart, sort_keys=True)
-    
-    # Use minute-level timestamp for 5-minute window
-    timestamp_minute = datetime.now().strftime('%Y-%m-%d %H:%M')
-    
+
+    # 5-minute bucket aligned to the wall clock, matching the 300s TTL.
+    now = datetime.now()
+    bucket_start = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
+    timestamp_bucket = bucket_start.strftime('%Y-%m-%d %H:%M')
+
     # Generate hash
-    key_data = f"{participant_id}:{cart_str}:{timestamp_minute}"
+    key_data = f"{participant_id}:{cart_str}:{timestamp_bucket}"
     return hashlib.sha256(key_data.encode()).hexdigest()
 
 
@@ -78,7 +85,9 @@ def distributed_order_lock(participant_id: int, timeout: int = 10):
         timeout: Lock timeout in seconds
     
     Yields:
-        bool: True if lock acquired, False otherwise
+        True if lock acquired, False if contended, None if the lock backend
+        is unavailable (infrastructure error — M7: must not be confused with
+        contention, and must not punish the user with backoff).
     
     Example:
         with distributed_order_lock(participant.id) as acquired:
@@ -107,12 +116,14 @@ def distributed_order_lock(participant_id: int, timeout: int = 10):
         # Redis is unavailable. Fail CLOSED — do NOT allow orders without the
         # distributed lock. Silent fail-open would expose the full race window
         # on every node during a Redis failover.
+        # Yield None (not False) so callers can distinguish an infrastructure
+        # outage from genuine contention (M7).
         logger.critical(
             "Redis unavailable for distributed lock (participant %s): %s. "
             "Order submission blocked until Redis recovers.",
             participant_id, e
         )
-        lock_acquired = False
+        lock_acquired = None
         lock_via_cache = False
 
     try:
@@ -131,26 +142,30 @@ def distributed_order_lock(participant_id: int, timeout: int = 10):
 def check_duplicate_submission(idempotency_key: str, ttl_seconds: int = 300) -> bool:
     """
     Check if this submission is a duplicate within the TTL window.
-    
+
+    Pure check — does NOT mark the key. Marking happens in
+    mark_idempotency_key_processed(), called only after the order is
+    successfully created. (M5: the old mark-on-check meant a failed
+    validation poisoned the retry: the key was marked before validation ran,
+    so retrying the identical cart was falsely flagged "duplicate".)
+
     Args:
         idempotency_key: The idempotency key to check
         ttl_seconds: Time-to-live in seconds (default: 5 minutes)
-    
+
     Returns:
         bool: True if duplicate, False if new submission
     """
     cache_key = f"order_idempotency:{idempotency_key}"
-    
+
     try:
         # Check if key exists
         if cache.get(cache_key):
             logger.warning(f"Duplicate order submission detected: {idempotency_key}")
             return True
-        
-        # Mark as submitted
-        cache.set(cache_key, "submitted", ttl_seconds)
+
         return False
-        
+
     except Exception as e:
         # Redis unavailable - log warning but allow through
         logger.warning(
@@ -158,6 +173,31 @@ def check_duplicate_submission(idempotency_key: str, ttl_seconds: int = 300) -> 
             "Allowing request to proceed without duplicate detection."
         )
         return False  # Treat as new when Redis is down
+
+
+def mark_idempotency_key_processed(idempotency_key: str, ttl_seconds: int = 300) -> None:
+    """
+    Mark an idempotency key as processed.
+
+    Call only AFTER the order has been successfully created — never before
+    validation. A key is proof that an order exists, not that an attempt
+    was made.
+
+    Args:
+        idempotency_key: The idempotency key to mark
+        ttl_seconds: Time-to-live in seconds (default: 5 minutes)
+    """
+    cache_key = f"order_idempotency:{idempotency_key}"
+
+    try:
+        cache.set(cache_key, "submitted", ttl_seconds)
+    except Exception as e:
+        # Redis unavailable - the duplicate guard in Order.clean() backstops
+        # the worst case; log and continue.
+        logger.warning(
+            f"Redis unavailable for idempotency mark: {e}. "
+            "Skipping duplicate-detection mark."
+        )
 
 # --- Utility functions ---
 

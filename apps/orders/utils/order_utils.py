@@ -17,6 +17,7 @@ from apps.orders.utils.order_services import (
     generate_cart_hash,
     distributed_order_lock,
     check_duplicate_submission,
+    mark_idempotency_key_processed,
 )
 from apps.orders.api.throttles import reset_failure_count, increment_failure_count
 
@@ -100,11 +101,10 @@ class OrderOrchestration:
                 f"Duplicate submission for participant {account.participant.id}: "
                 f"{idempotency_key}"
             )
-            
-            # Increment failure count (causes exponential backoff)
-            if user:
-                increment_failure_count(user.id)
-            
+            # M17: do NOT accrue backoff here. The duplicate is already safely
+            # rejected by idempotency; backing off punishes a legitimate
+            # double-submit (and stacked onto #103's retry-poisoning).
+            # (Lock-contention below keeps its backoff: that IS abuse-prone.)
             raise ValidationError(error_msg)
         
         # Precompute totals for failed-attempt logging.
@@ -121,6 +121,18 @@ class OrderOrchestration:
 
         # Acquire distributed lock
         with distributed_order_lock(account.participant.id, timeout=10) as lock_acquired:
+            if lock_acquired is None:
+                # M7: lock backend unavailable — an infrastructure outage, not
+                # contention. Tell the truth and do NOT accrue backoff for it.
+                error_msg = _(
+                    "Order processing is temporarily unavailable. "
+                    "Please try again in a moment."
+                )
+                logger.warning(
+                    f"Order lock backend unavailable for participant "
+                    f"{account.participant.id}."
+                )
+                raise ValidationError(error_msg)
             if not lock_acquired:
                 error_msg = _(
                     "Another order is being processed. Please wait a moment and try again."
@@ -173,7 +185,13 @@ class OrderOrchestration:
                         raise ValidationError(_("Order must have at least one valid item."))
 
                     OrderItem.objects.bulk_create(items_bulk)
-                
+
+                # STEP 3: Mark the idempotency key ONLY now that the order
+                # exists. Marking before validation poisoned retries: a
+                # failed attempt left the key marked, so retrying the
+                # identical cart was falsely flagged "duplicate" (M5).
+                mark_idempotency_key_processed(idempotency_key)
+
                 # STEP 4: Reset failure count on success
                 if user:
                     reset_failure_count(user.id)
@@ -338,9 +356,10 @@ class OrderOrchestration:
             raise ValueError("Order must be set before calling clone()")
 
         # Correct: use the class, not an instance
+        # L1: was status_type= (no such field → TypeError); the field is status.
         new_order = Order.objects.create(
             account=self.order.account,
-            status_type=status
+            status=status
         )
 
         # Now clone items from the original order

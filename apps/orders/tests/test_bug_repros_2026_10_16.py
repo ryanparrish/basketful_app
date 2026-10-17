@@ -28,6 +28,7 @@ from apps.orders.tests.factories import (
     ProductFactory,
     VoucherFactory,
     VoucherSettingFactory,
+    OrderFactory,
 )
 
 VALIDATE_CART_URL = "/api/v1/orders/validate-cart/"
@@ -397,6 +398,507 @@ def test_m6_cancel_action_handles_save_errors(singletons):
     )
     order.refresh_from_db()
     assert order.status == "pending"
+
+
+@pytest.mark.django_db
+def test_m7_redis_outage_does_not_lie_or_punish(mocker, singletons):
+    """M7 — Redis outage produces a lying error and punishes the user.
+
+    apps/orders/utils/order_services.py (distributed_order_lock) fails the
+    lock closed on Redis errors, yielding lock_acquired=False —
+    indistinguishable from contention. apps/orders/utils/order_utils.py then
+    tells every participant "Another order is being processed" (false),
+    returns 400, and stacks exponential backoff for an infrastructure outage.
+
+    Expected: on lock-backend failure the error is truthful ("temporarily
+    unavailable") and no backoff is accrued.
+    Actual (current code): "Another order is being processed" + backoff ->
+    test FAILS, demonstrating M7.
+    """
+    from unittest import mock
+    from apps.orders.utils.order_utils import OrderOrchestration
+    from apps.orders.utils.order_validation import OrderItemData
+
+    _, _, account = _account_with_vouchers(
+        base_balance=Decimal("100.00"), num_vouchers=2
+    )
+    user = account.participant.user
+    category = CategoryFactory(name="M7 Grocery")
+    product = ProductFactory(
+        category=category, price=Decimal("10.00"), quantity_in_stock=100
+    )
+
+    mock_increment = mocker.patch(
+        "apps.orders.utils.order_utils.increment_failure_count"
+    )
+
+    with mock.patch(
+        "apps.orders.utils.order_services.cache.add",
+        side_effect=Exception("redis down"),
+    ):
+        with pytest.raises(ValidationError) as exc_info:
+            OrderOrchestration().create_order(
+                account=account,
+                order_items_data=[OrderItemData(product=product, quantity=1)],
+                user=user,
+            )
+
+    message = str(exc_info.value).lower()
+    assert "temporarily unavailable" in message, (
+        f"expected truthful outage message, got: {exc_info.value}"
+    )
+    assert "another order is being processed" not in message
+    mock_increment.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_m8_hourly_and_daily_throttles_enforced(singletons):
+    """M8 — throttle limits documented but not enforced.
+
+    apps/orders/api/throttles.py docstring promises 3/min, 10/hr, 50/day but
+    core/settings.py defined only 'order_submission': '3/minute', and DRF
+    supports one rate per throttle class — so a script could submit 3/min
+    indefinitely (~4,320/day vs the documented 50).
+
+    Expected: the hourly throttle allows 10 requests and blocks the 11th;
+    the daily throttle allows 50 and blocks the 51st.
+    Actual (current code): the hourly/daily classes and rates don't exist ->
+    test FAILS, demonstrating M8.
+    """
+    from django.core.cache import cache
+    from rest_framework.test import APIRequestFactory
+
+    from apps.orders.api.throttles import (
+        OrderSubmissionHourlyThrottle,
+        OrderSubmissionDailyThrottle,
+    )
+
+    cache.clear()
+    user = UserFactory(username="m8user")
+    factory = APIRequestFactory()
+
+    def allowed_count(throttle, n):
+        count = 0
+        for _ in range(n):
+            request = factory.post("/api/v1/orders/")
+            request.user = user
+            if throttle.allow_request(request, None):
+                count += 1
+        return count
+
+    assert allowed_count(OrderSubmissionHourlyThrottle(), 11) == 10, (
+        "hourly throttle should allow exactly 10 submissions per hour"
+    )
+    cache.clear()
+    assert allowed_count(OrderSubmissionDailyThrottle(), 51) == 50, (
+        "daily throttle should allow exactly 50 submissions per day"
+    )
+
+
+@pytest.mark.django_db
+def test_m10_order_item_writes_not_exposed(singletons):
+    """M10 — POST /order-items/ can never succeed — always 500.
+
+    OrderItemCreateSerializer has no `order` field but OrderItem.order is
+    NOT NULL, so every create → IntegrityError → generic 500. Order items
+    are created through the order-creation flow, never this endpoint.
+
+    Expected: write actions aren't exposed (405); reads keep working.
+    Actual (current code): POST → 500 -> test FAILS, demonstrating M10.
+    """
+    staff = UserFactory(is_staff=True, is_superuser=True)
+    client = APIClient()
+    client.force_authenticate(user=staff)
+    category = CategoryFactory(name="M10 Grocery")
+    product = ProductFactory(
+        category=category, price=Decimal("10.00"), quantity_in_stock=100
+    )
+
+    resp = client.post(
+        "/api/v1/order-items/",
+        {"product": product.id, "quantity": 1},
+        format="json",
+    )
+    assert resp.status_code == 405, (
+        f"order-item writes should not be exposed, got {resp.status_code}"
+    )
+
+    # Reads still work.
+    resp = client.get("/api/v1/order-items/", format="json")
+    assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_l15_login_uses_captcha_after_failures():
+    """L15 — custom_login_view (captcha-after-3-failures) never wired.
+
+    core/urls.py — /login/ uses plain auth_views.LoginView with no rate
+    limiting; apps/account/views.py custom_login_view (captcha after 3
+    failures) is dead code.
+
+    Expected: POSTing bad credentials 3 times makes the 4th GET show a
+    captcha (show_captcha=True in context).
+    Actual (current code): plain LoginView, no captcha ever -> test FAILS,
+    demonstrating L15.
+    """
+    from django.test import Client
+
+    UserFactory(username="l15user", password="s3cret-pass")
+    client = Client()
+
+    # 3 failed attempts.
+    for _ in range(3):
+        client.post("/login/", {"username": "l15user", "password": "wrong"})
+
+    resp = client.get("/login/")
+    assert resp.context is not None, "login page did not render a template"
+    assert resp.context.get("show_captcha") is True, (
+        "expected captcha after 3 failures (custom_login_view), "
+        "got plain LoginView"
+    )
+
+
+@pytest.mark.django_db
+def test_l1_clone_uses_valid_status_field(mocker):
+    """L1 — OrderOrchestration.clone() passes status_type= (no such field).
+
+    apps/orders/utils/order_utils.py:361 — Order.objects.create(...,
+    status_type=status) raises TypeError ('status_type' is an invalid
+    keyword argument). No callers; latent, but the fix is one word.
+
+    Expected: clone() creates the new order with the given status.
+    Actual (current code): TypeError -> test FAILS, demonstrating L1.
+    """
+    from apps.orders.utils.order_utils import OrderOrchestration
+
+    participant = ParticipantFactory()
+    order = OrderFactory(account=participant.accountbalance)
+    product = ProductFactory(price=Decimal("5.00"))
+    OrderItem.objects.create(order=order, product=product, quantity=2)
+
+    # Cancel the original so the clone doesn't trip the duplicate-order guard.
+    order.status = "cancelled"
+    order.save(update_fields=["status"])
+
+    orch = OrderOrchestration()
+    orch.order = order
+    new_order = orch.clone(status="pending")
+
+    assert new_order.status == "pending"
+    assert new_order.items.count() == 1
+
+
+@pytest.mark.django_db
+def test_l7_orderitem_full_clean_before_write(singletons):
+    """L7 — OrderItem.save() calls full_clean() AFTER the write.
+
+    apps/orders/models.py — super().save() then self.full_clean(): a
+    validation failure leaves the bad row committed ("validation theater").
+
+    Expected: full_clean runs before the INSERT; invalid rows never persist.
+    Actual (current code): row persists even when clean() raises -> test
+    FAILS, demonstrating L7.
+    """
+    from django.core.exceptions import ValidationError
+
+    participant1 = ParticipantFactory()
+    participant2 = ParticipantFactory()
+    order = OrderFactory(account=participant1.accountbalance)
+    product = ProductFactory(price=Decimal("5.00"))
+
+    # Create a second order for a DIFFERENT participant; then try to move
+    # the item to it via save(). clean() forbids moving an OrderItem
+    # between orders.
+    order2 = OrderFactory(account=participant2.accountbalance)
+    item = OrderItem.objects.create(order=order, product=product, quantity=1)
+    item.order = order2
+
+    with pytest.raises(ValidationError):
+        item.save()
+
+    # The bad move must not have persisted.
+    item.refresh_from_db()
+    assert item.order_id == order.id, (
+        f"invalid OrderItem move was committed (order_id={item.order_id})"
+    )
+
+
+@pytest.mark.django_db
+def test_l10_add_orders_rejects_non_integer_ids(singletons):
+    """L10 — add_orders/remove_orders with non-integer IDs → 500 on Postgres.
+
+    apps/orders/api/views.py — Order.objects.filter(id__in=order_ids) with
+    no validation; Postgres raises DataError on WHERE id IN ('abc') → 500.
+    (SQLite silently returns empty, so this test demonstrates the missing
+    input validation rather than the 500 itself.)
+
+    Expected: 400 for non-integer IDs.
+    Actual (current code): 200, garbage silently ignored -> test FAILS,
+    demonstrating L10.
+    """
+    from apps.orders.models import CombinedOrder
+
+    staff = UserFactory(is_staff=True, is_superuser=True)
+    program = ProgramFactory(name="L10 Program")
+    co = CombinedOrder.objects.create(program=program)
+
+    client = APIClient()
+    client.force_authenticate(user=staff)
+    resp = client.post(
+        f"/api/v1/combined-orders/{co.id}/add_orders/",
+        {"order_ids": ["abc"]},
+        format="json",
+    )
+    assert resp.status_code == 400, (
+        f"non-integer order_ids should 400, got {resp.status_code}"
+    )
+
+
+@pytest.mark.django_db
+def test_l9_create_with_packing_bad_program_returns_404(singletons):
+    """L9 — create_with_packing with a nonexistent program → 500 not 404.
+
+    apps/orders/api/views.py — Program.objects.get(id=program_id) with no
+    DoesNotExist catch.
+
+    Expected: 404.
+    Actual (current code): 500 -> test FAILS, demonstrating L9.
+    """
+    staff = UserFactory(is_staff=True, is_superuser=True)
+    client = APIClient()
+    client.force_authenticate(user=staff)
+
+    resp = client.post(
+        "/api/v1/combined-orders/create-with-packing/",
+        {"program_id": 999999, "order_ids": [1]},
+        format="json",
+    )
+    assert resp.status_code == 404, (
+        f"nonexistent program should 404, got {resp.status_code}"
+    )
+
+
+@pytest.mark.django_db
+def test_l8_analytics_limit_abc_returns_400_not_500(singletons):
+    """L8 — Staff analytics endpoints 500 on ?limit=abc.
+
+    apps/orders/api/views.py — product_consumption (and 4 siblings) do
+    int(request.query_params.get('limit', ...)) with no ValueError catch.
+
+    Expected: 400 with a clear error.
+    Actual (current code): 500 -> test FAILS, demonstrating L8.
+    """
+    staff = UserFactory(is_staff=True, is_superuser=True)
+    client = APIClient()
+    client.force_authenticate(user=staff)
+
+    resp = client.get("/api/v1/orders/product-consumption/?limit=abc")
+    assert resp.status_code == 400, (
+        f"?limit=abc should 400, got {resp.status_code}"
+    )
+
+
+@pytest.mark.django_db
+def test_m17_duplicate_submission_does_not_trigger_backoff(mocker):
+    """M17 — Poisoned retries also grow the backoff counter.
+
+    apps/orders/utils/order_utils.py — the duplicate-submission path calls
+    increment_failure_count() before raising. A legitimate double-submit
+    (already safely rejected by idempotency) stacks 2^n-second backoffs
+    onto the user. The lock-contention path keeps its backoff (legitimate
+    thundering-herd protection); the duplicate path should not punish.
+
+    Expected: duplicate submission raises ValidationError WITHOUT calling
+    increment_failure_count.
+    Actual (current code): increment_failure_count called -> test FAILS,
+    demonstrating M17.
+    """
+    from apps.orders.utils.order_utils import (
+        OrderOrchestration, check_duplicate_submission,
+    )
+    from apps.orders.utils.order_validation import OrderItemData
+
+    _, _, account = _account_with_vouchers(
+        base_balance=Decimal("100.00"), num_vouchers=2
+    )
+    user = account.participant.user
+    category = CategoryFactory(name="M17 Grocery")
+    product = ProductFactory(
+        category=category, price=Decimal("10.00"), quantity_in_stock=100
+    )
+
+    # Simulate a poisoned/duplicate idempotency key already in cache.
+    idempotency_key = "m17-duplicate-key"
+    mocker.patch(
+        "apps.orders.utils.order_utils.check_duplicate_submission",
+        return_value=True,
+    )
+    # Force the orchestrator to use our key.
+    mocker.patch(
+        "apps.orders.utils.order_utils.generate_idempotency_key",
+        return_value=idempotency_key,
+    )
+    mock_increment = mocker.patch(
+        "apps.orders.utils.order_utils.increment_failure_count"
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        OrderOrchestration().create_order(
+            account=account,
+            order_items_data=[OrderItemData(product=product, quantity=1)],
+            user=user,
+        )
+
+    assert "duplicate" in str(exc_info.value).lower()
+    mock_increment.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_m15_order_window_enforced_on_create(singletons):
+    """M15 — Weekly ordering window never enforced server-side on submission.
+
+    core/utils.py can_place_order() is computed and displayed, but neither
+    the DRF create endpoint nor submit_order calls it; only order_detail's
+    duplicate-POST path blocks. A participant can POST an order with the
+    window force-closed.
+
+    Expected: 400 when the participant's program window is closed.
+    Actual (current code): 201 — order created -> test FAILS, demonstrating M15.
+
+    Ambiguous call (flagged for Ryan): the window is treated as a real gate
+    here (matching the frontend hiding + the duplicate-POST block + the
+    force-open "escape hatch" semantics). Staff are exempt — they act on
+    behalf of participants and have the force-open override.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.core.cache import cache
+    from core.models import ProgramWindowOverride
+
+    # Throttle state persists across tests in locmem cache; user IDs are
+    # reused after rollback. Clear it so the window check (not the daily
+    # throttle) is what we exercise.
+    cache.clear()
+
+    participant = ParticipantFactory()
+    user = participant.user
+    product = ProductFactory(price=Decimal("5.00"))
+
+    # Force the program window closed.
+    ProgramWindowOverride.objects.create(
+        program=participant.program,
+        force_status="closed",
+        expires_at=timezone.now() + timedelta(days=1),
+        reason="M15 test",
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    resp = client.post(
+        "/api/v1/orders/",
+        {"items": [{"product": product.id, "quantity": 1}]},
+        format="json",
+    )
+    assert resp.status_code == 400, (
+        f"order with closed window should 400, got {resp.status_code}: "
+        f"{getattr(resp, 'data', None)}"
+    )
+
+
+@pytest.mark.django_db
+def test_m14_pause_created_early_flags_vouchers_at_double_week_gate():
+    """M14 — Pauses created >14 days out never get voucher flags during the
+    double week.
+
+    apps/lifeskills/signals.py — the "outside ordering window" branch calls
+    schedule_voucher_tasks(vouchers, activate_time=pause_start, ...): flags
+    are scheduled to activate when the pause STARTS (the no-order week), not
+    when it ENTERS the 10-14-day double-week gate. Participants creating
+    double orders during the double week get no voucher flags.
+
+    Expected: activation is scheduled for pause_start - 14 days with the
+    pause-duration multiplier.
+    Actual (current code): activation scheduled at pause_start -> test FAILS,
+    demonstrating M14.
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+    from unittest import mock
+    from django.utils import timezone
+    from apps.lifeskills.models import ProgramPause
+    from apps.account.models import Participant, AccountBalance
+    from apps.voucher.models import Voucher
+
+    program = ProgramFactory(name="M14 Program")
+    participant = Participant.objects.create(
+        name="M14 Participant", email="m14@example.com",
+        program=program, active=True, adults=2, children=1,
+    )
+    account, _ = AccountBalance.objects.get_or_create(
+        participant=participant, defaults={"base_balance": Decimal("100.0")}
+    )
+    account.vouchers.all().delete()
+    Voucher.objects.create(
+        account=account, active=True, voucher_type="grocery", state="applied"
+    )
+
+    now = timezone.now()
+    pause_start = now + timedelta(days=20)
+    pause_end = pause_start + timedelta(days=7)
+
+    with mock.patch(
+        "apps.voucher.tasks.voucher_scheduling.update_voucher_flag_task"
+    ) as mock_task:
+        ProgramPause.objects.create(
+            pause_start=pause_start, pause_end=pause_end, reason="M14"
+        )
+
+    activate_calls = [
+        c for c in mock_task.apply_async.call_args_list
+        if c.kwargs.get("kwargs", {}).get("activate")
+    ]
+    assert activate_calls, "no voucher activation was scheduled at all"
+    eta = activate_calls[0].kwargs["eta"]
+    expected = pause_start - timedelta(days=14)
+    assert abs((eta - expected).total_seconds()) < 120, (
+        f"activation scheduled at {eta}, expected the double-week gate ~{expected}"
+    )
+    multiplier = activate_calls[0].kwargs["kwargs"]["multiplier"]
+    assert multiplier == 2, f"expected duration multiplier 2, got {multiplier}"
+
+
+@pytest.mark.django_db
+def test_m13_iso_year_used_for_combined_order_week_year(singletons):
+    """M13 — ISO week stored with calendar year → year-boundary collisions.
+
+    CombinedOrder.save() (and three sibling write sites in
+    combined_order_helper.py) store week = now.isocalendar()[1] but
+    year = now.year instead of now.isocalendar()[0]. Jan 1–2, 2028
+    (ISO 2027-W52) and Dec 25–31, 2028 (ISO 2028-W52) both store (52, 2028):
+    December's get_or_create silently merges into January's stale row (wrong
+    warehouse list) or raises "already exists for this week".
+
+    Expected: the stored year is the ISO year (2027 for Jan 1, 2028).
+    Actual (current code): calendar year 2028 -> test FAILS, demonstrating M13.
+    """
+    from freezegun import freeze_time
+    from apps.orders.models import CombinedOrder
+
+    program = ProgramFactory(name="M13 Program")
+
+    with freeze_time("2028-01-01"):  # Saturday → ISO 2027-W52
+        co = CombinedOrder(program=program)
+        co.save()
+        assert (co.week, co.year) == (52, 2027), (
+            f"expected ISO (52, 2027), got ({co.week}, {co.year})"
+        )
+
+    with freeze_time("2028-12-30"):  # Saturday → ISO 2028-W52
+        co2 = CombinedOrder(program=program)
+        co2.save()
+        assert (co2.week, co2.year) == (52, 2028), (
+            f"expected ISO (52, 2028), got ({co2.week}, {co2.year})"
+        )
 
 
 @pytest.mark.django_db
