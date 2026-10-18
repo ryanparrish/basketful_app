@@ -43,6 +43,7 @@
     "enterPassword": "Por favor, ingrese su contraseña",
     "completeRecaptcha": "Por favor, complete la verificación reCAPTCHA",
     "recaptchaLoadFailed": "No se pudo cargar reCAPTCHA. Por favor, actualice la página.",
+    "forgotPassword": "¿Olvidó su contraseña?",
     "needHelp": "¿Necesita ayuda? Comuníquese con el administrador de su programa."
   },
   "authErrors": {
@@ -193,6 +194,17 @@
         "label": "Saldo Go Fresh",
         "subtitle": "Una asignación separada por pedido según el tamaño del hogar"
       }
+    },
+    "changePassword": {
+      "title": "Cambiar contraseña",
+      "current": "Contraseña actual",
+      "new": "Nueva contraseña",
+      "confirm": "Confirme la nueva contraseña",
+      "submit": "Cambiar contraseña",
+      "saving": "Guardando…",
+      "success": "Su contraseña ha sido cambiada.",
+      "mismatch": "Las nuevas contraseñas no coinciden.",
+      "failed": "No se pudo cambiar su contraseña. Por favor, inténtelo de nuevo."
     }
   },
   "days": {

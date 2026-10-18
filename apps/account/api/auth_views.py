@@ -7,19 +7,21 @@ in the response body for enhanced security against XSS attacks.
 import logging
 
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.middleware.csrf import get_token
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 import requests
 
 from .jwt_serializers import FlexibleTokenObtainPairSerializer
 from .serializers import ParticipantSerializer
-from apps.account.models import Participant
+from apps.account.models import Participant, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,12 @@ class LoginRateThrottle(AnonRateThrottle):
     """Stricter rate limiting for login attempts."""
     rate = '5/minute'
     scope = 'login'
+
+
+class PasswordChangeRateThrottle(UserRateThrottle):
+    """Limits guessing the current password from a signed-in session."""
+    rate = '5/minute'
+    scope = 'password_change'
 
 
 def get_cookie_settings():
@@ -316,6 +324,53 @@ class AuthMeView(APIView):
                 'last_name': user.last_name,
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
+                'must_change_password': UserProfile.objects.filter(
+                    user=user, must_change_password=True
+                ).exists(),
             },
             'participant': participant_data,
         })
+
+
+class ChangePasswordView(APIView):
+    """
+    Change the signed-in user's password.
+
+    POST /api/auth/change-password/
+    {
+        "current_password": "...",
+        "new_password": "..."
+    }
+
+    Errors come back as 400 (never 401, which the client treats as an
+    expired session) with field-keyed messages. On success the
+    must_change_password flag is cleared; the session stays signed in.
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [PasswordChangeRateThrottle]
+
+    def post(self, request):
+        user = request.user
+        current_password = request.data.get('current_password', '')
+        new_password = request.data.get('new_password', '')
+
+        if not user.check_password(current_password):
+            return Response(
+                {'current_password': ['Your current password is incorrect.'],
+                 'code': 'wrong_password'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            validate_password(new_password, user=user)
+        except ValidationError as e:
+            return Response(
+                {'new_password': list(e.messages), 'code': 'invalid_password'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        UserProfile.objects.filter(user=user).update(must_change_password=False)
+
+        return Response({'message': 'Password changed'})
