@@ -139,6 +139,15 @@ export const updateMyPreferredLanguage = async (
   return response.data;
 };
 
+// Change the signed-in participant's password. A wrong current password or
+// a weak new one comes back as 400 with field-keyed messages
+export const changePassword = async (data: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> => {
+  await apiClient.post('/auth/change-password/', data);
+};
+
 // Balances
 export const getAccountBalance = async (): Promise<{
   available_balance: number;

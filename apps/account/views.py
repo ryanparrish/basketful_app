@@ -1,18 +1,31 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth.views import PasswordChangeView
+from django.contrib.auth.views import PasswordChangeView, PasswordResetConfirmView
 from django.urls import reverse_lazy
 from django.contrib.auth import login
 from .forms import CustomLoginForm
+from .models import UserProfile
 
 
 class CustomPasswordChangeView(PasswordChangeView):
     """Custom password change that resets the must_change_password flag."""
-    success_url = reverse_lazy("home")
+    success_url = reverse_lazy("participant_dashboard")
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        self.request.user.must_change_password = False
-        self.request.user.save()
+        UserProfile.objects.filter(user=self.request.user).update(
+            must_change_password=False
+        )
+        return response
+
+
+class ClearingPasswordResetConfirmView(PasswordResetConfirmView):
+    """Password reset that also clears the must_change_password flag."""
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        UserProfile.objects.filter(user=form.user).update(
+            must_change_password=False
+        )
         return response
 
 

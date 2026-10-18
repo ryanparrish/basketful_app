@@ -43,6 +43,7 @@
     "enterPassword": "Please enter your password",
     "completeRecaptcha": "Please complete the reCAPTCHA verification",
     "recaptchaLoadFailed": "reCAPTCHA failed to load. Please refresh the page.",
+    "forgotPassword": "Forgot your password?",
     "needHelp": "Need help? Contact your program administrator."
   },
   "authErrors": {
@@ -193,6 +194,17 @@
         "label": "Go Fresh Balance",
         "subtitle": "A separate per-order allowance based on household size"
       }
+    },
+    "changePassword": {
+      "title": "Change Password",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Change Password",
+      "saving": "Saving…",
+      "success": "Your password has been changed.",
+      "mismatch": "The new passwords don't match.",
+      "failed": "Your password could not be changed. Please try again."
     }
   },
   "days": {
