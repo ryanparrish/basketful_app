@@ -40,7 +40,9 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             if not VoucherSetting.objects.filter(active=True).exists():
-                VoucherSetting.objects.create(active=True)
+                # infant_modifier has no model default, so a fresh DB needs it
+                # spelled out (same value as the test VoucherSettingFactory).
+                VoucherSetting.objects.create(active=True, infant_modifier=Decimal("0.50"))
 
             user, _ = User.objects.get_or_create(
                 username=E2E_USERNAME,
