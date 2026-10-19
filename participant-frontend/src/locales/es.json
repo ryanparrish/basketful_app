@@ -80,11 +80,13 @@
     "overBudget": "Su carrito supera su presupuesto disponible. Por favor, quite algunos artículos.",
     "addToCart": "Agregar al carrito",
     "addOne": "Agregar uno",
-    "removeOne": "Quitar uno"
+    "removeOne": "Quitar uno",
+    "noHygieneBalance": "Sin saldo de higiene"
   },
   "cart": {
     "title": "Carrito ({{count}})",
     "clearCart": "Vaciar carrito",
+    "openCart": "Abrir carrito",
     "closeCart": "Cerrar carrito",
     "clearConfirm": "¿Está seguro de que desea vaciar su carrito?",
     "emptyTitle": "Su carrito está vacío",
@@ -96,7 +98,9 @@
     "priceTimesQuantity": "{{price}} × {{quantity}}",
     "increaseQuantity": "Aumentar cantidad",
     "decreaseQuantity": "Reducir cantidad",
-    "removeFromCart": "Quitar del carrito"
+    "removeFromCart": "Quitar del carrito",
+    "viewCart": "Ver carrito",
+    "summaryLabel": "Resumen del carrito"
   },
   "validation": {
     "validating": "Validando el carrito...",
@@ -215,5 +219,12 @@
     "friday": "viernes",
     "saturday": "sábado",
     "sunday": "domingo"
+  },
+  "budget": {
+    "title": "Tus saldos",
+    "left": "{{name}} disponible",
+    "food": "Comida",
+    "hygiene": "Higiene",
+    "go_fresh": "Go Fresh"
   }
 }

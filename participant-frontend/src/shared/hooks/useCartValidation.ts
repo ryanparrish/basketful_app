@@ -5,6 +5,7 @@
 import { useMemo } from 'react';
 import { useValidation, useCanCheckout } from '../../providers/ValidationContext';
 import { useCartContext } from '../../providers/CartProvider';
+import { useBudgets } from './useBudgets';
 
 export const useCartValidation = () => {
   const validation = useValidation();
@@ -23,41 +24,25 @@ export const useCartValidation = () => {
     [validation.errors]
   );
 
-  // Get remaining budget computed client-side so it updates instantly as cart changes.
-  // available_balance is the participant's static account balance; subtract cartTotal for live display.
-  const remainingBudget = useMemo(() => {
-    if (!validation.balances) return null;
-    return Math.max(0, validation.balances.available_balance - cartTotal);
-  }, [validation.balances, cartTotal]);
+  // Food balance left, computed client-side so it updates instantly as the
+  // cart changes. Hygiene and Go Fresh items don't draw from it — see useBudgets.
+  const budgets = useBudgets();
+  const remainingBudget = budgets ? budgets.food.remaining : null;
 
-  // Check if cart is over budget — compare directly against available_balance,
-  // not the already-subtracted remainder (which would fire at half the balance).
-  const isOverBudget = useMemo(() => {
-    if (!validation.balances) return false;
-    return cartTotal > validation.balances.available_balance;
-  }, [cartTotal, validation.balances]);
+  // Over budget if ANY balance is exceeded (hygiene and Go Fresh included).
+  const isOverBudget = budgets?.isOverAny ?? false;
 
   // Get products with errors
-  const productsWithErrors = useMemo(() => {
-    const productIds = new Set<number>();
-    validation.errors.forEach(error => {
-      if (error.product_id) {
-        productIds.add(error.product_id);
-      }
-    });
-    return Array.from(productIds);
-  }, [validation.errors]);
+  const productsWithErrors = useMemo(
+    () => Array.from(new Set(validation.errors.flatMap(e => e.product_ids ?? []))),
+    [validation.errors]
+  );
 
   // Get products with warnings
-  const productsWithWarnings = useMemo(() => {
-    const productIds = new Set<number>();
-    validation.warnings.forEach(warning => {
-      if (warning.product_id) {
-        productIds.add(warning.product_id);
-      }
-    });
-    return Array.from(productIds);
-  }, [validation.warnings]);
+  const productsWithWarnings = useMemo(
+    () => Array.from(new Set(validation.warnings.flatMap(w => w.product_ids ?? []))),
+    [validation.warnings]
+  );
 
   return {
     // State

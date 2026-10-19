@@ -10,6 +10,7 @@ import {
   Avatar,
   Stack,
   Chip,
+  alpha,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -23,6 +24,7 @@ import type { CartItemData } from '../../providers/CartProvider';
 import { useCartContext } from '../../providers/CartProvider';
 import { useValidation } from '../../providers/ValidationContext';
 import { useFormatters } from '../../shared/hooks/useFormatters';
+import { isBlockedByBudget } from '../../shared/hooks/useBudgets';
 import { tokens } from '../../shared/theme/tokens';
 
 interface CartItemProps {
@@ -33,7 +35,8 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
   const { t } = useTranslation();
   const { formatCurrency } = useFormatters();
   const { updateItemQuantity, removeItem } = useCartContext();
-  const { getErrorsForProduct, getWarningsForProduct } = useValidation();
+  const { getErrorsForProduct, getWarningsForProduct, balances } = useValidation();
+  const budgetBlocked = isBlockedByBudget({ budget: item.budget ?? 'food' }, balances);
 
   const errors = getErrorsForProduct(item.productId);
   const warnings = getWarningsForProduct(item.productId);
@@ -60,7 +63,12 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
         py: 1.5,
         px: 2,
         borderBottom: `1px solid ${tokens.border.default}`,
-        bgcolor: hasError ? 'error.light' : hasWarning ? 'warning.light' : 'transparent',
+        bgcolor: (theme) =>
+          hasError ? alpha(theme.palette.error.main, 0.06)
+          : hasWarning ? alpha(theme.palette.warning.main, 0.08)
+          : 'transparent',
+        borderLeft: hasError || hasWarning ? 3 : 0,
+        borderLeftColor: hasError ? 'error.main' : 'warning.main',
         '&:last-child': {
           borderBottom: 0,
         },
@@ -160,7 +168,7 @@ const CartItemComponent: React.FC<CartItemProps> = ({ item }) => {
               size="small"
               onClick={handleIncrease}
               aria-label={t('cart.increaseQuantity')}
-              disabled={!item.available}
+              disabled={!item.available || budgetBlocked}
             >
               <AddIcon fontSize="small" />
             </IconButton>

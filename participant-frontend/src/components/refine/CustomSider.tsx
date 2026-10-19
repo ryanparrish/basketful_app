@@ -34,7 +34,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getCategories, getProducts } from '../../shared/api/endpoints';
 import { useCartValidation } from '../../shared/hooks/useCartValidation';
-import { useFormatters } from '../../shared/hooks/useFormatters';
+import { BudgetSummary } from '../BudgetSummary';
 
 const SIDER_WIDTH = 240;
 const SIDER_COLLAPSED_WIDTH = 64;
@@ -43,10 +43,9 @@ export const CustomSider: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { t } = useTranslation();
-  const { formatCurrency } = useFormatters();
   const go = useGo();
   const { resource } = useResourceParams();
-  const { remainingBudget, isOverBudget } = useCartValidation();
+  const { isOverBudget } = useCartValidation();
   const [searchParams] = useSearchParams();
   const selectedCategory = searchParams.get('category');
   const [collapsed, setCollapsed] = useState(false);
@@ -153,11 +152,7 @@ export const CustomSider: React.FC = () => {
               flexShrink: 0,
             }}
           >
-            {!collapsed && (
-              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                {t('nav.availableBudget', { amount: formatCurrency(remainingBudget ?? 0) })}
-              </Typography>
-            )}
+            {!collapsed && <BudgetSummary variant="inline" color="primary.contrastText" />}
             <Tooltip title={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')} placement="right">
               <IconButton
                 size="small"

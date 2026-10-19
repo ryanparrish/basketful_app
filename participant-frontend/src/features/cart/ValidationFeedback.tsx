@@ -155,7 +155,6 @@ export const ValidationFeedback: React.FC<ValidationFeedbackProps> = ({
                 </ListItemIcon>
                 <ListItemText
                   primary={displayMessage(error)}
-                  secondary={error.product_id ? t('validation.productId', { id: error.product_id }) : undefined}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>

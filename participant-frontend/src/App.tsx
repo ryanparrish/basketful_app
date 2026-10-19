@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Refine, Authenticated } from '@refinedev/core';
-import { ThemedLayout, ErrorComponent, RefineSnackbarProvider, useNotificationProvider } from '@refinedev/mui';
+import { ErrorComponent, RefineSnackbarProvider, useNotificationProvider } from '@refinedev/mui';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import routerProvider, { CatchAllNavigate } from '@refinedev/react-router';
 import { ThemeProvider, CssBaseline, Box, CircularProgress } from '@mui/material';
@@ -26,8 +26,7 @@ import { useThemeConfig, defaultMuiTheme } from './shared/theme/dynamicTheme';
 
 // Components
 import { OfflineBanner } from './components/OfflineBanner';
-import { CustomSider } from './components/refine/CustomSider';
-import { CustomHeader } from './components/refine/CustomHeader';
+import { AppLayout } from './components/refine/AppLayout';
 import { AccountPage } from './components/AccountPage';
 import { SessionExpiredDialog } from './components/SessionExpiredDialog';
 
@@ -70,33 +69,12 @@ const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   </CartProvider>
 );
 
-// Inner layout — needs cart context, so must be inside AppProviders
-const LayoutWithCart: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  return (
-    <>
-      <CustomHeader />
-      <ThemedLayout
-        Sider={() => <CustomSider />}
-        Header={() => null}
-        Footer={() => null}
-        childrenBoxProps={{
-          sx: {
-            p: 0,
-            pt: '64px', // Offset for fixed header
-          },
-        }}
-      >
-        {children}
-      </ThemedLayout>
-    </>
-  );
-};
-
-// Custom layout that wraps Refine's ThemedLayout
+// Custom layout that wraps Refine's ThemedLayout — AppLayout needs cart
+// context, so it must be inside AppProviders
 const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <AppProviders>
-      <LayoutWithCart>{children}</LayoutWithCart>
+      <AppLayout>{children}</AppLayout>
     </AppProviders>
   );
 };

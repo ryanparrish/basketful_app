@@ -15,7 +15,7 @@
  * Celery is eager and reCAPTCHA uses Google's always-passing test keys in
  * dev, so login through the real UI is safe to exercise per spec run.
  */
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
@@ -31,7 +31,15 @@ export default defineConfig({
       name: 'chromium',
       use: { storageState: 'e2e/.auth/state.json' },
       dependencies: ['setup'],
-      testIgnore: /legacy\//,
+      testIgnore: [/legacy\//, /\.mobile\.spec\.ts$/],
+    },
+    // Phone-sized viewport: the layout switches (no sider, bottom cart bar)
+    // below the md breakpoint, so mobile-only regressions need their own run.
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'], storageState: 'e2e/.auth/state.json' },
+      dependencies: ['setup'],
+      testMatch: /\.mobile\.spec\.ts$/,
     },
     // Regression tests against the legacy Django-rendered site (the cart
     // participants actually use — the React cart above is not deployed).

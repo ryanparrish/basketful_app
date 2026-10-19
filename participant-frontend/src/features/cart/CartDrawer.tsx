@@ -24,6 +24,7 @@ import { useCanCheckout } from '../../providers/ValidationContext';
 import { CartItem } from './CartItem';
 import { ValidationFeedback } from './ValidationFeedback';
 import { useFormatters } from '../../shared/hooks/useFormatters';
+import { BudgetSummary } from '../../components/BudgetSummary';
 import type { CartItemData } from '../../providers/CartProvider';
 
 interface CartDrawerProps {
@@ -36,7 +37,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
   const { t } = useTranslation();
   const { formatCurrency } = useFormatters();
   const { items, totalItems, cartTotal, isEmpty, clearCart } = useCartContext();
-  const { canCheckout, checkoutBlockedReasonKey, balances } = useCanCheckout();
+  const { canCheckout, checkoutBlockedReasonKey } = useCanCheckout();
 
   const handleCheckout = () => {
     onClose();
@@ -59,6 +60,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
       anchor="right"
       open={open}
       onClose={onClose}
+      // The AppBar is raised to zIndex.drawer + 1 to stay above the sider, so
+      // at the default drawer level it covers this drawer's title and close
+      // button. Sit at modal level (it is a modal) to stay above the AppBar.
+      sx={{ zIndex: (theme) => theme.zIndex.modal }}
       PaperProps={{
         sx: {
           width: { xs: '100%', sm: 400 },
@@ -144,19 +149,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
       {/* Footer with Totals */}
       {!isEmpty && (
         <Box sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
-          {/* Budget Info */}
-          {balances && (
-            <Box sx={{ mb: 2 }}>
-              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {t('cart.budgetRemaining')}
-                </Typography>
-                <Typography variant="body2" fontWeight={500}>
-                  {formatCurrency(Math.max(0, balances.available_balance - cartTotal))}
-                </Typography>
-              </Stack>
-            </Box>
-          )}
+          {/* What's left in each balance */}
+          <Box sx={{ mb: 2 }}>
+            <BudgetSummary />
+          </Box>
 
           <Divider sx={{ my: 1 }} />
 

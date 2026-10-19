@@ -499,7 +499,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "severity": "error" | "warning",
                     "message": "Human-readable message",
                     "amount_over": 5.00,
-                    "grace_allowed": true/false
+                    "grace_allowed": true/false,
+                    "budget": "food" | "hygiene" | "go_fresh",  # balance violations only
+                    "product_ids": [1, 2]  # cart lines that caused it; absent for window
                 }
             ],
             "balances": {
@@ -625,19 +627,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                             'grace_allowed': False,
                         })
 
-                # Separate items by category
-                food_items = []
-                hygiene_items = []
-                go_fresh_items = []
+                # Separate items by which balance pays for them
+                food_items = [i for i in temp_items if i.product.budget == Product.BUDGET_FOOD]
+                hygiene_items = [i for i in temp_items if i.product.budget == Product.BUDGET_HYGIENE]
+                go_fresh_items = [i for i in temp_items if i.product.budget == Product.BUDGET_GO_FRESH]
 
-                for item in temp_items:
-                    category_name = item.product.category.name.lower() if item.product.category else ''
-                    if category_name == 'hygiene':
-                        hygiene_items.append(item)
-                    elif category_name == 'go fresh':
-                        go_fresh_items.append(item)
-                    else:
-                        food_items.append(item)
+                def _product_ids(items):
+                    # Lets the cart UI flag exactly which lines caused a violation.
+                    return sorted({i.product.id for i in items})
 
                 # Calculate totals
                 food_total = sum(item.total_price() for item in food_items)
@@ -661,7 +658,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                         'severity': 'warning' if grace_allowed else 'error',
                         'message': program_settings.grace_message if grace_allowed else _('Food balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
+                        'grace_allowed': grace_allowed,
+                        'budget': Product.BUDGET_FOOD,
+                        'product_ids': _product_ids(food_items),
                     })
 
                 # Validate hygiene balance
@@ -676,7 +675,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                         'severity': 'warning' if grace_allowed else 'error',
                         'message': program_settings.grace_message if grace_allowed else _('Hygiene balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
+                        'grace_allowed': grace_allowed,
+                        'budget': Product.BUDGET_HYGIENE,
+                        'product_ids': _product_ids(hygiene_items),
                     })
 
                 # Validate Go Fresh balance
@@ -691,22 +692,21 @@ class OrderViewSet(viewsets.ModelViewSet):
                         'severity': 'warning' if grace_allowed else 'error',
                         'message': program_settings.grace_message if grace_allowed else _('Go Fresh balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
                         'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
+                        'grace_allowed': grace_allowed,
+                        'budget': Product.BUDGET_GO_FRESH,
+                        'product_ids': _product_ids(go_fresh_items),
                     })
 
                 # Validate category limits
-                try:
-                    CategoryLimitValidator.validate_category_limits(temp_items, participant)
-                except ValidationError as e:
-                    error_messages = e.error_list if hasattr(e, 'error_list') else [str(e)]
-                    for msg in error_messages:
-                        violations.append({
-                            'type': 'limit',
-                            'severity': 'error',
-                            'message': str(msg),
-                            'amount_over': 0,
-                            'grace_allowed': False
-                        })
+                for limit_violation in CategoryLimitValidator.find_limit_violations(temp_items, participant):
+                    violations.append({
+                        'type': 'limit',
+                        'severity': 'error',
+                        'message': limit_violation['message'],
+                        'amount_over': 0,
+                        'grace_allowed': False,
+                        'product_ids': limit_violation['product_ids'],
+                    })
 
                 # Build limits summary
                 limits = []

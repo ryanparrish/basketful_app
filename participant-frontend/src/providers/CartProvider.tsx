@@ -4,7 +4,7 @@
  */
 import React, { createContext, useContext, useCallback, useMemo, useEffect, useState } from 'react';
 import { CartProvider as ReactCartProvider, useCart as useReactCart } from 'react-use-cart';
-import type { Product, CartItem as ApiCartItem } from '../shared/types/api';
+import type { Product, BudgetKey, CartItem as ApiCartItem } from '../shared/types/api';
 
 // Extended cart item type
 export interface CartItemData {
@@ -15,6 +15,9 @@ export interface CartItemData {
   image?: string;
   category?: string;
   categoryId?: number;
+  // Optional: carts saved in localStorage before this field existed lack it
+  // (they're counted against food until re-added; the server still validates).
+  budget?: BudgetKey;
   productId: number;
   unit?: string;
   available: boolean;
@@ -69,6 +72,7 @@ const CartContextProvider: React.FC<{ children: React.ReactNode }> = ({ children
       image: product.image || undefined,
       category: product.category_name,
       categoryId: product.category,
+      budget: product.budget,
       productId: product.id,
       unit: product.unit || undefined,
       available: product.is_available,

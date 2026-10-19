@@ -28,10 +28,14 @@ test('cart drawer explains a budget violation instead of a bare issue count', as
   await page.getByRole('button', { name: 'Add to cart' }).click();
 
   // Backend validation is debounced 500ms after the cart changes.
-  await page.getByTestId('ShoppingCartIcon').locator('..').click();
+  await page.getByRole('button', { name: 'Open cart' }).click();
   await expect(page.getByText(/^Cart \(\d+\)$/)).toBeVisible();
 
-  await expect(page.getByText(/exceeded by \$\d/i)).toBeVisible({ timeout: 10_000 });
+  const drawer = page.getByRole('dialog');
+  // Shown once in the summary and again on the offending line itself
+  // (validate-cart's product_ids), so the participant knows what to remove.
+  await expect(drawer.getByText(/exceeded by \$\d/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(drawer.locator('.MuiChip-label', { hasText: /exceeded by \$\d/i })).toBeVisible();
 
   // The old behavior collapsed every error into a bare count with no
   // specifics — assert that generic phrasing is gone, not just that some

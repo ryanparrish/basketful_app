@@ -164,17 +164,17 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
 
   // Get errors for specific product
   const getErrorsForProduct = useCallback((productId: number): ValidationError[] => {
-    return validationState.errors.filter(err => err.product_id === productId);
+    return validationState.errors.filter(err => err.product_ids?.includes(productId));
   }, [validationState.errors]);
 
   // Get warnings for specific product
   const getWarningsForProduct = useCallback((productId: number): ValidationError[] => {
-    return validationState.warnings.filter(warn => warn.product_id === productId);
+    return validationState.warnings.filter(warn => warn.product_ids?.includes(productId));
   }, [validationState.warnings]);
 
   // Check if product has error
   const hasProductError = useCallback((productId: number): boolean => {
-    return validationState.errors.some(err => err.product_id === productId);
+    return validationState.errors.some(err => err.product_ids?.includes(productId));
   }, [validationState.errors]);
 
   // Clear validation state

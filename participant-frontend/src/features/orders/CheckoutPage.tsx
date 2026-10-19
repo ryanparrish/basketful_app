@@ -19,6 +19,7 @@ import {
   ListItemText,
   ListItemAvatar,
   Avatar,
+  alpha,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -35,6 +36,7 @@ import { createOrder } from '../../shared/api/endpoints';
 import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import { useFormatters } from '../../shared/hooks/useFormatters';
 import type { CartItemData } from '../../providers/CartProvider';
+import { BudgetSummary } from '../../components/BudgetSummary';
 import { MAX_WIDTHS, PAGE_PADDING, useFullWidth } from '../../shared/constants/layout';
 
 export const CheckoutPage: React.FC = () => {
@@ -43,9 +45,9 @@ export const CheckoutPage: React.FC = () => {
   const { t } = useTranslation();
   const { formatCurrency } = useFormatters();
   const { items, cartTotal, clearCart, getApiCartItems } = useCartContext();
-  const { canCheckout, checkoutBlockedReasonKey, balances } = useCanCheckout();
+  const { canCheckout, checkoutBlockedReasonKey } = useCanCheckout();
   const { isOpen: windowIsOpen, windowStatus } = useOrderWindow();
-  const { revalidate } = useValidation();
+  const { revalidate, getErrorsForProduct } = useValidation();
 
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderId, setOrderId] = useState<number | null>(null);
@@ -204,22 +206,49 @@ export const CheckoutPage: React.FC = () => {
             {t('checkout.orderSummary')}
           </Typography>
           <List disablePadding>
-            {items.map((item: CartItemData) => (
-              <ListItem key={item.id} disableGutters sx={{ py: 1 }}>
-                <ListItemAvatar>
-                  <Avatar variant="rounded" src={item.image?.replace(/^http:/, 'https:')}>
-                    {item.name.charAt(0)}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={item.name}
-                  secondary={t('checkout.quantity', { count: item.quantity || 1 })}
-                />
-                <Typography variant="body1" fontWeight={500}>
-                  {formatCurrency((item.price || 0) * (item.quantity || 1))}
-                </Typography>
-              </ListItem>
-            ))}
+            {items.map((item: CartItemData) => {
+              // Flag the exact lines blocking the order so the participant
+              // knows what to change, not just that something is wrong.
+              const itemErrors = getErrorsForProduct(item.productId);
+              return (
+                <ListItem
+                  key={item.id}
+                  disableGutters
+                  data-testid={itemErrors.length ? 'checkout-item-error' : undefined}
+                  sx={{
+                    py: 1,
+                    ...(itemErrors.length && {
+                      bgcolor: (theme) => alpha(theme.palette.error.main, 0.06),
+                      borderLeft: 3,
+                      borderColor: 'error.main',
+                      pl: 1,
+                    }),
+                  }}
+                >
+                  <ListItemAvatar>
+                    <Avatar variant="rounded" src={item.image?.replace(/^http:/, 'https:')}>
+                      {item.name.charAt(0)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={item.name}
+                    secondary={
+                      <>
+                        {t('checkout.quantity', { count: item.quantity || 1 })}
+                        {itemErrors.map((error, idx) => (
+                          <Typography key={idx} component="span" variant="caption" color="error" display="block">
+                            {error.message}
+                          </Typography>
+                        ))}
+                      </>
+                    }
+                  />
+                  <Typography variant="body1" fontWeight={500}>
+                    {formatCurrency((item.price || 0) * (item.quantity || 1))}
+                  </Typography>
+                </ListItem>
+              );
+            })}
           </List>
         </CardContent>
       </Card>
@@ -232,12 +261,6 @@ export const CheckoutPage: React.FC = () => {
               <Typography color="text.secondary">{t('checkout.itemsLabel')}</Typography>
               <Typography>{items.length}</Typography>
             </Stack>
-            {balances && (
-              <Stack direction="row" justifyContent="space-between">
-                <Typography color="text.secondary">{t('checkout.availableBudget')}</Typography>
-                <Typography>{formatCurrency(balances.available_balance)}</Typography>
-              </Stack>
-            )}
             <Divider sx={{ my: 1 }} />
             <Stack direction="row" justifyContent="space-between">
               <Typography variant="h6">{t('checkout.orderTotal')}</Typography>
@@ -245,17 +268,11 @@ export const CheckoutPage: React.FC = () => {
                 {formatCurrency(cartTotal)}
               </Typography>
             </Stack>
-            {balances && (
-              <Stack direction="row" justifyContent="space-between">
-                <Typography color="text.secondary">{t('checkout.remainingAfterOrder')}</Typography>
-                <Typography
-                  color={balances.available_balance - cartTotal < 0 ? 'error.main' : 'success.main'}
-                  fontWeight={500}
-                >
-                  {formatCurrency(balances.available_balance - cartTotal)}
-                </Typography>
-              </Stack>
-            )}
+            <Divider sx={{ my: 1 }} />
+            <Typography variant="subtitle2" color="text.secondary">
+              {t('checkout.remainingAfterOrder')}
+            </Typography>
+            <BudgetSummary />
           </Stack>
         </CardContent>
       </Card>
