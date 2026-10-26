@@ -99,7 +99,6 @@ def order_with_items_setup(db):
     }
 
 
-
 @pytest.fixture
 def grace_off(db):
     """Turn the program's grace allowance off, so any overage blocks an order."""
