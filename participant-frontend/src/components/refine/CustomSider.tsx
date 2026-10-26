@@ -1,7 +1,7 @@
 /**
  * Custom Sider Component for Refine
  * Collapsible left navigation with categories.
- * The cart lives in DesktopCartPanel (right side) — not here.
+ * The cart lives in the cart drawer, which AppLayout owns — not here.
  */
 import React, { useState } from 'react';
 import {
