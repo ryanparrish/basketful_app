@@ -27,7 +27,7 @@ Track individual participants with household information, eligibility, needs, an
 
 ### Account Balances
 - Dynamic balance calculation based on household size
-- Hygiene balance separation (1/3 of total)
+- Hygiene and Go Fresh caps within the available balance
 - Available balance with recent voucher logic
 - Automatic updates via Django signals
 

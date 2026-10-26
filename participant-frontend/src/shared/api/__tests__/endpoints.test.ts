@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { apiClient } from '../../../shared/api/secureClient';
-import { getOrders } from '../../../shared/api/endpoints';
+import { getOrders, getProgramConfig } from '../../../shared/api/endpoints';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -30,5 +30,18 @@ describe('getOrders — BEH-069 scope enforcement', () => {
         params: expect.objectContaining({ me: 'true' }),
       })
     );
+  });
+});
+
+describe('getProgramConfig', () => {
+  it('reads the singleton settings object, not the list endpoint', async () => {
+    const getSpy = vi.spyOn(apiClient, 'get').mockResolvedValue({
+      data: { grace_enabled: true, rules_version: 'abc123' },
+    });
+
+    const config = await getProgramConfig();
+
+    expect(getSpy).toHaveBeenCalledWith('/settings/program-config/current/');
+    expect(config.rules_version).toBe('abc123');
   });
 });

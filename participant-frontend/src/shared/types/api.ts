@@ -12,15 +12,12 @@ export interface ThemeConfig {
   updated_at: string;
 }
 
+// GET /settings/program-config/current/ (core ProgramSettingsSerializer)
 export interface ProgramConfig {
   grace_amount: number;
   grace_enabled: boolean;
   grace_message: string;
-  rule_version: number;
-  order_window_open: boolean;
-  order_window_closes: string | null;
-  grace_period_minutes: number;
-  max_items_per_order: number | null;
+  rules_version: string;
   updated_at: string;
 }
 
@@ -95,7 +92,7 @@ export interface ValidationError {
   product_ids?: number[];
   /** Which balance was exceeded — balance violations only. */
   budget?: BudgetKey;
-  amount_over?: number;
+  amount_over?: string; // Decimal, sent as a string
   grace_allowed?: boolean;
 }
 

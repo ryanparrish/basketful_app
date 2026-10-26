@@ -33,6 +33,7 @@ import { useCartContext } from '../../providers/CartProvider';
 import { useCanCheckout, useValidation } from '../../providers/ValidationContext';
 import { ValidationFeedback } from '../cart/ValidationFeedback';
 import { createOrder } from '../../shared/api/endpoints';
+import { serverErrorMessage } from '../../shared/api/errors';
 import { useOrderWindow } from '../../shared/hooks/useOrderWindow';
 import { useFormatters } from '../../shared/hooks/useFormatters';
 import type { CartItemData } from '../../providers/CartProvider';
@@ -280,9 +281,7 @@ export const CheckoutPage: React.FC = () => {
       {/* Error Display */}
       {submitMutation.isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {submitMutation.error instanceof Error
-            ? submitMutation.error.message
-            : t('checkout.submitFailed')}
+          {serverErrorMessage(submitMutation.error) ?? t('checkout.submitFailed')}
         </Alert>
       )}
 

@@ -9,36 +9,77 @@
  * Acceptance criteria:
  *   1. Adding an over-budget item shows a validation error in the cart
  *      drawer, the very first place a participant sees feedback.
- *   2. That error names the specific problem (budget) and, ideally, the
- *      amount over — not a bare "N issues found" count.
+ *   2. That error names the specific problem (budget) and the amount over
+ *      — not a bare "N issues found" count.
+ *   3. Checkout is blocked until the cart is fixed.
  *
  * Fixture: `python manage.py seed_e2e_participant` creates participant
- * `e2e-participant` with a $100 balance and product "E2E Over-Budget Test
- * Item" priced at $999.99, guaranteeing a 'balance' violation regardless of
- * VoucherSetting configuration.
+ * `e2e-participant` and product "E2E Over-Budget Test Item" priced at
+ * $999.99, guaranteeing a 'balance' violation beyond any grace allowance.
  */
 import { expect, test } from '@playwright/test';
+import {
+  OVER_BUDGET_PRICE,
+  PRODUCTS,
+  addToCart,
+  cartMessage,
+  checkoutButton,
+  dollars,
+  openCart,
+  overBudgetBanner,
+  readBalances,
+} from './support/cart';
 
-const OVER_BUDGET_PRODUCT = 'E2E Over-Budget Test Item';
-
-test('cart drawer explains a budget violation instead of a bare issue count', async ({ page }) => {
+test('cart drawer explains a budget violation and blocks checkout', async ({ page }) => {
   await page.goto('/products');
+  const balances = await readBalances(page);
 
-  await page.getByPlaceholder('Search products...').fill(OVER_BUDGET_PRODUCT);
-  await page.getByRole('button', { name: 'Add to cart' }).click();
-
-  // Backend validation is debounced 500ms after the cart changes.
-  await page.getByRole('button', { name: 'Open cart' }).click();
-  await expect(page.getByText(/^Cart \(\d+\)$/)).toBeVisible();
+  await addToCart(page, PRODUCTS.overBudgetFood);
+  await openCart(page);
 
   const drawer = page.getByRole('dialog');
+  const message = `Food balance exceeded by ${dollars(OVER_BUDGET_PRICE - balances.food)}`;
   // Shown once in the summary and again on the offending line itself
   // (validate-cart's product_ids), so the participant knows what to remove.
-  await expect(drawer.getByText(/exceeded by \$\d/i).first()).toBeVisible({ timeout: 10_000 });
-  await expect(drawer.locator('.MuiChip-label', { hasText: /exceeded by \$\d/i })).toBeVisible();
+  await expect(drawer.getByText(message).first()).toBeVisible();
+  await expect(drawer.locator('.MuiChip-label', { hasText: message })).toBeVisible();
 
   // The old behavior collapsed every error into a bare count with no
   // specifics — assert that generic phrasing is gone, not just that some
   // other text is present.
   await expect(page.getByText(/^\d+ issues? found in your cart$/i)).not.toBeVisible();
+
+  await expect(checkoutButton(page)).toHaveText('Please fix cart errors');
+  await expect(checkoutButton(page)).toBeDisabled();
+  await expect(overBudgetBanner(page)).toBeVisible();
+});
+
+test('removing the over-budget item unblocks checkout', async ({ page }) => {
+  await page.goto('/products');
+  await addToCart(page, PRODUCTS.overBudgetFood);
+  await openCart(page);
+  await expect(cartMessage(page, /Food balance exceeded by/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Remove from cart' }).click();
+  await expect(page.getByText('Your cart is empty')).toBeVisible();
+
+  // Click beside the drawer, as a participant would (the close button has
+  // its own test below)
+  await page.locator('.MuiBackdrop-root').click({ position: { x: 50, y: 300 } });
+  await expect(page.getByText(/^Cart \(\d+\)$/)).toBeHidden();
+  await addToCart(page, PRODUCTS.smallFood);
+  await openCart(page);
+  await expect(page.getByText(/balance exceeded/)).toHaveCount(0);
+  await expect(checkoutButton(page)).toBeEnabled();
+});
+
+test('the cart drawer can be closed with its close button', async ({ page }) => {
+  await page.goto('/products');
+  await addToCart(page, PRODUCTS.smallFood);
+  await openCart(page);
+
+  // Fails fast instead of waiting out the test timeout when something
+  // (like the app bar) sits on top of the button
+  await page.getByRole('button', { name: 'Close cart' }).click({ timeout: 5_000 });
+  await expect(page.getByText(/^Cart \(\d+\)$/)).toBeHidden();
 });

@@ -418,7 +418,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',
-        'user': '100/minute',
+        # Raised only for e2e runs, where every spec signs in as one participant
+        'user': env('DRF_USER_THROTTLE_RATE', default='100/minute'),
         'login': '5/minute',
         'password_change': '5/minute',
         'order_submission': '3/minute',  # Order submission rate limiting

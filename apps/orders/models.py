@@ -10,10 +10,12 @@ from datetime import datetime
 # Django imports
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
 # Local imports
-from apps.pantry.models import CategoryLimitValidator
+from apps.pantry.models import CategoryLimitValidator, Product
 from apps.log.models import OrderValidationLog
+from apps.orders.utils.balance_rules import budget_total, check_cart_balances
+from core.models import ProgramSettings
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,13 @@ class Order(models.Model):
     # confirmation is the only point that happens, so cancelling from any of
     # these (not just 'confirmed') must restore them. See save()/_restore_on_cancel().
     RESOURCE_HOLDING_STATUSES = {'confirmed', 'packing', 'completed'}
+
+    # A participant may only have one order at these statuses (BEH-005, clean())
+    ACTIVE_STATUSES = {'pending', 'confirmed', 'packing'}
+    ACTIVE_ORDER_MESSAGE = gettext_lazy(
+        "You already have an active order. "
+        "Please wait for it to be completed or cancel it before placing a new one."
+    )
 
     class Meta:
         permissions = [
@@ -222,19 +231,15 @@ class Order(models.Model):
         # the source, rather than relying on confirmation-time checks (which
         # don't reliably run — see Order.confirm()'s use of
         # save(update_fields=[...]), which skips this guard entirely).
-        ACTIVE_STATUSES = {"pending", "confirmed", "packing"}
-        if self.status in ACTIVE_STATUSES:
+        if self.status in self.ACTIVE_STATUSES:
             existing_qs = Order.objects.filter(
                 account=self.account,
-                status__in=ACTIVE_STATUSES,
+                status__in=self.ACTIVE_STATUSES,
             )
             if self.pk:
                 existing_qs = existing_qs.exclude(pk=self.pk)
             if existing_qs.exists():
-                raise ValidationError(
-                    _("You already have an active order. "
-                      "Please wait for it to be completed or cancel it before placing a new one.")
-                )
+                raise ValidationError(str(self.ACTIVE_ORDER_MESSAGE))
 
         if self.status != "confirmed":
             return
@@ -254,51 +259,17 @@ class Order(models.Model):
 
         errors = []
 
-        # --- Available balance (food items) ---
-        food_items = [
-            item for item in self.items.select_related("product")
-            if getattr(item.product.category, "name", "").lower() != "hygiene"
-        ]
-        food_total = sum(item.total_price() for item in food_items)
-        available_balance = getattr(self.account, "available_balance", 0)
-        if food_total > available_balance:
-            errors.append(
-                _("Food balance exceeded: $%(total)s > $%(balance)s") % {
-                    'total': food_total, 'balance': available_balance,
-                }
-            )
-
-        # --- Hygiene balance ---
-        hygiene_items = [
-            item for item in self.items.select_related("product")
-            if getattr(item.product.category, "name", "").lower() == "hygiene"
-        ]
-        hygiene_total = sum(item.total_price() for item in hygiene_items)
-        hygiene_balance = getattr(self.account, "hygiene_balance", 0)
-        if hygiene_total > hygiene_balance:
-            errors.append(
-                _("Hygiene balance exceeded: $%(total)s > $%(balance)s") % {
-                    'total': hygiene_total, 'balance': hygiene_balance,
-                }
-            )
-
-        # --- Go Fresh balance ---
-        go_fresh_items = [
-            item for item in self.items.select_related("product")
-            if item.product.category and item.product.category.name.lower() == "go fresh"
-        ]
-        go_fresh_total = sum(item.total_price() for item in go_fresh_items)
-        go_fresh_balance = getattr(self.account, "go_fresh_balance", 0)
-        # Only validate Go Fresh if the feature is enabled (go_fresh_balance > 0)
-        if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
-            errors.append(
-                _("Go Fresh balance exceeded: $%(total)s > $%(balance)s") % {
-                    'total': f"{go_fresh_total:.2f}",
-                    'balance': f"{go_fresh_balance:.2f}",
-                }
-            )
+        # --- Food, hygiene and Go Fresh balances ---
+        # The same rule the cart and order creation apply; grace overages
+        # pass (apps/orders/utils/balance_rules.py)
+        items = list(self.items.select_related("product__category"))
+        errors.extend(
+            violation.message
+            for violation in check_cart_balances(items, self.account, ProgramSettings.get_settings())
+            if violation.is_blocking
+        )
         # Store go_fresh_total for tracking (will be saved when order is confirmed)
-        self.go_fresh_total = go_fresh_total
+        self.go_fresh_total = budget_total(items, Product.BUDGET_GO_FRESH)
 
         # --- Category limits ---
         try:

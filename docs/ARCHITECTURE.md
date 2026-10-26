@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-25
 
 This Django project follows a modular app layout. High-level apps of interest:
 
@@ -19,8 +19,10 @@ This Django project follows a modular app layout. High-level apps of interest:
 
 1. **Full Balance** - Total value of all grocery vouchers not yet consumed or expired
 2. **Available Balance** - Sum of up to 2 oldest applied grocery vouchers (multiplied by their multipliers)
-3. **Hygiene Balance** - Configurable ratio (default 1/3) of available balance, reserved for hygiene products
-4. **Go Fresh Balance** - Fixed per-order budget for fresh food based on household size, scaled by any active program-pause multiplier
+3. **Hygiene Balance** - Configurable ratio (default 1/3) of available balance; caps how much of it hygiene items may use
+4. **Go Fresh Balance** - Fixed per-order cap on how much of the available balance Go Fresh items may use, based on household size, scaled by any active program-pause multiplier
+
+The available balance pays for the whole cart; hygiene and Go Fresh are caps within it. See [ACCOUNT_BALANCES.md](ACCOUNT_BALANCES.md#how-an-order-is-checked-against-the-balances).
 
 ### Balance Calculation Models
 

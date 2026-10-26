@@ -23,7 +23,7 @@ def test_distributed_order_lock_propagates_validation_error():
 
 
 @pytest.mark.django_db
-def test_failed_validation_creates_failed_attempt_record():
+def test_failed_validation_creates_failed_attempt_record(grace_off):
     VoucherSettingFactory.create()
     participant = ParticipantFactory()
     account = participant.accountbalance

@@ -1,10 +1,10 @@
 # Go Fresh Budget Feature Documentation
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-25
 
 ## Overview
 
-The Go Fresh Budget feature provides participants with a dedicated per-order budget for fresh food items from the "Go Fresh" category. Unlike the hygiene balance (which is a percentage of available balance), the Go Fresh budget is a fixed amount based on household size that resets with each order.
+The Go Fresh Budget feature caps how much of a participant's available balance can go to fresh food items from the "Go Fresh" category in one order. Go Fresh items are paid from the available balance like everything else; the cap is not extra money. Unlike the hygiene balance (which is a percentage of available balance), the Go Fresh cap is a fixed amount based on household size that resets with each order.
 
 **Key Characteristics:**
 - Per-order budget that doesn't carry over between orders
@@ -97,33 +97,12 @@ Both "Hygiene" and "Go Fresh" categories are protected from modification:
 
 ### 4. Order Validation
 
-Go Fresh budget is enforced in **three separate places**, each with slightly different wording:
+Go Fresh is checked by the same rule as the other balances, in `apps/orders/utils/balance_rules.py::check_cart_balances()`, which all three order paths call: the participant's live cart check (`POST /api/v1/orders/validate-cart/`), order creation (`OrderValidation.validate_order_items()`, used by `OrderOrchestration.create_order()`), and `Order.clean()`. See [ACCOUNT_BALANCES.md](ACCOUNT_BALANCES.md#how-an-order-is-checked-against-the-balances).
 
-1. **`apps/orders/models.py` — `Order.clean()`** (authoritative, runs on every `Order.save()` via `full_clean()`)
-   - Calculates total price of items in the "Go Fresh" category, compares against `account.go_fresh_balance`
-   - Only runs the comparison if `go_fresh_balance > 0` (i.e., skips the check entirely when the feature is disabled)
-   - On failure, raises `ValidationError`:
-     ```
-     Go Fresh balance exceeded: $XX.XX > $YY.YY
-     ```
-   - Also persists the computed `go_fresh_total` onto the order instance (see Order Tracking, below)
-
-2. **`apps/orders/utils/order_validation.py` — `OrderValidation.validate_order_items()`** (used by the Django admin order-item inline and by `OrderOrchestration`'s create-order path in `apps/orders/utils/order_utils.py`)
-   - Same threshold check, but raises:
-     ```
-     Go Fresh items total $XX.XX exceeds Go Fresh balance $YY.YY.
-     ```
-
-3. **`apps/orders/api/views.py` — `OrderViewSet.validate_cart()` action** (`POST /api/orders/validate-cart/`, a non-committing preview endpoint used by the React frontends before checkout)
-   - Does not raise — instead appends a violation object to the response:
-     ```json
-     {"type": "balance", "severity": "error", "message": "Go Fresh balance exceeded by $X.XX", "amount_over": X.XX, "grace_allowed": false}
-     ```
-   - Like the food/hygiene balance checks in this endpoint, an over-budget Go Fresh total can be downgraded to a `"warning"` (grace-allowed) if the overage is within `ProgramSettings.grace_amount`. Go Fresh does not currently get its own grace rule — it shares the program-wide grace allowance.
-
-**Important:** Go Fresh items must pass BOTH validations in every path above:
-- Go Fresh-specific budget (per-order limit)
-- Overall available balance (weekly limit) — Go Fresh items are counted as `food_items` (anything not in the "Hygiene" category) for this check
+- Go Fresh items must fit **both** the Go Fresh balance (per-order cap) **and** the available balance, which pays for the whole cart.
+- The Go Fresh check only runs while `go_fresh_balance > 0`, so it is skipped when the feature is disabled.
+- Like the other balances, it follows the program-wide grace setting: over by no more than `ProgramSettings.grace_amount` with grace enabled is a warning and the order goes through; otherwise it is an error.
+- The message is `Go Fresh balance exceeded by $X.XX` on every path. In the cart check the violation also carries `"budget": "go_fresh"` and the `product_ids` of the Go Fresh lines, so the cart can flag them.
 
 ### 5. Order Tracking
 

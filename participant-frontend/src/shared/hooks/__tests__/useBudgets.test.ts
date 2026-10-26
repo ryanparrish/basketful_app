@@ -11,19 +11,40 @@ const balances = (overrides: Partial<Balances> = {}): Balances => ({
 });
 
 describe('computeBudgets', () => {
-  it('charges each item only to its own balance', () => {
+  it('spends the food balance on every item, and each cap only on its own items', () => {
     const b = computeBudgets(balances(), [
       { price: 2, quantity: 3, budget: 'food' },
       { price: 3.5, quantity: 1, budget: 'hygiene' },
       { price: 4, quantity: 1, budget: 'go_fresh' },
     ]);
 
-    // Hygiene and Go Fresh must not reduce the food number (they used to,
-    // because the UI subtracted the whole cart from available_balance).
-    expect(b.food.remaining).toBe(34);
+    // The vouchers pay for the whole cart: $40 - ($6 + $3.50 + $4)
+    expect(b.food.remaining).toBe(26.5);
     expect(b.lines.find((l) => l.key === 'hygiene')?.remaining).toBe(1.5);
     expect(b.lines.find((l) => l.key === 'go_fresh')?.remaining).toBe(6);
     expect(b.isOverAny).toBe(false);
+  });
+
+  it('never shows more hygiene or Go Fresh left than is left overall', () => {
+    const b = computeBudgets(balances({ available_balance: 10 }), [
+      { price: 9, quantity: 1, budget: 'food' },
+    ]);
+
+    expect(b.food.remaining).toBe(1);
+    expect(b.lines.find((l) => l.key === 'hygiene')?.remaining).toBe(1);
+    expect(b.lines.find((l) => l.key === 'go_fresh')?.remaining).toBe(1);
+  });
+
+  it('flags the food balance when hygiene and Go Fresh push the cart over it', () => {
+    const b = computeBudgets(balances({ available_balance: 10 }), [
+      { price: 5, quantity: 1, budget: 'food' },
+      { price: 3, quantity: 1, budget: 'hygiene' },
+      { price: 4, quantity: 1, budget: 'go_fresh' },
+    ]);
+
+    expect(b.food.isOver).toBe(true);
+    expect(b.lines.find((l) => l.key === 'hygiene')?.isOver).toBe(false);
+    expect(b.lines.find((l) => l.key === 'go_fresh')?.isOver).toBe(false);
   });
 
   it('flags the specific balance that is exceeded', () => {

@@ -98,3 +98,14 @@ def order_with_items_setup(db):
         "item2": item2,
     }
 
+
+
+@pytest.fixture
+def grace_off(db):
+    """Turn the program's grace allowance off, so any overage blocks an order."""
+    from core.models import ProgramSettings
+
+    settings = ProgramSettings.get_settings()
+    settings.grace_enabled = False
+    settings.save(update_fields=['grace_enabled'])
+    return settings

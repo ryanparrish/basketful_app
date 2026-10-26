@@ -67,18 +67,6 @@ class OrderHelper:
         """Calculate total cost of all items in the order."""
         return sum(item.product.price * item.quantity for item in items)
 
-    @staticmethod
-    def calculate_hygiene_total(items):
-        """Calculate the total cost of hygiene items in the order."""
-        return sum(
-            item.product.price * item.quantity
-            for item in items
-            if (
-                item.product.category
-                and item.product.category.name.lower() == "hygiene"
-            )
-        )
-    
     def _resolve_order_and_account(self, order, account_balance):
         """Ensure order and account_balance are provided and valid."""
         order = order or getattr(self, "order", None)

@@ -25,7 +25,8 @@ export const useCartValidation = () => {
   );
 
   // Food balance left, computed client-side so it updates instantly as the
-  // cart changes. Hygiene and Go Fresh items don't draw from it — see useBudgets.
+  // cart changes. Every item draws from it, hygiene and Go Fresh included —
+  // see useBudgets.
   const budgets = useBudgets();
   const remainingBudget = budgets ? budgets.food.remaining : null;
 

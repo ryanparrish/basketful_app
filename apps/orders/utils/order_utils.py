@@ -24,6 +24,30 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def record_grace_allowance(order, participant, grace_violations):
+    """
+    Log each balance the grace allowance let this order go over, for the
+    admin's Grace Allowance Logs. A failed log never blocks the order.
+    """
+    from apps.log.models import GraceAllowanceLog
+
+    for violation in grace_violations:
+        try:
+            with transaction.atomic():
+                GraceAllowanceLog.objects.create(
+                    participant=participant,
+                    order=order,
+                    amount_over=violation.amount_over,
+                    grace_message=violation.message,
+                    proceeded=True,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to log grace allowance for order %s (%s balance, $%s over)",
+                order.pk, violation.balance, violation.amount_over,
+            )
+
+
 class OrderOrchestration:
     """Class to handle order operations like create, confirm, cancel, and clone."""
     def __init__(self, order=None):
@@ -141,7 +165,7 @@ class OrderOrchestration:
                 participant = order_validator.validate_participant(account)
                 
                 # This validates all constraints: balance, hygiene, categories, vouchers
-                order_validator.validate_order_items(
+                grace_violations = order_validator.validate_order_items(
                     order_items_data, participant, account
                 )
                 
@@ -173,7 +197,9 @@ class OrderOrchestration:
                         raise ValidationError(_("Order must have at least one valid item."))
 
                     OrderItem.objects.bulk_create(items_bulk)
-                
+
+                record_grace_allowance(order, participant, grace_violations)
+
                 # STEP 4: Reset failure count on success
                 if user:
                     reset_failure_count(user.id)

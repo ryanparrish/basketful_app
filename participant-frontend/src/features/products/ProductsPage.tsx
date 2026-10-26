@@ -44,7 +44,9 @@ export const ProductsPage: React.FC = () => {
   }, [searchParams]);
   
   const { isOpen: orderWindowOpen } = useOrderWindow();
-  const { isOverBudget } = useCartValidation();
+  // Only an overage that blocks checkout; one inside the grace allowance
+  // is a warning the cart explains, not a reason to remove items
+  const { hasBudgetError } = useCartValidation();
 
   // Fetch products
   const {
@@ -130,7 +132,7 @@ export const ProductsPage: React.FC = () => {
           </Alert>
         )}
 
-        {isOverBudget && (
+        {hasBudgetError && (
           <Alert severity="error" sx={{ borderRadius: 0 }}>
             {t('products.overBudget')}
           </Alert>

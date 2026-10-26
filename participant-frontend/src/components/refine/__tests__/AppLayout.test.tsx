@@ -80,7 +80,8 @@ describe('AppLayout', () => {
       render(<AppLayout>page</AppLayout>);
       const bar = screen.getByRole('region', { name: 'Cart summary' });
 
-      expect(within(bar).getByText('Food left: $38.50')).toBeInTheDocument();
+      // The vouchers pay for the Go Fresh carrots too: $40 - $1.50 - $3.50
+      expect(within(bar).getByText('Food left: $35.00')).toBeInTheDocument();
       expect(within(bar).getByText('Hygiene left: $0.00')).toBeInTheDocument();
       expect(within(bar).getByText('Go Fresh left: $6.50')).toBeInTheDocument();
       expect(screen.queryByText('sider')).not.toBeInTheDocument();

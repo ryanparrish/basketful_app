@@ -37,7 +37,7 @@ export const getThemeConfig = async (): Promise<ThemeConfig> => {
 };
 
 export const getProgramConfig = async (): Promise<ProgramConfig> => {
-  const response = await apiClient.get('/settings/program-config/');
+  const response = await apiClient.get('/settings/program-config/current/');
   return response.data;
 };
 

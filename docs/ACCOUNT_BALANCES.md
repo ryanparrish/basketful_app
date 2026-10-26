@@ -1,6 +1,6 @@
 # Account Balances
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-25
 
 This document describes the balance system used for participant accounts.
 
@@ -35,7 +35,7 @@ sum(voucher.voucher_amnt * voucher.multiplier
 **Implementation:** `apps/account/utils/balance_utils.py::calculate_available_balance()`
 
 ### Hygiene Balance
-Reserved portion of available balance for hygiene products.
+A cap on how much of the available balance hygiene items may use. It is a cap, not a reservation: hygiene items are paid from the available balance, and food can use all of it when the cart has no hygiene items.
 
 **Calculation:** `available_balance * hygiene_ratio`, rounded **up** to the nearest whole dollar (`ROUND_CEILING`)
 
@@ -46,7 +46,7 @@ Reserved portion of available balance for hygiene products.
 **Implementation:** `apps/account/utils/balance_utils.py::calculate_hygiene_balance()`
 
 ### Go Fresh Balance
-Fixed budget for fresh food items, based on household size.
+A cap on how much of the available balance Go Fresh items may use, set by household size. Like hygiene, Go Fresh items are paid from the available balance; this is not extra money.
 
 **Calculation:** Determined by `GoFreshSettings` thresholds based on `adults + children` count
 
@@ -59,6 +59,20 @@ Fixed budget for fresh food items, based on household size.
 **Implementation:** `apps/account/models.py::AccountBalance.go_fresh_balance` property, backed by `apps/account/utils/balance_utils.py::calculate_go_fresh_balance()`
 
 See [GO_FRESH_BUDGET_FEATURE.md](GO_FRESH_BUDGET_FEATURE.md) for detailed Go Fresh implementation.
+
+## How an Order Is Checked Against the Balances
+
+The vouchers behind the available balance pay for the whole order: `Order._consume_vouchers()` charges the order total, hygiene and Go Fresh items included. So every order must pass three checks:
+
+1. **Whole cart ≤ available balance**
+2. **Hygiene items ≤ hygiene balance**
+3. **Go Fresh items ≤ Go Fresh balance** (only while Go Fresh is enabled)
+
+All three follow `ProgramSettings` grace the same way. With grace enabled, going over by no more than `grace_amount` is a warning: the participant sees `grace_message`, the order goes through, and a `GraceAllowanceLog` entry is written. Any larger overage, or any overage at all with grace disabled, blocks the order.
+
+Example: available $100, hygiene $34, Go Fresh $10. $60 food + $30 hygiene + $8 Go Fresh passes. $95 food + $8 Go Fresh is over the available balance by $3. $40 food + $40 hygiene is over the hygiene balance by $6.
+
+The rule lives in one place, `apps/orders/utils/balance_rules.py::check_cart_balances()`, used by the participant's live cart check (`validate-cart`), order creation (`OrderValidation.validate_order_items()`) and `Order.clean()`, so they always agree. Which check a product falls under comes from `Product.budget` (the protected "Hygiene" and "Go Fresh" category names). The participant app shows the same rule in `useBudgets`: the food line counts the whole cart, and the hygiene and Go Fresh lines never show more than is left overall.
 
 ## Base Balance
 

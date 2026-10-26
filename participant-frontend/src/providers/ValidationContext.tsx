@@ -16,7 +16,7 @@ interface ValidationState {
   warnings: ValidationError[];
   balances: Balances | null;
   programConfig: ProgramConfig | null;
-  ruleVersion: number | null;
+  ruleVersion: string | null;
   lastValidated: Date | null;
 }
 
@@ -53,7 +53,7 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastRuleVersionRef = useRef<number | null>(null);
+  const lastRuleVersionRef = useRef<string | null>(null);
 
   // Fetch program config
   const { data: programConfig } = useQuery({
@@ -78,22 +78,22 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({ children
         ...prev,
         programConfig: programConfig || prev.programConfig,
         balances: balances || prev.balances,
-        ruleVersion: programConfig?.rule_version || prev.ruleVersion,
+        ruleVersion: programConfig?.rules_version || prev.ruleVersion,
       }));
     }
   }, [programConfig, balances]);
 
   // Check for rule version changes and revalidate
   useEffect(() => {
-    if (programConfig?.rule_version && lastRuleVersionRef.current !== null) {
-      if (programConfig.rule_version !== lastRuleVersionRef.current) {
+    if (programConfig?.rules_version && lastRuleVersionRef.current !== null) {
+      if (programConfig.rules_version !== lastRuleVersionRef.current) {
         // Rules changed, force revalidation
         console.log('Rule version changed, revalidating cart...');
         performValidation();
       }
     }
-    lastRuleVersionRef.current = programConfig?.rule_version || null;
-  }, [programConfig?.rule_version]);
+    lastRuleVersionRef.current = programConfig?.rules_version || null;
+  }, [programConfig?.rules_version]);
 
   // Perform cart validation
   const performValidation = useCallback(async () => {
