@@ -223,7 +223,7 @@
   "budget": {
     "title": "Tus saldos",
     "left": "{{name}} disponible",
-    "food": "Comida",
+    "leftToSpend": "Disponible para gastar",
     "hygiene": "Higiene",
     "go_fresh": "Go Fresh"
   }

@@ -8,6 +8,7 @@ import { Box, Stack, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useBudgets } from '../shared/hooks/useBudgets';
 import { useFormatters } from '../shared/hooks/useFormatters';
+import type { BudgetKey } from '../shared/types/api';
 
 interface BudgetSummaryProps {
   /** 'list' = one row per balance; 'inline' = single line for tight spaces (mobile bar, sider). */
@@ -23,6 +24,11 @@ export const BudgetSummary: React.FC<BudgetSummaryProps> = ({ variant = 'list', 
 
   if (!budgets) return null;
 
+  // The food balance is the voucher total and pays for the whole cart, so
+  // it reads as what's left to spend; the caps read as "<name> left"
+  const label = (key: BudgetKey) =>
+    key === 'food' ? t('budget.leftToSpend') : t('budget.left', { name: t(`budget.${key}`) });
+
   if (variant === 'inline') {
     return (
       <Box
@@ -36,7 +42,7 @@ export const BudgetSummary: React.FC<BudgetSummaryProps> = ({ variant = 'list', 
             sx={{ fontWeight: line.key === 'food' ? 700 : 500, whiteSpace: 'nowrap', opacity: line.isOver ? 1 : 0.95 }}
             color={line.isOver ? 'error.light' : 'inherit'}
           >
-            {t('budget.left', { name: t(`budget.${line.key}`) })}: {formatCurrency(line.remaining)}
+            {label(line.key)}: {formatCurrency(line.remaining)}
           </Typography>
         ))}
       </Box>
@@ -48,7 +54,7 @@ export const BudgetSummary: React.FC<BudgetSummaryProps> = ({ variant = 'list', 
       {budgets.lines.map((line) => (
         <Stack key={line.key} direction="row" justifyContent="space-between">
           <Typography variant="body2" color={line.isOver ? 'error.main' : 'text.secondary'}>
-            {t('budget.left', { name: t(`budget.${line.key}`) })}
+            {label(line.key)}
           </Typography>
           <Typography variant="body2" fontWeight={500} color={line.isOver ? 'error.main' : 'text.primary'}>
             {formatCurrency(line.remaining)}

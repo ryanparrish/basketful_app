@@ -223,7 +223,7 @@
   "budget": {
     "title": "Your balances",
     "left": "{{name}} left",
-    "food": "Food",
+    "leftToSpend": "Left to spend",
     "hygiene": "Hygiene",
     "go_fresh": "Go Fresh"
   }

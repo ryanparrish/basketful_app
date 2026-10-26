@@ -17,7 +17,7 @@ test('phone layout shows the cart bar with balances and opens the cart', async (
 
   const bar = page.getByRole('region', { name: 'Cart summary' });
   await expect(bar).toBeVisible();
-  await expect(bar.getByText(/Food left: \$\d/)).toBeVisible();
+  await expect(bar.getByText(/Left to spend: \$\d/)).toBeVisible();
   await expect(bar.getByText(/Hygiene left: \$\d/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Add to cart' }).first().click();

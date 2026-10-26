@@ -66,14 +66,20 @@ export function checkoutButton(page: Page) {
   return page.getByRole('button', { name: /^(Proceed to Checkout|Please fix cart errors|Validating cart\.\.\.)$/ });
 }
 
+const BUDGET_LABELS = {
+  Food: 'Left to spend',
+  Hygiene: 'Hygiene left',
+  'Go Fresh': 'Go Fresh left',
+} as const;
+
 /**
  * The amount beside one balance in the list of what's left (BudgetSummary),
- * as the cart drawer and checkout show it, e.g. "Food left  $95.00".
+ * as the cart drawer and checkout show it, e.g. "Left to spend  $95.00".
  */
-export function budgetLeft(page: Page, name: 'Food' | 'Hygiene' | 'Go Fresh') {
+export function budgetLeft(page: Page, name: keyof typeof BUDGET_LABELS) {
   return page
     .getByTestId('budget-summary')
-    .getByText(`${name} left`, { exact: true })
+    .getByText(BUDGET_LABELS[name], { exact: true })
     .locator('xpath=following-sibling::*[1]');
 }
 
