@@ -272,8 +272,8 @@ class Order(models.Model):
         # waives vouchers entirely (permission- and reason-checked by the
         # API, audited in _consume_vouchers), so balances don't apply to it.
         # Category limits still do.
+        items = list(self.items.select_related("product__category"))
         if not getattr(self, '_charitable_bypass', False):
-            items = list(self.items.select_related("product__category"))
             errors.extend(
                 violation.message
                 for violation in check_cart_balances(items, self.account, ProgramSettings.get_settings())

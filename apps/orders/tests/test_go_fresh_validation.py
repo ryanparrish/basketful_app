@@ -18,6 +18,18 @@ def setup_voucher_settings():
     VoucherSettingFactory.create()
 
 
+def confirm_and_clean(order):
+    """Validate an order the way confirming it does.
+
+    The order is saved as pending, its status is set to confirmed, then
+    clean() runs. An order already saved as confirmed skips the balance
+    re-check (its vouchers are spent, M2), so creating it confirmed would
+    test nothing.
+    """
+    order.status = 'confirmed'
+    order.clean()
+
+
 @pytest.mark.django_db
 class TestGoFreshOrderValidation:
     """Test Go Fresh budget enforcement during order validation."""
@@ -37,11 +49,11 @@ class TestGoFreshOrderValidation:
         product = ProductFactory(category=go_fresh_category, price=Decimal("5.00"))
         
         # Create order with $15 of Go Fresh items (within $20 budget)
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=product, quantity=3)  # 3 * $5 = $15
         
         # Should not raise ValidationError
-        order.clean()
+        confirm_and_clean(order)
         
         # Should save go_fresh_total
         assert order.go_fresh_total == Decimal('15.00')
@@ -60,12 +72,12 @@ class TestGoFreshOrderValidation:
         product = ProductFactory(category=go_fresh_category, price=Decimal("8.00"))
         
         # Create order with $16 of Go Fresh items (exceeds $10 budget)
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=product, quantity=2)  # 2 * $8 = $16
         
         # Should raise ValidationError
         with pytest.raises(ValidationError) as exc_info:
-            order.clean()
+            confirm_and_clean(order)
         
         error_messages = str(exc_info.value)
         assert "Go Fresh balance exceeded by $6.00" in error_messages
@@ -88,13 +100,13 @@ class TestGoFreshOrderValidation:
         regular_product = ProductFactory(category=regular_category, price=Decimal("50.00"))
 
         # Create order: $5 Go Fresh + $50 regular = $55 total (exceeds $20 available)
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=go_fresh_product, quantity=1)
         OrderItemFactory(order=order, product=regular_product, quantity=1)
         
         # Should fail on available balance even though Go Fresh item is within its budget
         with pytest.raises(ValidationError) as exc_info:
-            order.clean()
+            confirm_and_clean(order)
         
         error_messages = str(exc_info.value)
         assert "Food balance exceeded" in error_messages or "balance exceeded" in error_messages.lower()
@@ -118,13 +130,13 @@ class TestGoFreshOrderValidation:
         regular_product = ProductFactory(category=regular_category, price=Decimal("20.00"))
         
         # Create order within all limits
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=go_fresh_product, quantity=2)  # $20 Go Fresh (within $25)
         OrderItemFactory(order=order, product=hygiene_product, quantity=2)  # $30 Hygiene
         OrderItemFactory(order=order, product=regular_product, quantity=2)  # $40 Regular
         
         # Should pass all validations
-        order.clean()
+        confirm_and_clean(order)
         
         assert order.go_fresh_total == Decimal('20.00')
     
@@ -141,12 +153,12 @@ class TestGoFreshOrderValidation:
         product = ProductFactory(category=go_fresh_category, price=Decimal("12.00"))
         
         # Create order exceeding $10 budget
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=product, quantity=1)
 
         # Should still enforce Go Fresh limit
         with pytest.raises(ValidationError) as exc_info:
-            order.clean()
+            confirm_and_clean(order)
         
         assert "Go Fresh balance exceeded" in str(exc_info.value)
     
@@ -163,11 +175,12 @@ class TestGoFreshOrderValidation:
         product = ProductFactory(category=regular_category, price=Decimal("30.00"))
         
         # Create order with only regular items
-        order = OrderFactory(account=account, status='confirmed')
+        # A stale total, so 0.00 below has to be computed, not the default
+        order = OrderFactory(account=account, status='pending', go_fresh_total=Decimal('9.99'))
         OrderItemFactory(order=order, product=product, quantity=2)
         
         # Should pass validation
-        order.clean()
+        confirm_and_clean(order)
         
         # go_fresh_total should be 0
         assert order.go_fresh_total == Decimal('0.00')
@@ -185,11 +198,11 @@ class TestGoFreshOrderValidation:
         product = ProductFactory(category=go_fresh_category, price=Decimal("7.50"))
         
         # Create order
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=product, quantity=2)  # $15.00
         
         # Run validation
-        order.clean()
+        confirm_and_clean(order)
         
         # Check go_fresh_total is set
         assert order.go_fresh_total == Decimal('15.00')
@@ -221,18 +234,16 @@ class TestGoFreshEdgeCases:
         product = ProductFactory(category=go_fresh_category, price=Decimal("50.00"))
         
         # Create order with expensive Go Fresh item
-        order = OrderFactory(account=account, status='confirmed')
+        order = OrderFactory(account=account, status='pending')
         OrderItemFactory(order=order, product=product, quantity=1)
 
-        # Should not fail on Go Fresh limit (since disabled),
-        # but may fail on available balance
-        try:
-            order.clean()
-            # If it passes, go_fresh_total should still be calculated
-            assert order.go_fresh_total == Decimal('50.00')
-        except ValidationError as e:
-            # If it fails, should be due to available balance, not Go Fresh
-            assert "Go Fresh balance exceeded" not in str(e)
+        # Disabled means no Go Fresh cap, and the available balance covers
+        # the item, so the order must pass and still record its total
+        account.refresh_from_db()
+        assert account.go_fresh_balance == 0
+        assert account.available_balance >= Decimal('50.00')
+        confirm_and_clean(order)
+        assert order.go_fresh_total == Decimal('50.00')
 
         # Re-enable
         settings.enabled = True
@@ -250,11 +261,12 @@ class TestGoFreshEdgeCases:
         product = ProductFactory(category=None, price=Decimal("10.00"))
         
         # Create order
-        order = OrderFactory(account=account, status='confirmed')
+        # A stale total, so 0.00 below has to be computed, not the default
+        order = OrderFactory(account=account, status='pending', go_fresh_total=Decimal('9.99'))
         OrderItemFactory(order=order, product=product, quantity=1)
 
         # Should not crash
-        order.clean()
+        confirm_and_clean(order)
         
         # Should have zero go_fresh_total
         assert order.go_fresh_total == Decimal('0.00')
@@ -302,7 +314,8 @@ class TestGoFreshTotalPersistedOnConfirm:
         food_category = CategoryFactory(name="Pantry Food")
         product = ProductFactory(category=food_category, price=Decimal("3.00"))
 
-        order = OrderFactory(account=account, status='pending')
+        # A stale total, so 0.00 below has to be computed, not the default
+        order = OrderFactory(account=account, status='pending', go_fresh_total=Decimal('9.99'))
         OrderItemFactory(order=order, product=product, quantity=4)
 
         order.confirm()

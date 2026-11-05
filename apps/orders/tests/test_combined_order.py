@@ -51,11 +51,16 @@ def create_test_order(account, status='pending', order_date=None):
 
 @pytest.fixture
 def admin_user():
-    """Create an admin user for testing."""
+    """An admin who has already chosen a password. New accounts must change
+    theirs first (ForcePasswordChangeMiddleware), which isn't under test."""
+    from apps.account.models import UserProfile
     user = User.objects.create_superuser(
         username='admin',
         email='admin@test.com',
         password='admin123'
+    )
+    UserProfile.objects.update_or_create(
+        user=user, defaults={'must_change_password': False}
     )
     return user
 

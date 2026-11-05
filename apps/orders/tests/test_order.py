@@ -227,6 +227,17 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+def ready_to_order(participant):
+    """A participant who has already chosen a password, in a program with no
+    order window. New accounts must change their password first
+    (ForcePasswordChangeMiddleware) and the window is enforced on submit
+    (M15); neither is under test here."""
+    from apps.account.models import UserProfile
+    from core.models import ProgramOrderWindow
+    UserProfile.objects.filter(user=participant.user).update(must_change_password=False)
+    ProgramOrderWindow.objects.create(program=participant.program, enabled=False)
+
+
 @pytest.mark.django_db
 def test_submit_order_view(client):
     """End-to-end test for submitting an order with vouchers applied."""
@@ -238,6 +249,7 @@ def test_submit_order_view(client):
     user.set_password(test_password)
     user.save()
     participant = ParticipantFactory(user=user)
+    ready_to_order(participant)
     account = participant.accountbalance
     account.base_balance = Decimal("100.00")  # Set sufficient balance
     account.save()  # ensure enough for order
@@ -357,6 +369,7 @@ def test_submit_order_view_with_50_items(client):
     user.set_password(test_password)
     user.save()
     participant = ParticipantFactory(user=user)
+    ready_to_order(participant)
     account = participant.accountbalance
     
     # Set realistic base balance (max is 999.9 due to precision 4, scale 1)
