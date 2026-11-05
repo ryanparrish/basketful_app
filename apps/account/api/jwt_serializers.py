@@ -11,13 +11,13 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
     JWT serializer that accepts either customer_number or username for authentication.
     
     Authentication Flow:
-    1. Exact username match always wins — generated usernames are
-       {Name}-{noun} (e.g. "Christina-anchor"), and routing on a "starts
-       with C" heuristic misrouted them to customer-number validation (H5).
-    2. Otherwise, check if input looks like customer_number (format: C-XXX-D)
-    3. If yes, look up Participant → User
-    4. If no, standard username-not-found error
-    5. Validate password for found user
+    1. An exact username match always wins. Generated usernames are
+       {Name}-{noun} (e.g. "Christina-anchor"), so every name starting with
+       C also looks like a customer number (#112).
+    2. Otherwise, if input looks like customer_number (format: C-XXX-D),
+       look up Participant → User
+    3. Otherwise, username_not_found
+    4. Validate password for found user
     
     Error codes returned:
     - customer_not_found: Customer number doesn't exist
@@ -32,27 +32,12 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
         identifier = attrs.get('username', '')
         password = attrs.get('password', '')
         
-        user = None
+        # Username first: "Christina-anchor" also looks like a customer
+        # number, and its check digit fails (#112).
+        user = User.objects.filter(username=identifier).first()
 
-        # Username login takes precedence: an exact username match always
-        # wins. (H5: the old "starts with C" heuristic below routed generated
-        # usernames like "Christina-anchor" into customer-number validation,
-        # 401ing every user whose name starts with C.)
-        try:
-            user = User.objects.get(username=identifier)
-        except User.DoesNotExist:
-            user = None
-
-        if user is None:
-            # No exact username match — maybe a customer number (C-XXX-D).
-            if not (
-                identifier.startswith('C-')
-                or (identifier.upper().startswith('C') and len(identifier) >= 5)
-            ):
-                raise AuthenticationFailed({
-                    'detail': 'Username not found.',
-                    'code': 'username_not_found'
-                })
+        # Check if identifier looks like customer number (C-XXX-D format)
+        if user is None and (identifier.startswith('C-') or (identifier.upper().startswith('C') and len(identifier) >= 5)):
             # Customer number login — normalize first, then validate
             from apps.account.models import Participant
             from apps.account.utils.warehouse_id import (
@@ -86,6 +71,11 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
                     'detail': 'Customer number not found.',
                     'code': 'customer_not_found'
                 })
+        elif user is None:
+            raise AuthenticationFailed({
+                'detail': 'Username not found.',
+                'code': 'username_not_found'
+            })
         
         # Validate password via the AUTHENTICATION_BACKENDS chain (M12) —
         # the old direct check_password() bypassed it, so no

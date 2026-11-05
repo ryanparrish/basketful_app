@@ -330,6 +330,26 @@ SECURE_SSL_REDIRECT = IS_PROD
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
+# Cache: shared Redis, so every gunicorn worker sees the same rate-limit
+# counts and refresh-reuse grace (#113, #114). The default per-process
+# memory cache gave each worker its own. Same server as Celery but its own
+# database, since cache.clear() flushes the whole database. Tests and local
+# dev without Redis use the memory cache.
+_cache_redis_url = env('CACHE_REDIS_URL', default='') or env('REDIS_URL', default='')
+if not _cache_redis_url and IS_PROD:
+    _cache_redis_url = env('CELERY_BROKER_URL', default='')
+if _cache_redis_url and not env('CACHE_REDIS_URL', default=''):
+    from urllib.parse import urlparse
+    _cache_redis_url = urlparse(_cache_redis_url)._replace(path='/1').geturl()
+if _cache_redis_url and 'pytest' not in sys.modules:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': _cache_redis_url,
+            'KEY_PREFIX': 'basketful',
+        }
+    }
+
 # Celery Settings
 CELERY_BROKER_URL = env(
     'CELERY_BROKER_URL', default='redis://localhost:6379/0'
@@ -421,7 +441,9 @@ REST_FRAMEWORK = {
         'anon': '20/minute',
         # Raised only for e2e runs, where every spec signs in as one participant
         'user': env('DRF_USER_THROTTLE_RATE', default='100/minute'),
-        'login': '5/minute',
+        'login': '5/minute',      # per address + username
+        'login_ip': '30/minute',  # per address, all usernames
+        'refresh': '30/minute',   # per signed-in user
         'password_change': '5/minute',
         'order_submission': '3/minute',  # Order submission rate limiting
         'order_submission_hourly': '10/hour',  # M8: documented hourly cap
