@@ -32,7 +32,7 @@ jobs:
             build_cmd: npm run build
           - name: participant
             workdir: participant-frontend
-            build_cmd: npx vite build
+            build_cmd: npm run build
 
     steps:
       - name: Checkout code

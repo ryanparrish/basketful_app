@@ -83,11 +83,13 @@ export const getProducts = async (params?: {
   };
 
   while (url) {
-    const response = await apiClient.get<PaginatedResponse<Product>>(url, {
-      params: requestParams,
-    });
-    results.push(...response.data.results);
-    url = response.data.next;
+    // Typed explicitly: `url` is both this call's input and set from its
+    // result, which TypeScript can't infer through (TS7022)
+    const page: PaginatedResponse<Product> = (
+      await apiClient.get<PaginatedResponse<Product>>(url, { params: requestParams })
+    ).data;
+    results.push(...page.results);
+    url = page.next;
     requestParams = undefined;
   }
 
