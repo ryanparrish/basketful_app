@@ -52,6 +52,7 @@ from apps.orders.api.throttles import (
     OrderSubmissionHourlyThrottle,
     OrderSubmissionDailyThrottle,
 )
+from apps.orders.utils.balance_rules import check_cart_balances
 from core.models import ProgramSettings
 
 logger = logging.getLogger(__name__)
@@ -195,9 +196,11 @@ class OrderViewSet(viewsets.ModelViewSet):
                 headers=headers
             )
         except ValidationError as e:
-            # Validation errors are already logged by OrderOrchestration.create_order
+            # Validation errors are already logged by OrderOrchestration.create_order.
+            # The participant sees this text, so send the messages, not the
+            # exception's list repr.
             return Response(
-                {'error': str(e)},
+                {'error': ' '.join(e.messages)},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -586,7 +589,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "severity": "error" | "warning",
                     "message": "Human-readable message",
                     "amount_over": 5.00,
-                    "grace_allowed": true/false
+                    "grace_allowed": true/false,
+                    "budget": "food" | "hygiene" | "go_fresh",  # balance violations only
+                    "product_ids": [1, 2]  # cart lines that caused it; absent for window
                 }
             ],
             "balances": {
@@ -687,6 +692,27 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Get program settings for grace allowance
         program_settings = ProgramSettings.get_settings()
 
+        # One open order at a time (BEH-005): say so plainly. The temporary
+        # order below would otherwise fail Order.clean() with a server error.
+        if Order.objects.filter(account=account, status__in=Order.ACTIVE_STATUSES).exists():
+            return Response({
+                'valid': False,
+                'violations': [{
+                    'type': 'active_order',
+                    'severity': 'error',
+                    'message': str(Order.ACTIVE_ORDER_MESSAGE),
+                    'amount_over': '0',
+                    'grace_allowed': False,
+                }],
+                'balances': {
+                    'available': str(account.available_balance),
+                    'hygiene': str(account.hygiene_balance),
+                    'go_fresh': str(account.go_fresh_balance),
+                },
+                'limits': [],
+                'rules_version': cache.get('rules_version', 'unknown'),
+            })
+
         # Wrap temp records in an atomic savepoint that is *always* rolled back.
         # This guarantees zero DB side-effects even on SIGKILL / OOM — the
         # Postgres transaction is never committed.
@@ -772,88 +798,26 @@ class OrderViewSet(viewsets.ModelViewSet):
                             'grace_allowed': False,
                         })
 
-                # Separate items by category
-                food_items = []
-                hygiene_items = []
-                go_fresh_items = []
-
-                for item in temp_items:
-                    category_name = item.product.category.name.lower() if item.product.category else ''
-                    if category_name == 'hygiene':
-                        hygiene_items.append(item)
-                    elif category_name == 'go fresh':
-                        go_fresh_items.append(item)
-                    else:
-                        food_items.append(item)
-
-                # Calculate totals
-                food_total = sum(item.total_price() for item in food_items)
-                hygiene_total = sum(item.total_price() for item in hygiene_items)
-                go_fresh_total = sum(item.total_price() for item in go_fresh_items)
-
-                # Get balances
+                # Food, hygiene and Go Fresh balances: the same rule order
+                # creation applies (apps/orders/utils/balance_rules.py)
+                violations.extend(
+                    violation.as_cart_violation()
+                    for violation in check_cart_balances(temp_items, account, program_settings)
+                )
                 available_balance = account.available_balance
                 hygiene_balance = account.hygiene_balance
                 go_fresh_balance = account.go_fresh_balance
 
-                # Validate available balance (food items)
-                if food_total > available_balance:
-                    amount_over = float(food_total - available_balance)
-                    grace_allowed = (
-                        program_settings.grace_enabled and
-                        amount_over <= float(program_settings.grace_amount)
-                    )
-                    violations.append({
-                        'type': 'balance',
-                        'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else _('Food balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
-                        'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
-                    })
-
-                # Validate hygiene balance
-                if hygiene_total > hygiene_balance:
-                    amount_over = float(hygiene_total - hygiene_balance)
-                    grace_allowed = (
-                        program_settings.grace_enabled and
-                        amount_over <= float(program_settings.grace_amount)
-                    )
-                    violations.append({
-                        'type': 'balance',
-                        'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else _('Hygiene balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
-                        'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
-                    })
-
-                # Validate Go Fresh balance
-                if go_fresh_balance > 0 and go_fresh_total > go_fresh_balance:
-                    amount_over = float(go_fresh_total - go_fresh_balance)
-                    grace_allowed = (
-                        program_settings.grace_enabled and
-                        amount_over <= float(program_settings.grace_amount)
-                    )
-                    violations.append({
-                        'type': 'balance',
-                        'severity': 'warning' if grace_allowed else 'error',
-                        'message': program_settings.grace_message if grace_allowed else _('Go Fresh balance exceeded by $%(amount)s') % {'amount': f"{amount_over:.2f}"},
-                        'amount_over': amount_over,
-                        'grace_allowed': grace_allowed
-                    })
-
                 # Validate category limits
-                try:
-                    CategoryLimitValidator.validate_category_limits(temp_items, participant)
-                except ValidationError as e:
-                    error_messages = e.error_list if hasattr(e, 'error_list') else [str(e)]
-                    for msg in error_messages:
-                        violations.append({
-                            'type': 'limit',
-                            'severity': 'error',
-                            'message': str(msg),
-                            'amount_over': 0,
-                            'grace_allowed': False
-                        })
+                for limit_violation in CategoryLimitValidator.find_limit_violations(temp_items, participant):
+                    violations.append({
+                        'type': 'limit',
+                        'severity': 'error',
+                        'message': limit_violation['message'],
+                        'amount_over': 0,
+                        'grace_allowed': False,
+                        'product_ids': limit_violation['product_ids'],
+                    })
 
                 # Build limits summary
                 limits = []

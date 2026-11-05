@@ -37,7 +37,7 @@ export const getThemeConfig = async (): Promise<ThemeConfig> => {
 };
 
 export const getProgramConfig = async (): Promise<ProgramConfig> => {
-  const response = await apiClient.get('/settings/program-config/');
+  const response = await apiClient.get('/settings/program-config/current/');
   return response.data;
 };
 
@@ -137,6 +137,15 @@ export const updateMyPreferredLanguage = async (
     preferred_language: preferredLanguage,
   });
   return response.data;
+};
+
+// Change the signed-in participant's password. A wrong current password or
+// a weak new one comes back as 400 with field-keyed messages
+export const changePassword = async (data: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> => {
+  await apiClient.post('/auth/change-password/', data);
 };
 
 // Balances

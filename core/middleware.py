@@ -1,10 +1,12 @@
 # core/middleware.py
 """Middleware for global error handling, logging, and security headers."""
 import logging
+import re
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.middleware.locale import LocaleMiddleware
 from django.shortcuts import redirect
 from django.utils import translation
@@ -35,6 +37,42 @@ class StaffAwareLocaleMiddleware(LocaleMiddleware):
             request.LANGUAGE_CODE = translation.get_language()
             return
         super().process_request(request)
+
+
+class LegacyParticipantRedirectMiddleware:
+    """
+    Send participants from the old Django pages to the React app.
+
+    Only GET and HEAD are redirected, so a form posted from a page that was
+    already open (an order being submitted, say) still completes. Redirects
+    are temporary (302) so browsers don't cache them: turning
+    LEGACY_PARTICIPANT_REDIRECTS off brings the Django pages straight back.
+    """
+
+    # (old path pattern, page in the React app)
+    ROUTES = [
+        (re.compile(r'^/login/$'), 'login'),
+        (re.compile(r'^/dashboard/$'), 'products'),
+        (re.compile(r'^/create-order/$'), 'products'),
+        (re.compile(r'^/review-order/$'), 'checkout'),
+        (re.compile(r'^/order-success/$'), 'orders'),
+        (re.compile(r'^/order/[^/]+/$'), 'orders'),
+        (re.compile(r'^/account/update/$'), 'account'),
+        (re.compile(r'^/accounts/password_change/$'), 'account'),
+    ]
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if (
+            getattr(settings, 'LEGACY_PARTICIPANT_REDIRECTS', False)
+            and request.method in ('GET', 'HEAD')
+        ):
+            for pattern, page in self.ROUTES:
+                if pattern.match(request.path):
+                    return HttpResponseRedirect(settings.PARTICIPANT_APP_PATH + page)
+        return self.get_response(request)
 
 
 class SecurityHeadersMiddleware:

@@ -12,15 +12,12 @@ export interface ThemeConfig {
   updated_at: string;
 }
 
+// GET /settings/program-config/current/ (core ProgramSettingsSerializer)
 export interface ProgramConfig {
   grace_amount: number;
   grace_enabled: boolean;
   grace_message: string;
-  rule_version: number;
-  order_window_open: boolean;
-  order_window_closes: string | null;
-  grace_period_minutes: number;
-  max_items_per_order: number | null;
+  rules_version: string;
   updated_at: string;
 }
 
@@ -69,9 +66,13 @@ export interface Product {
   image: string | null;
   category: number;
   category_name: string;
+  /** Which participant balance pays for this product (server-classified). */
+  budget: BudgetKey;
   is_available: boolean;
   unit: string | null;
 }
+
+export type BudgetKey = 'food' | 'hygiene' | 'go_fresh';
 
 // Cart and Validation
 export interface CartItem {
@@ -87,8 +88,11 @@ export interface ValidationError {
   type: string;
   message: string;
   severity?: 'error' | 'warning';
-  product_id?: number;
-  amount_over?: number;
+  /** Cart lines that caused this violation (absent for window/system errors). */
+  product_ids?: number[];
+  /** Which balance was exceeded — balance violations only. */
+  budget?: BudgetKey;
+  amount_over?: string; // Decimal, sent as a string
   grace_allowed?: boolean;
 }
 

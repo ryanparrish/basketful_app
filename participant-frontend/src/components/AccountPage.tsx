@@ -36,6 +36,7 @@ import { getBalances, getProfile } from '../shared/api/endpoints';
 import { useFormatters } from '../shared/hooks/useFormatters';
 import { translateDynamic } from '../i18n';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { ChangePasswordCard } from './ChangePasswordCard';
 import { GRID_COLUMNS, PAGE_PADDING, useFullWidth } from '../shared/constants/layout';
 import type { Balances } from '../shared/types/api';
 
@@ -313,6 +314,8 @@ export const AccountPage: React.FC = () => {
               )}
             </>
           )}
+
+          <ChangePasswordCard />
 
           {/* Mobile Actions */}
           {!isDesktop && (

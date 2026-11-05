@@ -6,8 +6,9 @@ from django.utils.translation import gettext as _
 from typing import List, Any
 from dataclasses import dataclass
 import logging
-from .order_helper import OrderHelper
+from .balance_rules import BalanceViolation, check_cart_balances
 from apps.pantry.models import CategoryLimitValidator
+from core.models import ProgramSettings
 
 logger = logging.getLogger(__name__)
 
@@ -33,21 +34,21 @@ class OrderValidation:
         return participant
   
     @staticmethod
-    def enforce_hygiene_balance(items, participant, account_balance, grace=Decimal('0')):
-        """Ensure hygiene items do not exceed the participant’s hygiene balance
-        by more than the global grace allowance."""
-        hygiene_total = OrderHelper.calculate_hygiene_total(items)
-        hygiene_balance = getattr(account_balance, "hygiene_balance", 0)
-
-        if hygiene_total > hygiene_balance + grace:
-            msg = _(
-                "Hygiene items total $%(total)s, "
-                "exceeds hygiene balance $%(balance)s."
-            ) % {
-                'total': f"{hygiene_total:.2f}",
-                'balance': f"{hygiene_balance:.2f}",
-            }
-            raise ValidationError(f"[{participant}] {msg}")
+    def enforce_balances(items, participant, account_balance) -> List[BalanceViolation]:
+        """
+        Raise if the items go over a balance beyond the grace allowance;
+        otherwise return the overages grace allowed.
+        """
+        violations = check_cart_balances(items, account_balance, ProgramSettings.get_settings())
+        blocking = [v for v in violations if v.is_blocking]
+        if blocking:
+            logger.warning(
+                "[Validator] %s - over balance: %s",
+                participant,
+                "; ".join(f"{v.balance} ${v.total:.2f} > ${v.limit:.2f}" for v in blocking),
+            )
+            raise ValidationError([v.message for v in blocking])
+        return violations
 
     @staticmethod
     def enforce_program_pause(participant):
@@ -103,21 +104,15 @@ class OrderValidation:
         Validate order items in the correct sequence:
         0. Program pause (ordering blocked during the off week)
         1. Category-level limits
-        2. Hygiene balance
-        3. Voucher balance
+        2. Food, hygiene and Go Fresh balances
+        3. Stock
 
-        Balances may be exceeded by the global grace allowance
-        (ProgramSettings.grace_allowance(), 0 when grace is off).
-
-        Returns how far over balance the order is (0 when it's within
-        balance), i.e. how much of the grace allowance it used.
+        Returns the balance overages the grace allowance let through, so
+        the caller can record them against the order it creates.
         """
         if not participant:
             logger.debug("[Validator] No participant found — skipping validation.")
-            return Decimal('0')
-
-        from core.models import ProgramSettings
-        grace = ProgramSettings.grace_allowance()
+            return []
 
         logger.debug("[Validator] Validating for Participant: %s", participant)
 
@@ -127,70 +122,11 @@ class OrderValidation:
         # Step 1: Validate category-level limits using CategoryLimitValidator
         CategoryLimitValidator.validate_category_limits(items, participant)
 
-        # Step 2: Enforce hygiene balance
-        OrderValidation.enforce_hygiene_balance(items, participant, account_balance, grace)
+        # Step 2: Food, hygiene and Go Fresh balances, the same rule the
+        # cart applies (apps/orders/utils/balance_rules.py)
+        grace_violations = OrderValidation.enforce_balances(items, participant, account_balance)
 
-        # Step 3: Validate available balance for food items (non-hygiene)
-        food_items = [
-            item for item in items
-            if getattr(item.product.category, "name", "").lower() != "hygiene"
-        ]
-        food_total = sum(item.product.price * item.quantity for item in food_items)
-        available_balance = getattr(account_balance, "available_balance", 0)
-
-        if food_total > available_balance + grace:
-            msg = _(
-                "Food items total $%(total)s exceeds available voucher "
-                "balance $%(balance)s."
-            ) % {
-                'total': f"{food_total:.2f}",
-                'balance': f"{available_balance:.2f}",
-            }
-            logger.warning("[Validator] %s - Food total exceeds balance", participant)
-            raise ValidationError(f"[{participant}] {msg}")
-
-        # Step 3b: Validate combined food + hygiene total against voucher balance.
-        # hygiene_balance is a sub-limit (available_balance / 3).  An order can
-        # pass each individual check yet still exceed the voucher pool — e.g.
-        # food=$132.50 ≤ $135 and hygiene=$24.50 ≤ $45, but combined=$157 > $135.
-        hygiene_items = [
-            item for item in items
-            if getattr(item.product.category, "name", "").lower() == "hygiene"
-        ]
-        hygiene_total = sum(item.product.price * item.quantity for item in hygiene_items)
-        combined_total = food_total + hygiene_total
-        if combined_total > available_balance + grace:
-            msg = _(
-                "Food and hygiene items total $%(total)s exceeds "
-                "available voucher balance $%(balance)s."
-            ) % {
-                'total': f"{combined_total:.2f}",
-                'balance': f"{available_balance:.2f}",
-            }
-            logger.warning("[Validator] %s - Combined food+hygiene total exceeds balance", participant)
-            raise ValidationError(f"[{participant}] {msg}")
-
-        # Step 4: Validate Go Fresh balance (if enabled)
-        go_fresh_balance = getattr(account_balance, "go_fresh_balance", 0)
-        if go_fresh_balance > 0:
-            go_fresh_items = [
-                item for item in items
-                if item.product.category and item.product.category.name.lower() == "go fresh"
-            ]
-            go_fresh_total = sum(item.product.price * item.quantity for item in go_fresh_items)
-            
-            if go_fresh_total > go_fresh_balance + grace:
-                msg = _(
-                    "Go Fresh items total $%(total)s exceeds Go Fresh "
-                    "balance $%(balance)s."
-                ) % {
-                    'total': f"{go_fresh_total:.2f}",
-                    'balance': f"{go_fresh_balance:.2f}",
-                }
-                logger.warning("[Validator] %s - Go Fresh total exceeds balance", participant)
-                raise ValidationError(f"[{participant}] {msg}")
-
-        # Step 5: Validate stock availability — prevent confirming orders for out-of-stock items.
+        # Step 3: Validate stock availability — prevent confirming orders for out-of-stock items.
         out_of_stock = []
         for item in items:
             available = getattr(item.product, 'quantity_in_stock', None)
@@ -209,14 +145,6 @@ class OrderValidation:
                 f"[{participant}] " + _("Insufficient stock: %(detail)s") % {'detail': detail}
             )
 
-        # How far over balance the order is: the grace it uses. Food alone is
-        # covered by the combined food + hygiene total.
-        overages = [
-            hygiene_total - getattr(account_balance, "hygiene_balance", 0),
-            combined_total - available_balance,
-        ]
-        if go_fresh_balance > 0:
-            overages.append(go_fresh_total - go_fresh_balance)
-        return max([Decimal('0'), *overages])
+        return grace_violations
 
 

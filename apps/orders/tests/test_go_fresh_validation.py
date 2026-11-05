@@ -68,9 +68,7 @@ class TestGoFreshOrderValidation:
             order.clean()
         
         error_messages = str(exc_info.value)
-        assert "Go Fresh balance exceeded" in error_messages
-        assert "$16.00" in error_messages
-        assert "$10.00" in error_messages
+        assert "Go Fresh balance exceeded by $6.00" in error_messages
     
     def test_go_fresh_items_count_against_available_balance(self):
         """Go Fresh items should also count against overall available balance."""

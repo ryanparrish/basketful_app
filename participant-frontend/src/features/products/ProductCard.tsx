@@ -25,6 +25,7 @@ import type { Product } from '../../shared/types/api';
 import { useCartContext, useItemInCart } from '../../providers/CartProvider';
 import { useValidation } from '../../providers/ValidationContext';
 import { useFormatters } from '../../shared/hooks/useFormatters';
+import { isBlockedByBudget } from '../../shared/hooks/useBudgets';
 
 interface ProductCardProps {
   product: Product;
@@ -35,7 +36,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
   const { formatCurrency } = useFormatters();
   const { addItem, updateItemQuantity, removeItem } = useCartContext();
   const { isInCart, quantity } = useItemInCart(product.id);
-  const { getErrorsForProduct, getWarningsForProduct } = useValidation();
+  const { getErrorsForProduct, getWarningsForProduct, balances } = useValidation();
   const [showAddAnimation, setShowAddAnimation] = React.useState(false);
 
   const errors = getErrorsForProduct(product.id);
@@ -62,7 +63,10 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
     }
   };
 
-  const isUnavailable = !product.is_available;
+  // Out of stock, or paid from a balance the participant doesn't have
+  // (e.g. $0 hygiene). Either way the card stays visible but can't be added.
+  const budgetBlocked = isBlockedByBudget(product, balances);
+  const isUnavailable = !product.is_available || budgetBlocked;
   const displayPrice = product.price ? formatCurrency(product.price) : t('common.free');
   const unitLabel = product.unit || t('common.each');
 
@@ -101,7 +105,10 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({ product }) => {
           </Tooltip>
         )}
         {isUnavailable && (
-          <Chip label={t('common.unavailable')} size="small" />
+          <Chip
+            label={budgetBlocked ? t('products.noHygieneBalance') : t('common.unavailable')}
+            size="small"
+          />
         )}
       </Box>
 

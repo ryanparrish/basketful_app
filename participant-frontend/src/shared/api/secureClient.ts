@@ -156,7 +156,7 @@ export const auth = {
     } catch {
       // Ignore errors on logout - cookies will be cleared anyway
     }
-    window.location.href = '/login';
+    window.location.href = `${import.meta.env.BASE_URL}login`;
   },
 
   // Check authentication status by calling /auth/me/

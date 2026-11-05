@@ -18,6 +18,7 @@ from .auth_views import (
     CookieTokenRefreshView,
     CookieTokenLogoutView,
     AuthMeView,
+    ChangePasswordView,
 )
 
 router = DefaultRouter()
@@ -35,6 +36,7 @@ urlpatterns = [
     path('auth/refresh/', CookieTokenRefreshView.as_view(), name='auth_refresh'),
     path('auth/logout/', CookieTokenLogoutView.as_view(), name='auth_logout'),
     path('auth/me/', AuthMeView.as_view(), name='auth_me'),
+    path('auth/change-password/', ChangePasswordView.as_view(), name='auth_change_password'),
     
     # ViewSet routes
     path('', include(router.urls)),

@@ -77,14 +77,9 @@ class TestVoucherValidation:
         with pytest.raises(ValidationError) as exc_info:
             order.save()
         
-        # Verify error message mentions exceeding balance
+        # Verify error message names the amount over: $63 - $50
         error_msg = str(exc_info.value)
-        # The error can be either "food balance exceeded" or "exceeds available voucher balance"
-        # Both indicate the validation is working correctly
-        assert ("food balance exceeded" in error_msg.lower() or 
-                "exceeds available voucher balance" in error_msg.lower())
-        assert "63.00" in error_msg
-        assert "50.00" in error_msg
+        assert "Food balance exceeded by $13.00" in error_msg
         
         logger.info("✓ Order exceeding voucher balance correctly rejected")
 

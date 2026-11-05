@@ -120,6 +120,25 @@ class Product(models.Model):
         help_text='Tags for search enhancement (e.g., "beef", "chicken", "gluten-free")'
     )
 
+    BUDGET_FOOD = 'food'
+    BUDGET_HYGIENE = 'hygiene'
+    BUDGET_GO_FRESH = 'go_fresh'
+
+    @property
+    def budget(self):
+        """
+        Which participant balance this product is paid from: 'hygiene',
+        'go_fresh', or 'food' (everything else, checked against
+        available_balance). Keyed on the protected category names — see
+        PROTECTED_CATEGORIES in pantry/admin.py.
+        """
+        category_name = self.category.name.lower() if self.category else ''
+        if category_name == 'hygiene':
+            return self.BUDGET_HYGIENE
+        if category_name == 'go fresh':
+            return self.BUDGET_GO_FRESH
+        return self.BUDGET_FOOD
+
     @staticmethod
     def get_limit_for_product(product):
         """
@@ -417,13 +436,27 @@ class CategoryLimitValidator:
         """
         Validate that order items don't exceed category limits.
         Applies program pause multiplier when active.
-        
+
         Args:
             order_items: QuerySet or list of order items
             participant: Participant instance
-            
+
         Raises:
             ValidationError: If any category limit is exceeded
+        """
+        violations = CategoryLimitValidator.find_limit_violations(order_items, participant)
+        if violations:
+            raise ValidationError([v['message'] for v in violations])
+
+    @staticmethod
+    def find_limit_violations(order_items, participant):
+        """
+        Same checks as validate_category_limits, but returns the violations
+        instead of raising, each paired with the products that caused it so
+        the cart UI can flag them.
+
+        Returns:
+            list of {'message': str, 'product_ids': list[int]}
         """
         # Get active pause multiplier once for all validations
         pause_multiplier, pause_name = CategoryLimitValidator._get_active_pause_multiplier()
@@ -534,7 +567,9 @@ class CategoryLimitValidator:
                     f"Scope: {scope}, Products: {product_list}"
                 )
                 
-                errors.append(error_msg)
-        
-        if errors:
-            raise ValidationError(errors)
+                errors.append({
+                    'message': str(error_msg),
+                    'product_ids': sorted({p.id for p in category_products[cid]}),
+                })
+
+        return errors

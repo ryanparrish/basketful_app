@@ -13,7 +13,6 @@ with extremely verbose comments for clarity.
 # ----------------------
 import logging
 from decimal import Decimal
-from types import SimpleNamespace
 
 # ----------------------
 # Django imports
@@ -31,6 +30,7 @@ import pytest
 # ----------------------
 from apps.voucher.models import Voucher
 from apps.orders.models import Order, OrderItem
+from apps.pantry.models import Product
 from apps.orders.utils.order_validation import OrderValidation
 from apps.orders.tests.factories import (
     UserFactory,
@@ -200,10 +200,10 @@ def test_order_with_mixed_categories_under_balances():
 
 @pytest.mark.django_db
 def test_products_without_categories_verbose():
-    """Test products without a category are skipped gracefully.
-    Uses in-memory mock product object.
+    """Test products without a category are handled gracefully.
+    Uses an unsaved in-memory Product, which counts as food.
     """
-    product_no_cat = SimpleNamespace(
+    product_no_cat = Product(
         name="Uncategorized Product",
         price=Decimal("10"),
         category=None

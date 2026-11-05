@@ -25,6 +25,30 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def record_grace_allowance(order, participant, grace_violations):
+    """
+    Log each balance the grace allowance let this order go over, for the
+    admin's Grace Allowance Logs. A failed log never blocks the order.
+    """
+    from apps.log.models import GraceAllowanceLog
+
+    for violation in grace_violations:
+        try:
+            with transaction.atomic():
+                GraceAllowanceLog.objects.create(
+                    participant=participant,
+                    order=order,
+                    amount_over=violation.amount_over,
+                    grace_message=violation.message,
+                    proceeded=True,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to log grace allowance for order %s (%s balance, $%s over)",
+                order.pk, violation.balance, violation.amount_over,
+            )
+
+
 class OrderOrchestration:
     """Class to handle order operations like create, confirm, cancel, and clone."""
     def __init__(self, order=None):
@@ -152,10 +176,8 @@ class OrderOrchestration:
                 order_validator = OrderValidation()
                 participant = order_validator.validate_participant(account)
                 
-                # This validates all constraints: balance, hygiene, categories, vouchers.
-                # Returns how far over balance the order is (within the global
-                # grace allowance, else it raised).
-                grace_used = order_validator.validate_order_items(
+                # This validates all constraints: balance, hygiene, categories, vouchers
+                grace_violations = order_validator.validate_order_items(
                     order_items_data, participant, account
                 )
                 
@@ -188,16 +210,7 @@ class OrderOrchestration:
 
                     OrderItem.objects.bulk_create(items_bulk)
 
-                    if grace_used and grace_used > 0:
-                        from apps.log.models import GraceAllowanceLog
-                        from core.models import ProgramSettings
-                        GraceAllowanceLog.objects.create(
-                            participant=participant,
-                            order=order,
-                            amount_over=grace_used,
-                            grace_message=ProgramSettings.get_settings().grace_message,
-                            proceeded=True,
-                        )
+                record_grace_allowance(order, participant, grace_violations)
 
                 # STEP 3: Mark the idempotency key ONLY now that the order
                 # exists. Marking before validation poisoned retries: a

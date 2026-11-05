@@ -107,7 +107,7 @@ class TestHygieneRules:
                 [order_item_data], participant, account_balance
             )
 
-        assert "Hygiene items total" in str(exc_info.value)
+        assert "Hygiene balance exceeded by" in str(exc_info.value)
 
     def test_order_with_hygiene_items_under_balance(self):
         """

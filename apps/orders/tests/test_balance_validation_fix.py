@@ -75,11 +75,9 @@ class TestBalanceValidationFix:
                 user=user
             )
 
-        # Check error message includes correct amounts
+        # Check error message names the amount over: $150 - $100
         error_msg = str(exc_info.value)
-        assert "150.00" in error_msg
-        assert "100.00" in error_msg
-        assert "exceeds available voucher balance" in error_msg
+        assert "Food balance exceeded by $50.00" in error_msg
 
         # CRITICAL: Verify NO Order was created in database
         order_count = Order.objects.filter(account=account_balance).count()
@@ -132,7 +130,7 @@ class TestBalanceValidationFix:
         except ValidationError as e:
             pytest.fail(f"Validation should pass but raised: {e}")
 
-    def test_go_fresh_exceeds_balance_rejected(self):
+    def test_go_fresh_exceeds_balance_rejected(self, grace_off):
         """
         Test that Go Fresh items exceeding go_fresh_balance are rejected.
         """
@@ -234,9 +232,7 @@ class TestBalanceValidationFix:
             )
 
         error_msg = str(exc_info.value)
-        assert "Hygiene" in error_msg or "hygiene" in error_msg
-        assert "50.00" in error_msg
-        assert "25.00" in error_msg
+        assert "Hygiene balance exceeded by $25.00" in error_msg
 
 
 @pytest.mark.django_db
@@ -275,7 +271,7 @@ class TestCombinedBalanceValidation:
         VoucherFactory(account=account, state='applied', voucher_type='grocery', multiplier=1)
         return participant, account
 
-    def test_combined_food_and_hygiene_exceeds_voucher_balance_rejected_before_creation(self):
+    def test_combined_food_and_hygiene_exceeds_voucher_balance_rejected_before_creation(self, grace_off):
         """
         Regression test: food + hygiene individually pass their limits but
         combined total exceeds available_balance → ValidationError raised
@@ -316,8 +312,7 @@ class TestCombinedBalanceValidation:
             )
 
         error_msg = str(exc_info.value)
-        assert "136.00" in error_msg
-        assert "135.00" in error_msg
+        assert "Food balance exceeded by $1.00" in error_msg
 
         # No order must have been created
         assert Order.objects.filter(account=account).count() == 0, (
@@ -375,7 +370,7 @@ class TestCombinedBalanceValidation:
             account_balance=account,
         )
 
-    def test_create_order_rejects_combined_excess_without_creating_db_record(self):
+    def test_create_order_rejects_combined_excess_without_creating_db_record(self, grace_off):
         """
         Integration test: OrderOrchestration.create_order() must raise
         ValidationError and leave zero Order rows when the combined

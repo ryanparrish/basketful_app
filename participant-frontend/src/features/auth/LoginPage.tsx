@@ -15,6 +15,7 @@ import {
   InputAdornment,
   IconButton,
   Skeleton,
+  Link,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Person, Lock, Refresh } from '@mui/icons-material';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -341,6 +342,11 @@ export const LoginPage: React.FC = () => {
               )}
             </Button>
           </Box>
+
+          {/* Forgot password: Django's reset pages, outside this app */}
+          <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+            <Link href="/password_reset/">{t('login.forgotPassword')}</Link>
+          </Typography>
 
           {/* Help Text */}
           <Typography

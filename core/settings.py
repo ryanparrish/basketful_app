@@ -32,6 +32,11 @@ if os.path.exists(env_path):
 SECRET_KEY = env('SECRET_KEY')
 DOMAIN_NAME = env('DOMAIN_NAME', default='localhost')
 PARTICIPANT_FRONTEND_URL = env('PARTICIPANT_FRONTEND_URL', default='https://app.basketful.org')
+# Where nginx serves the React participant app on this host
+PARTICIPANT_APP_PATH = env('PARTICIPANT_APP_PATH', default='/cart/')
+# Send participants from the old Django pages to the React app
+# (core.middleware.LegacyParticipantRedirectMiddleware). Off = the Django pages come back.
+LEGACY_PARTICIPANT_REDIRECTS = env.bool('LEGACY_PARTICIPANT_REDIRECTS', default=True)
 HASHIDS_SALT = env('HASHIDS_SALT')  # No default — must be set in all environments
 HASHIDS_MIN_LENGTH = env.int('HASHIDS_MIN_LENGTH', default=10)
 
@@ -216,6 +221,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'core.middleware.StaffAwareLocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'core.middleware.LegacyParticipantRedirectMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.pantry.middleware.ForcePasswordChangeMiddleware',  # M11: was never registered
@@ -301,7 +307,7 @@ MODELTRANSLATION_FALLBACK_LANGUAGES = ('en',)
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Login settings
-LOGIN_URL = '/login'
+LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
 
@@ -413,8 +419,10 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',
-        'user': '100/minute',
+        # Raised only for e2e runs, where every spec signs in as one participant
+        'user': env('DRF_USER_THROTTLE_RATE', default='100/minute'),
         'login': '5/minute',
+        'password_change': '5/minute',
         'order_submission': '3/minute',  # Order submission rate limiting
         'order_submission_hourly': '10/hour',  # M8: documented hourly cap
         'order_submission_daily': '50/day',  # M8: documented daily cap

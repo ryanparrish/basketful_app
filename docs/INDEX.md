@@ -40,6 +40,7 @@ This directory contains comprehensive documentation for the Basketful food pantr
 - **[FAILURE_ANALYTICS_GUIDE.md](FAILURE_ANALYTICS_GUIDE.md)** - Failed order attempts, idempotency, and distributed locking
 - **[SIGNALS_AUTOMATION.md](SIGNALS_AUTOMATION.md)** - Django signals automation across all apps
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Render + Docker deployment
+- **[ADMIN_HARDENING.md](ADMIN_HARDENING.md)** - Parked: protecting the staff admin (rate limits, Cloudflare Access)
 
 ### Frontend
 - **[PARTICIPANT_FRONTEND_BUILD.md](PARTICIPANT_FRONTEND_BUILD.md)** - Participant cart app (Refine, cookie-auth, i18n)

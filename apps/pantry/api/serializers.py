@@ -91,13 +91,14 @@ class ProductSerializer(serializers.ModelSerializer):
         required=False
     )
     limit = serializers.SerializerMethodField()
+    budget = serializers.CharField(read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'name_en', 'name_es',
             'description', 'description_en', 'description_es', 'price',
-            'category', 'category_name', 'subcategory', 'subcategory_name',
+            'category', 'category_name', 'subcategory', 'subcategory_name', 'budget',
             'quantity_in_stock', 'is_meat', 'weight_lbs',
             'image', 'active', 'tags', 'tag_ids', 'limit',
             'sort_order', 'created_at', 'updated_at'
@@ -126,11 +127,12 @@ class ProductListSerializer(serializers.ModelSerializer):
     subcategory_name = serializers.CharField(source='subcategory.name', read_only=True, default=None)
     subcategory_sort_order = serializers.SerializerMethodField()
     is_available = serializers.BooleanField(source='active', read_only=True)
+    budget = serializers.CharField(read_only=True)
 
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'price', 'category', 'category_name',
+            'id', 'name', 'price', 'category', 'category_name', 'budget',
             'subcategory', 'subcategory_name', 'subcategory_sort_order',
             'image', 'active', 'is_available', 'quantity_in_stock', 'sort_order'
         ]

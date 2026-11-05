@@ -43,6 +43,7 @@
     "enterPassword": "Please enter your password",
     "completeRecaptcha": "Please complete the reCAPTCHA verification",
     "recaptchaLoadFailed": "reCAPTCHA failed to load. Please refresh the page.",
+    "forgotPassword": "Forgot your password?",
     "needHelp": "Need help? Contact your program administrator."
   },
   "authErrors": {
@@ -79,11 +80,13 @@
     "overBudget": "Your cart exceeds your available budget. Please remove some items.",
     "addToCart": "Add to cart",
     "addOne": "Add one",
-    "removeOne": "Remove one"
+    "removeOne": "Remove one",
+    "noHygieneBalance": "No hygiene balance"
   },
   "cart": {
     "title": "Cart ({{count}})",
     "clearCart": "Clear cart",
+    "openCart": "Open cart",
     "closeCart": "Close cart",
     "clearConfirm": "Are you sure you want to clear your cart?",
     "emptyTitle": "Your cart is empty",
@@ -95,7 +98,9 @@
     "priceTimesQuantity": "{{price}} × {{quantity}}",
     "increaseQuantity": "Increase quantity",
     "decreaseQuantity": "Decrease quantity",
-    "removeFromCart": "Remove from cart"
+    "removeFromCart": "Remove from cart",
+    "viewCart": "View cart",
+    "summaryLabel": "Cart summary"
   },
   "validation": {
     "validating": "Validating cart...",
@@ -193,6 +198,17 @@
         "label": "Go Fresh Balance",
         "subtitle": "A separate per-order allowance based on household size"
       }
+    },
+    "changePassword": {
+      "title": "Change Password",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Change Password",
+      "saving": "Saving…",
+      "success": "Your password has been changed.",
+      "mismatch": "The new passwords don't match.",
+      "failed": "Your password could not be changed. Please try again."
     }
   },
   "days": {
@@ -203,5 +219,12 @@
     "friday": "Friday",
     "saturday": "Saturday",
     "sunday": "Sunday"
+  },
+  "budget": {
+    "title": "Your balances",
+    "left": "{{name}} left",
+    "leftToSpend": "Left to spend",
+    "hygiene": "Hygiene",
+    "go_fresh": "Go Fresh"
   }
 }
