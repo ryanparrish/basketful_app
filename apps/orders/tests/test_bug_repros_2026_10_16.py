@@ -986,7 +986,6 @@ def test_m14_pause_created_early_flags_vouchers_at_double_week_gate():
     from unittest import mock
     from django.utils import timezone
     from apps.lifeskills.models import ProgramPause
-    from apps.account.models import Participant, AccountBalance
     from apps.voucher.models import Voucher
 
     program = ProgramFactory(name="M14 Program")

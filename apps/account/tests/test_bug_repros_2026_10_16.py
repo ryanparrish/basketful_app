@@ -523,6 +523,7 @@ def test_jwt_login_checks_password_before_disabled_notice():
     user.save(update_fields=["is_active"])
 
     signals = []
+
     def _receiver(sender, credentials, **kwargs):
         signals.append(credentials)
     user_login_failed.connect(_receiver, weak=False)

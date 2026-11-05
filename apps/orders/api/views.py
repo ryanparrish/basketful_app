@@ -69,7 +69,7 @@ def _parse_int_query_param(value, default, max_value, param_name):
     except (ValueError, TypeError):
         from rest_framework.exceptions import ValidationError as DRFValidationError
         raise DRFValidationError(
-            {param_name: f"Must be an integer."}
+            {param_name: "Must be an integer."}
         )
     return min(parsed, max_value)
 
