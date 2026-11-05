@@ -16,6 +16,7 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
+from apps.account.tests.helpers import password_already_chosen
 from apps.account.models import Participant
 from apps.pantry.views import get_cart_token
 from apps.pantry.tests.factories import VoucherSettingFactory
@@ -29,7 +30,9 @@ def _make_participant(username):
     user = User.objects.create_user(
         username=username, password='test_password_123', email=f'{username}@test.com'
     )
-    return Participant.objects.create(user=user, name=username, email=f'{username}@test.com')
+    participant = Participant.objects.create(user=user, name=username, email=f'{username}@test.com')
+    password_already_chosen(user)
+    return participant
 
 
 class GetCartTokenUnitTest(TestCase):

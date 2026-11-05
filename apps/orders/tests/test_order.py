@@ -32,6 +32,8 @@ from apps.voucher.models import Voucher
 from apps.orders.models import Order, OrderItem
 from apps.pantry.models import Product
 from apps.orders.utils.order_validation import OrderValidation
+from apps.account.tests.helpers import password_already_chosen
+from apps.orders.tests.helpers import no_order_window
 from apps.orders.tests.factories import (
     UserFactory,
     ParticipantFactory,
@@ -228,14 +230,9 @@ logger.setLevel(logging.DEBUG)
 
 
 def ready_to_order(participant):
-    """A participant who has already chosen a password, in a program with no
-    order window. New accounts must change their password first
-    (ForcePasswordChangeMiddleware) and the window is enforced on submit
-    (M15); neither is under test here."""
-    from apps.account.models import UserProfile
-    from core.models import ProgramOrderWindow
-    UserProfile.objects.filter(user=participant.user).update(must_change_password=False)
-    ProgramOrderWindow.objects.create(program=participant.program, enabled=False)
+    """An existing participant whose program takes orders at any time."""
+    password_already_chosen(participant.user)
+    no_order_window(participant.program)
 
 
 @pytest.mark.django_db

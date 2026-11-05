@@ -18,6 +18,7 @@ from rest_framework.test import APIClient
 from apps.account.models import GoFreshSettings
 from apps.log.models import GraceAllowanceLog
 from apps.orders.models import Order, OrderItem
+from apps.orders.tests.helpers import no_order_window
 from apps.orders.tests.factories import (
     CategoryFactory,
     ParticipantFactory,
@@ -79,6 +80,7 @@ def make_participant(db):
         VoucherSettingFactory.create()
         user = UserFactory()
         participant = ParticipantFactory(user=user, adults=1, children=0)
+        no_order_window(participant.program)
         account = participant.accountbalance
         account.base_balance = Decimal('50.00')
         account.save()

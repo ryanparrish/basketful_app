@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
 from unittest.mock import patch
+from apps.account.tests.helpers import password_already_chosen
 from apps.orders.models import Order, CombinedOrder
 from apps.orders.forms import CreateCombinedOrderForm
 from apps.lifeskills.models import Program
@@ -51,18 +52,12 @@ def create_test_order(account, status='pending', order_date=None):
 
 @pytest.fixture
 def admin_user():
-    """An admin who has already chosen a password. New accounts must change
-    theirs first (ForcePasswordChangeMiddleware), which isn't under test."""
-    from apps.account.models import UserProfile
-    user = User.objects.create_superuser(
+    """Create an admin user for testing."""
+    return password_already_chosen(User.objects.create_superuser(
         username='admin',
         email='admin@test.com',
         password='admin123'
-    )
-    UserProfile.objects.update_or_create(
-        user=user, defaults={'must_change_password': False}
-    )
-    return user
+    ))
 
 
 @pytest.fixture

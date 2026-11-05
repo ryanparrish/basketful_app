@@ -3,6 +3,7 @@ import json
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from apps.account.tests.helpers import password_already_chosen
 from apps.account.models import Participant
 from apps.lifeskills.models import LifeskillsCoach
 from apps.pantry.models import Product, Category
@@ -39,6 +40,7 @@ class SearchCartIntegrationTest(TestCase):
             email='test@test.com',
             assigned_coach=self.coach
         )
+        password_already_chosen(user)
         
         # Create categories
         self.fruit_category = Category.objects.create(

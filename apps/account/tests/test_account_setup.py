@@ -27,14 +27,15 @@ Key Pytest Concepts Used:
 # ============================================================
 
 # --- Standard Library Imports ---
+from datetime import timedelta
 from decimal import Decimal
 import logging
-import os
 # --- Third-Party Imports ---
 import pytest
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 from django.test import override_settings
+from django.utils import timezone
 
 # --- Local Application Imports ---
 # --- Models needed for testing ---
@@ -100,8 +101,8 @@ def email_type_onboarding():
         name='onboarding',
         defaults={
             'subject': 'Welcome to {{ site_name }}',
-            'html_template': '<p>Welcome {{ user.username }}!</p>',
-            'text_template': 'Welcome {{ user.username }}!',
+            'html_content': '<p>Welcome {{ user.username }}!</p>',
+            'text_content': 'Welcome {{ user.username }}!',
             'is_active': True
         }
     )
@@ -361,86 +362,39 @@ class TestEmailTasks:
             force=False
         )
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") == "true",
-        reason="Integration test skipped in CI due to PostgreSQL transaction isolation"
-    )
     def test_email_tasks_create_log_and_prevent_duplicates(
         self, test_user_fixture, email_type_onboarding, email_settings, mocker
     ):
         """
-        Tests that sending an email creates an EmailLog, and a second attempt
-        to send the same email type to the same user is blocked.
+        Sending an email writes an EmailLog, and a second attempt to send the
+        same email type to the same user is blocked by that log.
+
+        Only the outbound send is mocked. The user lookup, the duplicate
+        check and the log are the real ones, so this tests the dedup itself.
+        (Patching User.objects here used to replace the real User manager
+        for every later test in the run.)
         """
-        # --- ARRANGE ---
         user = test_user_fixture
-        
-        # Mock database lookups to avoid transaction visibility issues in CI
-        # Patch the User class directly (it's resolved at import time from get_user_model)
-        mock_user_manager = mocker.MagicMock()
-        mock_user_manager.get.return_value = user
-        mocker.patch(
-            "apps.account.tasks.email.User.objects",
-            mock_user_manager
-        )
-        mocker.patch(
-            "apps.account.tasks.email.get_email_type",
-            return_value=email_type_onboarding
-        )
-        mocker.patch(
-            "apps.account.tasks.email.get_email_settings",
-            return_value=email_settings
-        )
-        
-        # Track whether email has been sent to control duplicate prevention
-        email_sent_tracker = {"sent": False}
-        
-        def mock_has_email_been_sent(user, email_type):
-            return email_sent_tracker["sent"]
-        
-        mocker.patch(
-            "apps.account.tasks.email.has_email_been_sent",
-            side_effect=mock_has_email_been_sent
-        )
-        
-        # Mock create_email_log to track that it was called and update sent tracker
-        def mock_create_email_log(user, email_type, subject, status="sent", error_message="",
-                                  message_id=None, is_test=False):
-            email_sent_tracker["sent"] = True
-            return mocker.MagicMock()
-        
-        mocker.patch(
-            "apps.account.tasks.email.create_email_log",
-            side_effect=mock_create_email_log
-        )
-        
         mock_send_message = mocker.patch(
-            "apps.account.tasks.email.send_email_message"
-        )   
-        
-        # --- ACT (First Call) ---
-        result = send_new_user_onboarding_email(user.id)
-        
-        # Debug: Check what the task returned
-        logger.debug(f"Task returned: {result}")
-        logger.debug(f"Mock call count: {mock_send_message.call_count}")
+            "apps.account.tasks.email.send_email_message",
+            return_value="msg-1",
+        )
 
-        # --- ASSERT (First Call) ---
-        # --- Check that the email was sent the first time ---
-        assert mock_send_message.call_count == 1, \
-            f"Expected 1 call but got {mock_send_message.call_count}. Task result: {result}"
-        # --- Check that the email was marked as sent ---
-        assert email_sent_tracker["sent"] is True, "Email log should have been created"
+        assert send_new_user_onboarding_email(user.id) is True
+        assert mock_send_message.call_count == 1
+        logs = EmailLog.objects.filter(user=user, email_type=email_type_onboarding)
+        assert list(logs.values_list("status", "message_id")) == [("sent", "msg-1")]
 
-        # --- ACT (Second Call) ---
-        # --- Call the task again ---
-        result2 = send_new_user_onboarding_email(user.id)
+        # Within 24 hours, the onboarding task's own guard blocks a resend
+        assert send_new_user_onboarding_email(user.id) is False
+        assert mock_send_message.call_count == 1
+        assert logs.count() == 1
 
-        # --- ASSERT (Second Call) ---
-        # --- The call count should NOT have increased, proving the duplicate was blocked ---
-        assert mock_send_message.call_count == 1, "Email should not be sent a second time"
-        # Second call should return False (skipped due to duplicate)
-        assert result2 is False, "Second call should return False (duplicate blocked)"
+        # After 24 hours, send_email_by_type's lifetime guard still does
+        logs.update(sent_at=timezone.now() - timedelta(days=2))
+        assert send_new_user_onboarding_email(user.id) is False
+        assert mock_send_message.call_count == 1
+        assert logs.count() == 1
 
     def test_email_tasks_handle_missing_user_gracefully(self, mocker):
         """

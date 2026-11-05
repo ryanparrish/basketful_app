@@ -9,6 +9,7 @@ from django.test import Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
+from apps.account.tests.helpers import password_already_chosen
 from apps.lifeskills.models import Program
 from apps.account.models import Participant, AccountBalance
 from apps.voucher.models import Voucher, VoucherSetting, OrderVoucher
@@ -28,11 +29,11 @@ User = get_user_model()
 def admin_user(db):
     """Create an admin user for testing."""
     with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
-        return User.objects.create_superuser(
+        return password_already_chosen(User.objects.create_superuser(
             username='admin',
             email='admin@test.com',
             password='testpass123'
-        )
+        ))
 
 
 @pytest.fixture
