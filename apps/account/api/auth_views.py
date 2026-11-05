@@ -27,9 +27,73 @@ logger = logging.getLogger(__name__)
 
 
 class LoginRateThrottle(AnonRateThrottle):
-    """Stricter rate limiting for login attempts."""
+    """Five tries a minute per username from one address.
+
+    Keyed on address + username, not address alone: a program site signs
+    everyone in from one address, and a whole room was sharing five tries a
+    minute (#114). LoginIPRateThrottle caps the address as a whole.
+    """
     rate = '5/minute'
     scope = 'login'
+
+    def get_cache_key(self, request, view):
+        data = request.data if hasattr(request.data, 'get') else {}
+        username = str(data.get('username', '')).strip().lower()
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{self.get_ident(request)}:{username}',
+        }
+
+
+class LoginIPRateThrottle(AnonRateThrottle):
+    """Caps sign-in attempts from one address, across all usernames."""
+    rate = '30/minute'
+    scope = 'login_ip'
+
+
+class RefreshRateThrottle(AnonRateThrottle):
+    """Limits refreshes per signed-in user, apart from the login budget.
+
+    Refreshing a session isn't a password-guessing surface, so it must not
+    compete with sign-ins from the same address (#114). Keyed on the user in
+    the refresh cookie (signature checked); falls back to the address.
+    """
+    rate = '30/minute'
+    scope = 'refresh'
+
+    def get_cache_key(self, request, view):
+        from rest_framework_simplejwt.tokens import UntypedToken
+        raw = request.COOKIES.get(
+            settings.SIMPLE_JWT.get('AUTH_COOKIE_REFRESH', 'refresh_token')
+        )
+        try:
+            ident = f"user:{UntypedToken(raw)['user_id']}"
+        except (TokenError, KeyError, TypeError):
+            ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+# #113: a refresh token presented again within this window after it was
+# rotated (a second tab, or a retry after a network blip that lost the new
+# cookies) gets the tokens the rotation issued, instead of a forced logout.
+# Only rotation writes this cache, so a token blacklisted by logout gets no
+# grace.
+REFRESH_REUSE_GRACE_SECONDS = 60
+REFRESH_REUSE_CACHE_KEY = 'refresh_reuse:{jti}'
+
+
+def _cached_rotated_tokens(raw_token):
+    """Return (access, refresh, user_id) cached when raw_token was rotated,
+    or None. Malformed or expired tokens get no grace."""
+    from django.core.cache import cache
+    from rest_framework_simplejwt.tokens import UntypedToken
+    try:
+        jti = UntypedToken(raw_token).get('jti')
+    except TokenError:
+        return None
+    if not jti:
+        return None
+    return cache.get(REFRESH_REUSE_CACHE_KEY.format(jti=jti))
 
 
 class PasswordChangeRateThrottle(UserRateThrottle):
@@ -150,8 +214,8 @@ class CookieTokenObtainView(APIView):
     - Returns user info in response body
     """
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
-    
+    throttle_classes = [LoginRateThrottle, LoginIPRateThrottle]
+
     def post(self, request):
         # Verify reCAPTCHA
         recaptcha_token = request.data.get('recaptcha_token')
@@ -211,8 +275,8 @@ class CookieTokenRefreshView(APIView):
     - Sets new refresh_token cookie (token rotation)
     """
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
-    
+    throttle_classes = [RefreshRateThrottle]
+
     def post(self, request):
         jwt_settings = settings.SIMPLE_JWT
         refresh_token = request.COOKIES.get(
@@ -243,16 +307,35 @@ class CookieTokenRefreshView(APIView):
                         {'detail': 'User not found', 'code': 'user_not_found'},
                         status=status.HTTP_401_UNAUTHORIZED
                     )
+                # str() each once: .access_token mints a new token per access
+                access_str = str(new_refresh.access_token)
+                refresh_str = str(new_refresh)
+                from django.core.cache import cache
+                cache.set(
+                    REFRESH_REUSE_CACHE_KEY.format(jti=refresh['jti']),
+                    (access_str, refresh_str, user.id),
+                    REFRESH_REUSE_GRACE_SECONDS,
+                )
             else:
-                new_refresh = refresh
-            
+                access_str = str(refresh.access_token)
+                refresh_str = str(refresh)
+
             # Create response
             response = Response({'message': 'Token refreshed'})
-            set_token_cookies(response, str(new_refresh.access_token), str(new_refresh))
-            
+            set_token_cookies(response, access_str, refresh_str)
+
             return response
-            
-        except TokenError as e:
+
+        except TokenError:
+            # A token rotated moments ago gets the same tokens back (#113)
+            cached = _cached_rotated_tokens(refresh_token)
+            if cached is not None:
+                access_str, refresh_str, user_id = cached
+                from django.contrib.auth.models import User
+                if User.objects.filter(id=user_id, is_active=True).exists():
+                    response = Response({'message': 'Token refreshed'})
+                    set_token_cookies(response, access_str, refresh_str)
+                    return response
             return Response(
                 {'detail': 'Session expired. Please sign in again.', 'code': 'token_expired'},
                 status=status.HTTP_401_UNAUTHORIZED
