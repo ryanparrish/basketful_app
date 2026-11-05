@@ -10,6 +10,7 @@ from django.utils import translation
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from apps.orders.tests.helpers import no_order_window
 from apps.orders.tests.factories import (
     OrderFactory,
     ParticipantFactory,
@@ -48,19 +49,9 @@ class TestOrderErrorLanguage:
             'items': [{'product': product.id, 'quantity': 1}],
         }
 
-    @pytest.mark.skip(
-        reason=(
-            "Flaky in CI's coverage-instrumented run only — fails intermittently "
-            "alongside unrelated tests (e.g. test_account_setup.py's email-dedup "
-            "test), never in isolation or in a plain full-suite run. Root cause "
-            "traced to suite-level race/timing flakiness elsewhere (a cache- or "
-            "DB-based duplicate-prevention lock), not a real i18n regression — "
-            "the message catalog and language-activation code were verified "
-            "correct. Re-enable once the underlying flakiness is fixed."
-        )
-    )
     def test_spanish_participant_gets_spanish_duplicate_order_error(self):
         participant = ParticipantFactory(preferred_language='es')
+        no_order_window(participant.program)
         OrderFactory(account=participant.accountbalance, status='pending')
         product = ProductFactory(price=1)
 
@@ -76,6 +67,7 @@ class TestOrderErrorLanguage:
 
     def test_english_participant_gets_english_duplicate_order_error(self):
         participant = ParticipantFactory(preferred_language='en')
+        no_order_window(participant.program)
         OrderFactory(account=participant.accountbalance, status='pending')
         product = ProductFactory(price=1)
 
@@ -98,14 +90,6 @@ class TestValidateCartLanguage:
         expensive_product = ProductFactory(price=100000)
         return {'items': [{'product_id': expensive_product.id, 'quantity': 5}]}
 
-    @pytest.mark.skip(
-        reason=(
-            "Flaky in CI's coverage-instrumented run only — see the skip reason "
-            "on TestOrderErrorLanguage.test_spanish_participant_gets_spanish_"
-            "duplicate_order_error for the full investigation. Not a real i18n "
-            "regression. Re-enable once the underlying suite flakiness is fixed."
-        )
-    )
     def test_spanish_messages_with_stable_types(self):
         participant = ParticipantFactory(preferred_language='es')
         client = jwt_client_for(participant.user)

@@ -77,18 +77,35 @@ class FlexibleTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'code': 'username_not_found'
             })
         
-        # Validate password
-        if user and not user.check_password(password):
+        # Validate password via the AUTHENTICATION_BACKENDS chain (M12) —
+        # the old direct check_password() bypassed it, so no
+        # user_login_failed signal fired and backends were skipped.
+        from django.contrib.auth import authenticate
+        from django.contrib.auth.models import update_last_login
+
+        authenticated_user = authenticate(
+            request=self.context.get('request'),
+            username=user.username,
+            password=password,
+        )
+        if authenticated_user is None:
+            # authenticate() rejects inactive users as well; check is_active
+            # here (not before) to keep the pre-M12 ordering: the password is
+            # validated first, then the disabled notice (review #107).
+            if not user.is_active:
+                raise AuthenticationFailed({
+                    'detail': 'Account is disabled.',
+                    'code': 'account_disabled'
+                })
             raise AuthenticationFailed({
                 'detail': 'Incorrect password.',
                 'code': 'invalid_password'
             })
-        
-        if not user or not user.is_active:
-            raise AuthenticationFailed({
-                'detail': 'Account is disabled.',
-                'code': 'account_disabled'
-            })
+        user = authenticated_user
+        # JWT logins never call django.contrib.auth.login(), so the
+        # user_logged_in receiver never runs — update last_login explicitly
+        # (known issue #102: no JWT login was ever recorded).
+        update_last_login(None, user)
         
         # Set the user for token generation
         self.user = user

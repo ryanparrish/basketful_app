@@ -53,8 +53,11 @@ def notify_participants_order_window_opened():
     # once per run (ProgramPause has no per-program FK) via the authoritative
     # Python property rather than the (unrelated, currently mismatched)
     # ProgramPauseQuerySet.active() annotation.
+    # L18: pick the MAX multiplier, not the first in an unordered queryset —
+    # balances use max(), so the email must match.
     upcoming_pauses = ProgramPause.objects.filter(pause_end__gte=now)
-    gate_pause = next((p for p in upcoming_pauses if p.is_active_gate), None)
+    gate_pauses = [p for p in upcoming_pauses if p.is_active_gate]
+    gate_pause = max(gate_pauses, key=lambda p: p.multiplier, default=None)
     is_double_week = bool(gate_pause and gate_pause.multiplier == 2)
     is_triple_week = bool(gate_pause and gate_pause.multiplier == 3)
 

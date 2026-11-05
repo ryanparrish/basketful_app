@@ -32,6 +32,7 @@
 
 <form method="post" novalidate>
   {% csrf_token %}
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   {% bootstrap_form form layout="vertical" %}
   
   {% if form.captcha.errors %}

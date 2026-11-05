@@ -1,6 +1,7 @@
 """Integration test for order window in participant dashboard."""
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
+from apps.account.tests.helpers import password_already_chosen
 from apps.account.models import Participant, AccountBalance
 from apps.lifeskills.models import Program
 from core.models import OrderWindowSettings
@@ -32,6 +33,7 @@ class ParticipantDashboardOrderWindowTest(TestCase):
             program=self.program,
             user=self.user
         )
+        password_already_chosen(self.user)
 
         # Get or create account balance (might be created by signal)
         self.account, _ = AccountBalance.objects.get_or_create(

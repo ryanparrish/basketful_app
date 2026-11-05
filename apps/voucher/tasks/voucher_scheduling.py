@@ -8,9 +8,15 @@ from apps.lifeskills.tasks.program_pause import update_voucher_flag_task
 logger = logging.getLogger(__name__)
 
 
-def schedule_voucher_tasks(vouchers, activate_time=None, deactivate_time=None):
+def schedule_voucher_tasks(vouchers, activate_time=None, deactivate_time=None,
+                           multiplier=None):
     """
     Schedule activation and deactivation tasks for a set of vouchers.
+
+    multiplier: explicit pause-duration multiplier. When None it is derived
+    from (activate_time, deactivate_time) — callers that shift activate_time
+    away from the pause start (M14) must pass it explicitly, otherwise the
+    shifted window corrupts the duration calculation.
     """
     voucher_ids = list(vouchers.values_list("id", flat=True))
     logger.debug("Voucher IDs affected: %s", voucher_ids)
@@ -39,8 +45,9 @@ def schedule_voucher_tasks(vouchers, activate_time=None, deactivate_time=None):
         # Match the immediate-flagging path in handle_program_pause: multiplier
         # depends on pause duration (2 for <14 days, 3 for >=14 days), not a
         # flat 2 regardless of how long the pause actually is.
-        from apps.lifeskills.models import ProgramPause
-        multiplier = ProgramPause.calculate_multiplier_for_duration(activate_time, deactivate_time)
+        if multiplier is None:
+            from apps.lifeskills.models import ProgramPause
+            multiplier = ProgramPause.calculate_multiplier_for_duration(activate_time, deactivate_time)
 
         if activate_time > now:
             logger.debug("Scheduling activation at %s with multiplier=%d", activate_time, multiplier)

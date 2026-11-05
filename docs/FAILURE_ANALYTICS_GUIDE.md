@@ -1,6 +1,6 @@
 # Order Failure Analytics - Quick Reference Guide
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 API endpoints and admin interface for monitoring and debugging failed order submissions. Backed by the `FailedOrderAttempt` model in `apps/orders/models.py`. These are `@action` methods on the `OrderViewSet` (`apps/orders/api/views.py`), not standalone views — the API is versioned under `/api/v1/`, so their full paths are `/api/v1/orders/failure-analytics/` and `/api/v1/orders/recent-failures/`.
@@ -276,7 +276,7 @@ Sample records:
 ## Throttling & Rate Limits
 
 ### Order Submission Limits
-- **3 orders per minute** per user
+- **3 per minute, 10 per hour and 50 per day** per user (order creation through the API; every attempt counts, including rejected ones)
 - Applies to both API and traditional views
 - Returns HTTP 429 (Too Many Requests) when exceeded
 
@@ -291,9 +291,12 @@ After failed order attempts (`apps/orders/api/throttles.py`, formula `min(2**fai
 
 **Reset:** After 1 hour of no failures, counter resets
 
+A duplicate submission or a Redis outage does not add backoff: neither is the participant's fault.
+
 ### Idempotency Protection
 - Same cart submitted within 5 minutes = duplicate
-- Idempotency key: SHA256(participant_id + cart + timestamp_minute)
+- Idempotency key: SHA256(participant_id + cart), no timestamp; the 5-minute cache TTL is the window
+- The key is marked only after an order is created, so a failed attempt never blocks a retry
 - Error message: "Duplicate order submission detected. Please wait before retrying."
 
 ---
@@ -430,7 +433,7 @@ There are two independent Redis-backed safeguards in `apps/orders/utils/order_se
 
 **`distributed_order_lock` (per-participant lock) — fails CLOSED**
 - **Symptom:** Log criticals "Redis unavailable for distributed lock ... Order submission blocked until Redis recovers."
-- **Impact:** Order submission is blocked entirely while Redis is down. This is intentional — allowing orders through without the lock would open the full double-confirm/double-spend race window on every node during a Redis failover. See the comment above `distributed_order_lock()` for the reasoning.
+- **Impact:** Order submission is blocked entirely while Redis is down. Participants see "Order processing is temporarily unavailable" (not "another order is being processed") and get no backoff for it. This is intentional — allowing orders through without the lock would open the full double-confirm/double-spend race window on every node during a Redis failover. See the comment above `distributed_order_lock()` for the reasoning.
 
 Exponential backoff (`apps/orders/api/throttles.py`) uses the same cache backend as both of the above, so it is also unavailable during a Redis outage (`get_backoff_time`/`increment_failure_count` fail safe and return 0, i.e. no backoff applied rather than blocking).
 

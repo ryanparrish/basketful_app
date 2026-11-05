@@ -1,6 +1,6 @@
 # Voucher System
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 This document describes the voucher model and lifecycle.
 
@@ -94,11 +94,12 @@ Business rule (grocery vouchers only — `life` vouchers are never consumed by o
 
 - Up to **2** active, `applied` grocery vouchers for the account are selected (`select_for_update()`, ordered oldest-first by `created_at`). A single order can never consume more than 2 vouchers, regardless of order size.
 - If the order total fits within one voucher's effective amount, only **one** voucher is consumed; otherwise **both** available vouchers are consumed.
-- If the order total exceeds the combined effective balance of those (at most 2) vouchers, `_consume_vouchers()` raises a `ValidationError` — unless the confirming request set:
-  - `_bypass_balance_check=True` (requires `_bypass_user`, a staff member with the `can_bypass_order_transitions` permission) — consumes what's available anyway and logs a `WARNING` to `OrderValidationLog`, or
-  - `_charitable_bypass=True` (requires `_bypass_user`) — waives voucher consumption entirely (order is given as a gift); stock is still decremented.
+- If the order total exceeds the combined effective balance of those (at most 2) vouchers:
+  - Within the **global grace allowance** (`ProgramSettings.grace_allowance()`: the grace amount when Settings → Grace is on, else 0), both vouchers are consumed, the shortfall is the grace, and an `INFO` entry goes to `OrderValidationLog`.
+  - Beyond it, `_consume_vouchers()` raises a `ValidationError`. There is no per-order staff override of the balance; the grace switch is site-wide.
+  - The one exception is `_charitable_bypass=True`, which waives voucher consumption entirely (order is given as a gift; stock is still decremented). The API sets it only for a staff member with `can_bypass_order_transitions` who also gives a `bypass_reason`, and logs a `WARNING` with the reason.
 - Each consumed voucher is updated to `active=False, state='consumed'` (via `.update()`, bypassing the model's `editable=False`/`clean()` restrictions) and an `OrderVoucher` row is created recording the `applied_amount`.
-- "Effective amount" = `voucher.voucher_amnt * voucher.multiplier` — this is where the program-pause multiplier actually gets applied to consumption math.
+- "Effective amount" = `voucher.voucher_amnt * order.pause_multiplier_at_creation` (1 when unset). Consumption uses the multiplier the order was validated against when it was placed, not the voucher's stored `multiplier` column or the live pause multiplier: orders are confirmed later, after the double-week window may have closed.
 
 Cancelling a confirmed order reverses this: `Order._restore_on_cancel()` restores each `OrderVoucher`-linked voucher from `consumed` back to `applied` (and deletes the `OrderVoucher` rows), and additively restores decremented product stock.
 

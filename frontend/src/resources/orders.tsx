@@ -26,7 +26,6 @@ import {
   ArrayField,
   FunctionField,
   Button,
-  useUpdate,
   useNotify,
   useRefresh,
   Confirm,
@@ -137,30 +136,35 @@ const OrderTitle = () => {
 };
 
 // Confirm Order Button Component
+//
+// Calls the dedicated POST /orders/{id}/confirm/ action (like Cancel below),
+// so the backend's reason for a refusal reaches the toast. An order over
+// balance confirms only within the global grace allowance (Settings → Grace);
+// there is no per-order override (H3).
 const ConfirmOrderButton = () => {
   const record = useRecordContext();
   const [open, setOpen] = useState(false);
+  const [isPending, setIsPending] = useState(false);
   const notify = useNotify();
   const refresh = useRefresh();
-  const [update, { isPending }] = useUpdate();
 
   if (!record || record.status !== 'pending') return null;
 
-  const handleConfirm = () => {
-    update(
-      'orders',
-      { id: record.id, data: { status: 'confirmed' }, previousData: record },
-      {
-        onSuccess: () => {
-          notify('Order confirmed successfully', { type: 'success' });
-          refresh();
-        },
-        onError: (error: Error) => {
-          notify(`Error: ${error.message}`, { type: 'error' });
-        },
-      }
-    );
+  const handleConfirm = async () => {
     setOpen(false);
+    setIsPending(true);
+    try {
+      await apiClient.post(`/orders/${record.id}/confirm/`);
+      notify('Order confirmed successfully', { type: 'success' });
+      refresh();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to confirm order.';
+      notify(msg, { type: 'error' });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (

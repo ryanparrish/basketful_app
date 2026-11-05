@@ -125,7 +125,8 @@ def create_child_combined_orders(program: Program, orders: List[Order], packer) 
     from django.utils import timezone
     
     child_orders = []
-    current_year = timezone.now().year
+    # M13: ISO year to match the ISO week below.
+    current_year = timezone.now().isocalendar()[0]
     current_week = timezone.now().isocalendar()[1]
     
     for order in orders:
@@ -162,7 +163,8 @@ def create_parent_combined_order(program: Program, child_orders: List[CombinedOr
     from django.utils import timezone
     
     now = timezone.now()
-    current_year = now.year
+    # M13: ISO year to match the ISO week below.
+    current_year = now.isocalendar()[0]
     current_week = now.isocalendar()[1]
     
     # Get or create parent combined order for this program/week
@@ -541,7 +543,7 @@ def create_combined_order_with_packing(
             program=program,
             split_strategy=record_strategy,
             week=now.isocalendar()[1],
-            year=now.year,
+            year=now.isocalendar()[0],  # M13: ISO year, not calendar year
         )
     except IntegrityError:
         raise ValidationError(

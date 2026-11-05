@@ -1,6 +1,6 @@
 # Go Fresh Budget Feature Documentation
 
-> Last updated: 2026-10-25
+> Last updated: 2026-11-04
 
 ## Overview
 
@@ -101,7 +101,7 @@ Go Fresh is checked by the same rule as the other balances, in `apps/orders/util
 
 - Go Fresh items must fit **both** the Go Fresh balance (per-order cap) **and** the available balance, which pays for the whole cart.
 - The Go Fresh check only runs while `go_fresh_balance > 0`, so it is skipped when the feature is disabled.
-- Like the other balances, it follows the program-wide grace setting: over by no more than `ProgramSettings.grace_amount` with grace enabled is a warning and the order goes through; otherwise it is an error.
+- Like the other balances, it follows the grace setting (Settings → Grace, one site-wide switch, off by default): over by no more than `ProgramSettings.grace_amount` with grace enabled is a warning and the order goes through; otherwise it is an error.
 - The message is `Go Fresh balance exceeded by $X.XX` on every path. In the cart check the violation also carries `"budget": "go_fresh"` and the `product_ids` of the Go Fresh lines, so the cart can flag them.
 
 ### 5. Order Tracking

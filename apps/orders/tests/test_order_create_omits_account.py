@@ -11,6 +11,8 @@ behalf of other participants and the server cannot guess which one.
 import pytest
 from rest_framework.test import APIClient
 
+from apps.orders.tests.helpers import no_order_window
+
 from apps.orders.tests.factories import (
     ParticipantFactory,
     ProductFactory,
@@ -29,6 +31,7 @@ class TestOrderCreateOmitsAccount:
 
     def test_participant_checkout_without_account_field_succeeds(self):
         participant = ParticipantFactory()
+        no_order_window(participant.program)
         product = ProductFactory(price=1)
         client = APIClient()
         client.force_authenticate(user=participant.user)

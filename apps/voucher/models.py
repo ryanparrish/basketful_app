@@ -104,6 +104,11 @@ class Voucher(models.Model):
         editable=False
     )
     program_pause_flag = models.BooleanField(default=False)
+    # Source of truth (review #107): the ORDER's pause_multiplier_at_creation
+    # drives voucher consumption in Order._consume_vouchers, not this stored
+    # column. This flag/multiplier are set by the pause scheduling signal for
+    # display and balance-preview purposes only; vouchers created after a
+    # pause is saved keep multiplier=1 here and still consume correctly.
     multiplier = models.IntegerField(default=1, editable=False)
     notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -163,7 +168,9 @@ class Voucher(models.Model):
         
         # Validate voucher balance
         items_to_validate = items if items is not None else self.items.all()
-        order_total = Order.total_price(items_to_validate)
+        # M2: sum the items directly — Order.total_price is an instance method
+        # and calling it unbound with a QuerySet raised AttributeError.
+        order_total = sum(item.total_price() for item in items_to_validate)
         total_voucher_balance = self._calculate_total_voucher_balance(active_vouchers)
         
         self._validate_voucher_balance(account_balance, order_total, total_voucher_balance)

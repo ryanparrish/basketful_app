@@ -238,6 +238,24 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     {'account': _("No account found for the current user.")}
                 )
             attrs['account'] = account
+        # M15: enforce the program order window server-side. The frontend
+        # hides closed programs, but a direct API POST bypassed it. Staff
+        # are exempt — they act on behalf of participants and have the
+        # force-open override for legitimate off-window orders.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user and not getattr(user, 'is_staff', False):
+            from core.utils import can_place_order
+            participant = getattr(user, 'participant', None)
+            if participant is not None:
+                can_order, _window_ctx = can_place_order(participant)
+                if not can_order:
+                    raise serializers.ValidationError(
+                        {'non_field_errors': [
+                            _("The order window is currently closed. "
+                              "Orders cannot be placed at this time.")
+                        ]}
+                    )
         return attrs
 
     def create(self, validated_data):

@@ -56,7 +56,7 @@ export const GraceTab = ({
         value={grace.grace_amount}
         onChange={e => setGrace({ ...grace, grace_amount: parseFloat(e.target.value) || 0 })}
         inputProps={{ step: 0.01, min: 0, max: 100 }}
-        helperText="A cart over budget by this amount or less shows a warning instead of a blocking error."
+        helperText="When on, every order may go this much over balance, at checkout and when staff confirm it. When off, nothing over balance goes through."
         sx={{ mb: 2 }}
         disabled={!grace.grace_enabled}
       />

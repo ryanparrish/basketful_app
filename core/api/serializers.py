@@ -3,7 +3,6 @@ Serializers for the Core app.
 """
 from rest_framework import serializers
 from django.utils import timezone
-from datetime import timedelta
 
 from core.models import (
     OrderWindowSettings,
@@ -31,68 +30,67 @@ class OrderWindowSettingsSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_open', 'next_opens_at', 'next_closes_at']
     
+    def _program_window_statuses(self):
+        """Per-program window statuses via the modern engine.
+
+        (H10: this used to query a `Lifeskills` model that does not exist —
+        the ImportError was swallowed and the public status was permanently
+        "closed". Windows are now derived from each program's MeetingDay +
+        meeting_time via core/utils.get_program_window_status, the same
+        engine the participant frontend uses.)
+        """
+        from core.utils import get_program_window_status
+        from apps.lifeskills.models import Program
+        return [
+            get_program_window_status(p) for p in Program.objects.all()
+        ]
+
     def get_is_open(self, obj):
-        """Calculate if order window is currently open."""
+        """Global window is open when any program's window is open."""
         if not obj.enabled:
             return False
-        
         try:
-            from apps.lifeskills.models import Lifeskills
-            # Get next upcoming class
-            now = timezone.now()
-            next_class = Lifeskills.objects.filter(
-                date__gte=now
-            ).order_by('date').first()
-            
-            if not next_class:
-                return False
-            
-            # Calculate window open/close times
-            window_opens = next_class.date - timedelta(hours=obj.hours_before_class)
-            window_closes = next_class.date - timedelta(hours=obj.hours_before_close)
-            
-            return window_opens <= now <= window_closes
+            return any(
+                s.get('window_status') == 'open'
+                for s in self._program_window_statuses()
+            )
         except Exception:
             # If can't determine, default to closed for safety
             return False
-    
+
     def get_next_opens_at(self, obj):
-        """Get timestamp when order window next opens."""
+        """Earliest upcoming window opening across programs."""
         if not obj.enabled:
             return None
-        
         try:
-            from apps.lifeskills.models import Lifeskills
             now = timezone.now()
-            next_class = Lifeskills.objects.filter(
-                date__gte=now
-            ).order_by('date').first()
-            
-            if not next_class:
-                return None
-            
-            window_opens = next_class.date - timedelta(hours=obj.hours_before_class)
-            return window_opens.isoformat() if window_opens > now else None
+            upcoming = [
+                c['opens_at']
+                for s in self._program_window_statuses()
+                for c in s.get('cycles', [])
+                if c['opens_at'] > now
+            ]
+            return min(upcoming).isoformat() if upcoming else None
         except Exception:
             return None
-    
+
     def get_next_closes_at(self, obj):
-        """Get timestamp when order window next closes."""
+        """Earliest upcoming window closing across programs.
+
+        For a currently-open window this is its closes_at; otherwise the
+        next cycle's — both are simply the earliest closes_at in the future.
+        """
         if not obj.enabled:
             return None
-        
         try:
-            from apps.lifeskills.models import Lifeskills
             now = timezone.now()
-            next_class = Lifeskills.objects.filter(
-                date__gte=now
-            ).order_by('date').first()
-            
-            if not next_class:
-                return None
-            
-            window_closes = next_class.date - timedelta(hours=obj.hours_before_close)
-            return window_closes.isoformat() if window_closes > now else None
+            upcoming = [
+                c['closes_at']
+                for s in self._program_window_statuses()
+                for c in s.get('cycles', [])
+                if c['closes_at'] > now
+            ]
+            return min(upcoming).isoformat() if upcoming else None
         except Exception:
             return None
 

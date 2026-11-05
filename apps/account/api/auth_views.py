@@ -345,14 +345,19 @@ class CookieTokenRefreshView(APIView):
 class CookieTokenLogoutView(APIView):
     """
     Logout endpoint that blacklists refresh token and clears cookies.
-    
+
     POST /api/auth/logout/
-    
+
+    Deliberately AllowAny (H6): the view body only blacklists the refresh
+    cookie and clears cookies — it never uses request.user. Requiring
+    IsAuthenticated meant an expired 60-min access token 401'd before the
+    body ran, leaving the 7-day refresh cookie alive on shared computers.
+
     Response:
     - Blacklists the refresh token
     - Clears access_token and refresh_token cookies
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         jwt_settings = settings.SIMPLE_JWT

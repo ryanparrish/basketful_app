@@ -1,6 +1,6 @@
 # Order Validation Fix - Implementation Complete
 
-> Last updated: 2026-07-13. This documents a change that has been deployed and is now the
+> Last updated: 2026-10-17. This documents a change that has been deployed and is now the
 > normal order-creation flow (`OrderOrchestration.create_order` in
 > `apps/orders/utils/order_utils.py`). Later work built on top of it — `packing` status,
 > `program_pause_at_creation`/`pause_multiplier_at_creation` on `Order`, and the
@@ -25,7 +25,7 @@ Fixed critical order validation bugs where orders were created in database befor
 ### 3. Duplicate Orders from Double-Clicks
 **Root Cause:** No protection against rapid duplicate submissions.
 
-**Solution:** Idempotency keys (SHA256 of participant+cart+timestamp) prevent duplicates within 5-minute window.
+**Solution:** Idempotency keys (SHA256 of participant + cart) prevent duplicates within a 5-minute window. The key has no timestamp; the 300-second cache TTL is the window. It is marked only after an order is created, so a failed attempt never blocks a retry of the same cart.
 
 ### 4. Race Conditions with Concurrent Submissions
 **Root Cause:** No locking mechanism for parallel order submissions.
@@ -65,15 +65,17 @@ Comprehensive audit table tracking failed order attempts with:
 - **Added:** `generate_idempotency_key(participant_id, cart_items)` - SHA256 hash for duplicate detection
 - **Added:** `generate_cart_hash(cart_items)` - Hash of cart contents
 - **Added:** `distributed_order_lock(participant_id, timeout)` - Context manager for Redis lock with fallback
-- **Added:** `check_duplicate_submission(idempotency_key, ttl_seconds)` - Check for duplicate within time window
+- **Added:** `check_duplicate_submission(idempotency_key, ttl_seconds)` - Check for duplicate within time window (read-only; does not mark the key)
+- **Added:** `mark_idempotency_key_processed(idempotency_key, ttl_seconds)` - Mark the key, called only after the order is created
 
 **Graceful Degradation is asymmetric by design** — the two Redis-backed checks fail differently:
 - `check_duplicate_submission()` (idempotency) **fails open**: if Redis is unreachable it logs a warning and lets the request through, since losing duplicate-detection is preferable to blocking all orders.
-- `distributed_order_lock()` **fails closed**: if Redis is unreachable it logs `critical` and returns `lock_acquired=False`, which makes `create_order()` raise a `ValidationError` and block the submission. This was hardened after the initial implementation — allowing orders through without the lock would reopen the exact race window (concurrent submissions double-spending the same balance) the lock exists to close during a Redis failover.
+- `distributed_order_lock()` **fails closed**: if Redis is unreachable it logs `critical` and yields `lock_acquired=None` (contention yields `False`), which makes `create_order()` raise a `ValidationError` saying order processing is temporarily unavailable, and block the submission without adding backoff. This was hardened after the initial implementation — allowing orders through without the lock would reopen the exact race window (concurrent submissions double-spending the same balance) the lock exists to close during a Redis failover.
 
 #### 3. apps/orders/api/throttles.py (NEW FILE)
 Custom throttle implementation with exponential backoff:
-- **OrderSubmissionThrottle** - Rate limits: 3/min, extends UserRateThrottle
+- **OrderSubmissionThrottle** - Rate limit: 3/min, extends UserRateThrottle
+- **OrderSubmissionHourlyThrottle** / **OrderSubmissionDailyThrottle** - 10/hour and 50/day; all three apply to order creation (`OrderViewSet.get_throttles`) and count every attempt, including rejected ones
 - **get_backoff_time(user_id)** - Returns remaining backoff seconds
 - **increment_failure_count(user_id)** - Applies exponential backoff (2^n seconds, max 60s)
 - **reset_failure_count(user_id)** - Clears backoff after successful order
@@ -84,12 +86,12 @@ Custom throttle implementation with exponential backoff:
 Complete refactor of `OrderOrchestration.create_order()`:
 
 **New Flow:**
-1. Check idempotency key for duplicates
+1. Check idempotency key for duplicates (a duplicate is rejected without adding backoff)
 2. Acquire distributed lock (prevents race conditions)
-3. Validate participant and items (NO DB WRITES)
+3. Validate participant and items (NO DB WRITES); an order may exceed its balance only by the global grace allowance, and validation returns how much it used
 4. Calculate totals for audit
-5. **Only if validation passes:** Create Order and OrderItems
-6. Reset failure count on success
+5. **Only if validation passes:** Create Order and OrderItems, plus a `GraceAllowanceLog` row if the order used grace
+6. Mark the idempotency key, and reset failure count on success
 7. **On validation failure:** Log to FailedOrderAttempt with full context, increment failure count
 
 **New Parameters:**
@@ -169,6 +171,8 @@ Added throttle rate configuration:
     'user': '100/minute',
     'login': '5/minute',
     'order_submission': '3/minute',  # NEW
+    'order_submission_hourly': '10/hour',
+    'order_submission_daily': '50/day',
 }
 ```
 
@@ -238,7 +242,7 @@ python manage.py cleanup_failed_attempts --days=90
 - **Indexes:** 2 B-tree indexes for fast lookups
 
 ### Throttling Impact
-- **3 orders/minute** = max 180 orders/hour per user
+- **3/minute, 10/hour, 50/day** per user, counting every attempt
 - **Exponential backoff** after failures prevents abuse
 - Note: unlike the idempotency check, the distributed lock **fails closed** — if Redis is
   down, order submission is blocked rather than allowed through (see Graceful Degradation

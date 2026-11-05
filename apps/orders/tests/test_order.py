@@ -32,6 +32,8 @@ from apps.voucher.models import Voucher
 from apps.orders.models import Order, OrderItem
 from apps.pantry.models import Product
 from apps.orders.utils.order_validation import OrderValidation
+from apps.account.tests.helpers import password_already_chosen
+from apps.orders.tests.helpers import no_order_window
 from apps.orders.tests.factories import (
     UserFactory,
     ParticipantFactory,
@@ -227,6 +229,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+def ready_to_order(participant):
+    """An existing participant whose program takes orders at any time."""
+    password_already_chosen(participant.user)
+    no_order_window(participant.program)
+
+
 @pytest.mark.django_db
 def test_submit_order_view(client):
     """End-to-end test for submitting an order with vouchers applied."""
@@ -238,6 +246,7 @@ def test_submit_order_view(client):
     user.set_password(test_password)
     user.save()
     participant = ParticipantFactory(user=user)
+    ready_to_order(participant)
     account = participant.accountbalance
     account.base_balance = Decimal("100.00")  # Set sufficient balance
     account.save()  # ensure enough for order
@@ -357,6 +366,7 @@ def test_submit_order_view_with_50_items(client):
     user.set_password(test_password)
     user.save()
     participant = ParticipantFactory(user=user)
+    ready_to_order(participant)
     account = participant.accountbalance
     
     # Set realistic base balance (max is 999.9 due to precision 4, scale 1)

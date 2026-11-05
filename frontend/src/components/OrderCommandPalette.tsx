@@ -183,15 +183,28 @@ export const OrderCommandPalette = () => {
         order_ids: selectedIds,
         new_status: newStatus,
       });
-      const { updated_count, skipped_count } = res.data as {
+      const { updated_count, skipped_count, failed_ids } = res.data as {
         updated_count: number;
         skipped_count: number;
+        failed_ids?: Record<string, string>;
       };
-      const msg =
-        skipped_count > 0
-          ? `Updated ${updated_count} order(s) to ${STATUS_LABELS[newStatus]}. ${skipped_count} skipped (invalid transition).`
-          : `Updated ${updated_count} order(s) to ${STATUS_LABELS[newStatus]}.`;
-      notify(msg, { type: 'success' });
+      // Review #107: the backend reports per-order confirm failures in
+      // failed_ids — surfacing them so a failed order doesn't silently
+      // vanish from the toast while staff think everything confirmed.
+      const failed_entries = Object.entries(failed_ids ?? {});
+      const parts = [`Updated ${updated_count} order(s) to ${STATUS_LABELS[newStatus]}.`];
+      if (skipped_count > 0) {
+        parts.push(`${skipped_count} skipped (invalid transition).`);
+      }
+      if (failed_entries.length > 0) {
+        parts.push(
+          `${failed_entries.length} failed: ` +
+            failed_entries.map(([id, msg]) => `#${id} (${msg})`).join('; ')
+        );
+      }
+      notify(parts.join(' '), {
+        type: failed_entries.length > 0 ? 'warning' : 'success',
+      });
       setPendingStatus(null);
       unselectAll();
       refresh();

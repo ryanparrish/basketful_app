@@ -1,6 +1,6 @@
 # Groups & Permissions Implementation Summary
 
-> Last updated: 2026-07-13
+> Last updated: 2026-10-17
 
 ## Overview
 Implemented a groups and permissions system (RBAC) integrating Django REST
@@ -27,7 +27,7 @@ instead. See "Architecture Decisions" below.)
 - `is_superuser`: Superuser status boolean
 - `groups`: Array of group names (e.g., ["Administrators", "Order Managers"])
 - `group_ids`: Array of group IDs for efficient lookups
-- `can_bypass_order_transitions`: baked-in escape-hatch permission flag (`user.has_perm('orders.can_bypass_order_transitions')`)
+- `can_bypass_order_transitions`: baked-in escape-hatch permission flag (`user.has_perm('orders.can_bypass_order_transitions')`). It lets staff move orders between statuses outside the normal transitions, and confirm an order with a charitable bypass (vouchers waived, reason required). It does **not** let anyone confirm an order over balance: that is governed only by the global grace allowance (Settings → Grace).
 
 **Status: not currently wired to a URL.** No view in the codebase uses
 `CustomTokenObtainPairSerializer` (there is no `CustomTokenObtainPairView`).
@@ -243,8 +243,8 @@ Created full CRUD interface for users:
 
 ### Authentication
 - `POST /api/v1/auth/login/` - Cookie-based login (requires `recaptcha_token`); sets httpOnly `access_token`/`refresh_token` cookies, returns `user` in the response body. **This is what the React Admin app actually uses.**
-- `POST /api/v1/auth/refresh/` - Rotates the refresh token cookie
-- `POST /api/v1/auth/logout/` - Blacklists the refresh token, clears cookies
+- `POST /api/v1/auth/refresh/` - Rotates the refresh token cookie. A retry with the just-rotated token within 60 seconds (two tabs refreshing at once, or a lost response) gets the same new tokens instead of a 401; a token blacklisted by logout gets no such grace
+- `POST /api/v1/auth/logout/` - Blacklists the refresh token, clears cookies. Open to unauthenticated requests, so logout still works after the 60-minute access token has expired
 - `GET /api/v1/auth/me/` - Returns the current user + linked participant
 - `POST /api/v1/token/` - Legacy/direct JWT endpoint (`FlexibleTokenObtainPairView`); returns access/refresh tokens in the response body instead of cookies. Does **not** include groups in claims (see Architecture Decisions above).
 - `POST /api/v1/token/refresh/` - Refresh access token via the body-based flow

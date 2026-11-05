@@ -8,8 +8,9 @@ Verifies that:
   - cancelled is terminal even for bypass users.
   - pending follows normal transition rules even for bypass users.
   - Bypass transitions that *are* also in ALLOWED_TRANSITIONS still work.
-  - Superusers can confirm an order via PATCH even when balance is insufficient.
-  - Superusers can confirm an order via the /confirm/ action even when balance is insufficient.
+  - The permission does NOT let anyone confirm an order over balance: that
+    is governed only by the global grace allowance (H3).
+  - The charitable bypass (vouchers waived) needs the permission and a reason.
   - Bypass events are written to OrderValidationLog for audit.
 """
 
@@ -222,9 +223,14 @@ class TestConfirmBypass:
         # Manually attach the bypass flag and call confirm() to test the model layer.
         return order, account
 
-    def test_bypass_flag_skips_balance_validation_in_consume_vouchers(self):
-        """With _bypass_balance_check=True, an order total > balance confirms without error."""
+    def test_old_balance_bypass_flag_no_longer_skips_the_check(self):
+        """H3: _bypass_balance_check is gone. With grace off, an order over
+        balance is refused even if a caller still sets the old flag."""
+        from django.core.exceptions import ValidationError
+        from core.models import ProgramSettings
+
         VoucherSettingFactory(active=True)
+        ProgramSettings.get_settings()  # grace off by default
         participant = ParticipantFactory()
         account = participant.accountbalance
         VoucherFactory(
@@ -237,47 +243,50 @@ class TestConfirmBypass:
         account.save(update_fields=['base_balance'])
 
         order = OrderFactory(account=account, status='pending')
-
-        superuser = UserFactory(is_staff=True, is_superuser=True)
         order._bypass_balance_check = True
-        order._bypass_user = superuser
+        order._bypass_user = UserFactory(is_staff=True, is_superuser=True)
         order.status = 'confirmed'
         order.paid = True
         from unittest.mock import patch
         with patch.object(type(order), 'total_price', return_value=Decimal('999.00')):
-            order._consume_vouchers()  # must not raise
+            with pytest.raises(ValidationError):
+                order._consume_vouchers()
 
-    def test_bypass_confirm_writes_audit_log(self):
-        """Confirming with bypass logs a WARNING entry to OrderValidationLog."""
+    def test_within_global_grace_consumes_and_logs(self):
+        """With grace on, an order a little over balance consumes every
+        voucher and records an INFO entry saying it used the grace."""
+        from apps.voucher.models import Voucher
+        from core.models import ProgramSettings
+
         VoucherSettingFactory(active=True)
+        settings_obj = ProgramSettings.get_settings()
+        settings_obj.grace_enabled = True
+        settings_obj.grace_amount = Decimal('1.00')
+        settings_obj.save()
         participant = ParticipantFactory()
         account = participant.accountbalance
-        VoucherFactory(
+        account.vouchers.all().delete()  # only the voucher below
+        voucher = VoucherFactory(
             account=account,
             state='applied',
             voucher_type='grocery',
+            active=True,
             multiplier=1,
         )
-        account.base_balance = Decimal('10.00')
-        account.save(update_fields=['base_balance'])
+        balance = Voucher.objects.get(pk=voucher.pk).voucher_amnt
 
         order = OrderFactory(account=account, status='pending')
-        superuser = UserFactory(is_staff=True, is_superuser=True)
-        order._bypass_balance_check = True
-        order._bypass_user = superuser
         order.status = 'confirmed'
         order.paid = True
-
-        before_count = OrderValidationLog.objects.count()
         from unittest.mock import patch
-        with patch.object(type(order), 'total_price', return_value=Decimal('999.00')):
+        with patch.object(type(order), 'total_price', return_value=balance + Decimal('0.50')):
             order._consume_vouchers()
 
-        assert OrderValidationLog.objects.count() == before_count + 1
-        log = OrderValidationLog.objects.latest('created_at')
-        assert log.log_type == OrderValidationLog.WARNING
-        assert 'bypass' in log.message.lower()
-        assert log.user_id == superuser.id
+        voucher.refresh_from_db()
+        assert voucher.state == 'consumed'
+        log = OrderValidationLog.objects.filter(order=order).latest('created_at')
+        assert log.log_type == OrderValidationLog.INFO
+        assert 'within the grace allowance' in log.message
 
     def test_charitable_bypass_skips_voucher_consumption(self):
         """Charitable bypass skips all voucher logic and writes an audit record."""
@@ -337,7 +346,7 @@ class TestConfirmBypass:
 
         resp = client.post(
             f'/api/v1/orders/{order.id}/confirm/',
-            {'charitable': True},
+            {'charitable': True, 'bypass_reason': 'Gift approved by director'},
             format='json',
         )
 

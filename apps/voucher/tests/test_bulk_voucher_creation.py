@@ -16,6 +16,7 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 
+from apps.account.tests.helpers import password_already_chosen
 from apps.voucher.models import Voucher, VoucherSetting
 from apps.account.models import Participant, AccountBalance
 from apps.lifeskills.models import Program
@@ -44,7 +45,7 @@ def admin_user(db):
             is_staff=True,
             is_superuser=True
         )
-    return user
+    return password_already_chosen(user)
 
 
 @pytest.fixture

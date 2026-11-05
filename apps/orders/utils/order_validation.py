@@ -1,5 +1,6 @@
 # food_orders.utils.order_validation.py
 """Utilities for validating orders and order items."""
+from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext as _
 from typing import List, Any
