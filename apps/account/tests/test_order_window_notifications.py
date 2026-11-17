@@ -741,3 +741,51 @@ def test_empty_email_participant_skipped(monday_program, email_type):
     mock_send = _run_task_frozen_at(frozen_now)
     mock_send.assert_not_called()
 
+
+
+# ---------------------------------------------------------------------------
+# 17. Idle beat tick stays cheap (Issue #130)
+# ---------------------------------------------------------------------------
+
+def _count_idle_tick_queries(frozen_now):
+    """Run one beat tick at `frozen_now` and return the SQL it executed."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    with CaptureQueriesContext(connection) as captured:
+        mock_send = _run_task_frozen_at(frozen_now)
+    mock_send.assert_not_called()
+    return [query["sql"] for query in captured.captured_queries]
+
+
+@pytest.mark.django_db
+def test_idle_tick_query_count_does_not_scale_with_programs(monday_program, email_type):
+    """
+    A tick where no window just opened must not load participants and must
+    run a constant number of queries however many programs exist. The scan
+    runs every 10 minutes, so per-program or per-participant queries on the
+    idle path add up (Issue #130).
+    """
+    from core.models import ProgramOrderWindow
+
+    _make_participant_with_user(monday_program, suffix="idle1")
+    opens_at, _ = _get_next_window_opens_at(monday_program)
+    idle_now = opens_at - timedelta(hours=2)
+
+    baseline_queries = _count_idle_tick_queries(idle_now)
+
+    for index in range(5):
+        program = Program.objects.create(
+            name=f"Extra Program {index}",
+            MeetingDay="monday",
+            meeting_time="09:00:00",
+        )
+        _make_participant_with_user(program, suffix=f"idle_extra{index}")
+        if index % 2 == 0:
+            ProgramOrderWindow.objects.create(program=program, hours_before_class=24)
+
+    scaled_queries = _count_idle_tick_queries(idle_now)
+
+    assert len(scaled_queries) == len(baseline_queries), scaled_queries
+    participant_table = Participant._meta.db_table
+    assert not any(participant_table in sql for sql in scaled_queries)

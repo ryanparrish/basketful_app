@@ -61,9 +61,13 @@ def get_in_progress_pause(now=None):
 # Effective config (COALESCE: per-program override → global singleton)
 # ---------------------------------------------------------------------------
 
-def get_effective_config(program) -> dict:
+def get_effective_config(program, global_settings=None) -> dict:
     """
     Return the resolved order-window config for a given Program.
+
+    Pass ``global_settings`` (the ``OrderWindowSettings`` singleton) when
+    resolving many programs in a loop, so the singleton is fetched once
+    rather than once per program.
 
     Each field COALESCEs: if the program has a ProgramOrderWindow row with
     a non-null value that value is used; otherwise we fall back to the global
@@ -78,7 +82,7 @@ def get_effective_config(program) -> dict:
     """
     from core.models import OrderWindowSettings, ProgramOrderWindow
 
-    global_s = OrderWindowSettings.get_settings()
+    global_s = global_settings or OrderWindowSettings.get_settings()
 
     if program is None:
         return {
