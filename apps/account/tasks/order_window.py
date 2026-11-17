@@ -29,6 +29,7 @@ def notify_participants_order_window_opened():
     from apps.lifeskills.models import Program, ProgramPause
     from apps.account.tasks.email import send_order_window_opened_notification
     from apps.log.models import EmailLog
+    from core.models import OrderWindowSettings
     from core.utils import generate_window_cycles, get_effective_config
 
     now = timezone.now()
@@ -61,11 +62,16 @@ def notify_participants_order_window_opened():
     is_double_week = bool(gate_pause and gate_pause.multiplier == 2)
     is_triple_week = bool(gate_pause and gate_pause.multiplier == 3)
 
-    programs = Program.objects.prefetch_related('participant_set__user').all()
+    # This scan runs every 10 minutes and almost always finds no window that
+    # just opened, so keep the idle path cheap: fetch the global settings
+    # once, join each program's override row, and query participants only
+    # for a program whose window actually opened (Issue #130).
+    global_settings = OrderWindowSettings.get_settings()
+    programs = Program.objects.select_related('order_window')
 
     for program in programs:
         try:
-            config = get_effective_config(program)
+            config = get_effective_config(program, global_settings=global_settings)
 
             if not config['enabled']:
                 continue
