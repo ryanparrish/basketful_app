@@ -114,6 +114,7 @@ jobs:
           python manage.py migrate --noinput
 
       - name: Run tests
+        id: run_tests
         env:
           DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
@@ -131,7 +132,11 @@ jobs:
           pytest --tb=short --maxfail=5 -v
 
       - name: Generate coverage report
-        if: always()
+        # Run even when tests fail, for the full coverage picture, but not
+        # when setup failed: with "Run tests" skipped, the catalogs and
+        # migrations were skipped too, and the run only produced misleading
+        # failures (e.g. Spanish i18n tests getting English, Issue #119).
+        if: ${{ !cancelled() && steps.run_tests.conclusion != 'skipped' }}
         env:
           DJANGO_SETTINGS_MODULE: core.settings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test

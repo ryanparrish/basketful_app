@@ -2,6 +2,7 @@
 Custom throttle classes for order submission with exponential backoff.
 """
 import logging
+import math
 import time
 from rest_framework.throttling import UserRateThrottle
 from django.core.cache import cache
@@ -22,25 +23,34 @@ class OrderSubmissionThrottle(UserRateThrottle):
     
     def allow_request(self, request, view):
         """
-        Check if request should be allowed, considering exponential backoff.
+        Reject while the user is in failure backoff, then apply the rate limit.
+
+        Backoff is checked first so a request rejected by backoff does not
+        also use up one of the 3-per-minute submissions.
         """
-        # First check standard rate limiting
-        allowed = super().allow_request(request, view)
-        
-        if not allowed:
-            return False
-        
-        # Check exponential backoff
+        self.backoff_remaining = 0
         if request.user and request.user.is_authenticated:
-            backoff_time = get_backoff_time(request.user.id)
-            if backoff_time > 0:
+            self.backoff_remaining = get_backoff_time(request.user.id)
+            if self.backoff_remaining > 0:
                 logger.warning(
-                    f"User {request.user.id} in backoff period. "
-                    f"Remaining: {backoff_time}s"
+                    "User %s in backoff period. Remaining: %ss",
+                    request.user.id, self.backoff_remaining,
                 )
                 return False
-        
-        return True
+
+        return super().allow_request(request, view)
+
+    def wait(self):
+        """
+        Seconds until the user may retry, used for the 429 message and the
+        Retry-After header (Issue #119).
+
+        DRF's default wait() is derived from the rate window, so a 2-second
+        backoff was reported as "Expected available in 30 seconds".
+        """
+        if self.backoff_remaining > 0:
+            return self.backoff_remaining
+        return super().wait()
 
 
 class OrderSubmissionHourlyThrottle(UserRateThrottle):
@@ -70,7 +80,9 @@ def get_backoff_time(user_id: int) -> int:
             return 0
         
         expiry_time = backoff_data.get('expiry', 0)
-        remaining = int(expiry_time - time.time())
+        # Round up: truncating let a request through up to a second early
+        # and could under-report the wait.
+        remaining = math.ceil(expiry_time - time.time())
         
         return max(0, remaining)
         

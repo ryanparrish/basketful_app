@@ -742,7 +742,6 @@ def test_empty_email_participant_skipped(monday_program, email_type):
     mock_send.assert_not_called()
 
 
-
 # ---------------------------------------------------------------------------
 # 17. Idle beat tick stays cheap (Issue #130)
 # ---------------------------------------------------------------------------
