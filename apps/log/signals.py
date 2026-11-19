@@ -49,13 +49,24 @@ class VoucherLogger:
     
 
 def get_client_ip(request):
-    """Get the client IP address from the request."""
+    """Client IP from the request, or None when no request was passed.
+
+    authenticate() and the login signals allow request=None; a crash here
+    would take down the login log and the login response with it (#136).
+    """
+    if request is None:
+        return None
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+        return x_forwarded_for.split(',')[0]
+    return request.META.get('REMOTE_ADDR')
+
+
+def get_user_agent(request):
+    """User-Agent header (truncated to the log field), or '' with no request."""
+    if request is None:
+        return ''
+    return request.META.get('HTTP_USER_AGENT', '')[:500]
 
 
 @receiver(user_logged_in)
@@ -75,7 +86,7 @@ def log_user_login(sender, request, user, **kwargs):
         user=user,
         action=UserLoginLog.LOGIN,
         ip_address=get_client_ip(request),
-        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+        user_agent=get_user_agent(request),
         participant=participant
     )
 
@@ -97,7 +108,7 @@ def log_user_logout(sender, request, user, **kwargs):
             user=user,
             action=UserLoginLog.LOGOUT,
             ip_address=get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+            user_agent=get_user_agent(request),
             participant=participant
         )
 
@@ -111,5 +122,5 @@ def log_user_login_failed(sender, credentials, request, **kwargs):
         username_attempted=credentials.get('username', '')[:150],
         action=UserLoginLog.FAILED_LOGIN,
         ip_address=get_client_ip(request),
-        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
+        user_agent=get_user_agent(request)
     )

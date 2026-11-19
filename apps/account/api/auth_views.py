@@ -228,10 +228,15 @@ class CookieTokenObtainView(APIView):
             )
         
         # Validate credentials
-        serializer = FlexibleTokenObtainPairSerializer(data={
-            'username': request.data.get('username', ''),
-            'password': request.data.get('password', ''),
-        })
+        # Pass the request so authenticate() hands it to the login signals:
+        # without it the failed-login logger crashed and wrote no row (#136).
+        serializer = FlexibleTokenObtainPairSerializer(
+            data={
+                'username': request.data.get('username', ''),
+                'password': request.data.get('password', ''),
+            },
+            context={'request': request},
+        )
         
         try:
             serializer.is_valid(raise_exception=True)
