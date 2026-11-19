@@ -194,9 +194,7 @@
     "status": {
       "pending": "Pendiente",
       "confirmed": "Confirmado",
-      "processing": "En proceso",
-      "shipped": "Enviado",
-      "delivered": "Entregado",
+      "packing": "Empacando",
       "completed": "Completado",
       "cancelled": "Cancelado"
     }
