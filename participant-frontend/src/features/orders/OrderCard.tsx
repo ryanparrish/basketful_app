@@ -22,7 +22,7 @@ import {
   ExpandLess,
   Schedule,
   CheckCircle,
-  LocalShipping,
+  Inventory2,
   Cancel,
   Pending,
 } from '@mui/icons-material';
@@ -37,15 +37,25 @@ interface OrderCardProps {
 
 type StatusChipColor = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info';
 
-const STATUS_CONFIGS: Record<string, { color: StatusChipColor; icon: React.ReactNode }> = {
+interface StatusChipConfig {
+  color: StatusChipColor;
+  icon: React.ReactNode;
+}
+
+// The statuses an order can actually be in (apps/orders/models.py
+// Order.status choices). Keying the config by this union makes the build
+// fail if a status is missing a chip.
+type OrderStatus = 'pending' | 'confirmed' | 'packing' | 'completed' | 'cancelled';
+
+const STATUS_CONFIGS: Record<OrderStatus, StatusChipConfig> = {
   pending: { color: 'warning', icon: <Pending /> },
   confirmed: { color: 'info', icon: <Schedule /> },
-  processing: { color: 'primary', icon: <Schedule /> },
-  shipped: { color: 'secondary', icon: <LocalShipping /> },
-  delivered: { color: 'success', icon: <CheckCircle /> },
+  packing: { color: 'primary', icon: <Inventory2 /> },
   completed: { color: 'success', icon: <CheckCircle /> },
   cancelled: { color: 'error', icon: <Cancel /> },
 };
+
+const UNKNOWN_STATUS_CONFIG: StatusChipConfig = { color: 'default', icon: <Pending /> };
 
 export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const { t } = useTranslation();
@@ -53,7 +63,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const [expanded, setExpanded] = useState(false);
 
   const statusKey = order.status?.toLowerCase();
-  const statusConfig = STATUS_CONFIGS[statusKey] || { color: 'default' as StatusChipColor, icon: <Pending /> };
+  const statusConfig = STATUS_CONFIGS[statusKey as OrderStatus] ?? UNKNOWN_STATUS_CONFIG;
   // Status labels are keyed by the backend status code; an unknown status
   // falls back to displaying the raw code
   const statusLabel = translateDynamic(`orders.status.${statusKey}`, {
