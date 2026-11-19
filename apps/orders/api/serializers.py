@@ -2,6 +2,8 @@
 Serializers for the Orders app.
 """
 from decimal import Decimal
+from django.db.models import Count, DecimalField, F, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils.translation import gettext as _
 from rest_framework import serializers
 
@@ -168,21 +170,51 @@ class OrderListSerializer(serializers.ModelSerializer):
         source='account.participant.customer_number', read_only=True
     )
     item_count = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'order_number', 'participant_name',
             'participant_customer_number', 'status', 'paid',
-            'total_price', 'item_count', 'order_date', 'created_at'
+            'total_price', 'item_count', 'total_quantity',
+            'order_date', 'created_at'
         ]
         read_only_fields = ['id', 'order_number', 'order_date', 'created_at']
 
+    @staticmethod
+    def annotate_item_totals(queryset):
+        """
+        Compute the item totals this serializer shows in SQL, so a list page
+        doesn't load every order's items (#129). Mirrors Order.total_price():
+        price_at_order, falling back to price for pre-snapshot rows.
+        """
+        money = DecimalField(max_digits=12, decimal_places=2)
+        line_total = F('items__quantity') * Coalesce('items__price_at_order', 'items__price')
+        return queryset.annotate(
+            annotated_item_count=Count('items'),
+            annotated_total_quantity=Coalesce(Sum('items__quantity'), 0),
+            annotated_total_price=Coalesce(
+                Sum(line_total, output_field=money), Value(Decimal('0')), output_field=money
+            ),
+        )
+
+    # Each field prefers the SQL annotation and falls back to Python for
+    # callers that pass plain querysets (program and combined-order lists).
+
     def get_total_price(self, obj) -> Decimal:
-        return obj.total_price()
+        annotated = getattr(obj, 'annotated_total_price', None)
+        return annotated if annotated is not None else obj.total_price()
 
     def get_item_count(self, obj) -> int:
-        return obj.items.count()
+        annotated = getattr(obj, 'annotated_item_count', None)
+        return annotated if annotated is not None else obj.items.count()
+
+    def get_total_quantity(self, obj) -> int:
+        annotated = getattr(obj, 'annotated_total_quantity', None)
+        if annotated is not None:
+            return annotated
+        return sum(item.quantity for item in obj.items.all())
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

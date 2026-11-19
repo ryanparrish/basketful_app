@@ -11,9 +11,6 @@ import {
   Chip,
   Collapse,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
   Divider,
   Stack,
 } from '@mui/material';
@@ -27,12 +24,13 @@ import {
   Pending,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import type { Order, OrderListItem } from '../../shared/types/api';
+import type { OrderListItem } from '../../shared/types/api';
 import { useFormatters } from '../../shared/hooks/useFormatters';
 import { translateDynamic } from '../../i18n';
+import { OrderCardDetails } from './OrderCardDetails';
 
 interface OrderCardProps {
-  order: Order | OrderListItem;
+  order: OrderListItem;
 }
 
 type StatusChipColor = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info';
@@ -73,9 +71,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const formattedDate = formatDate(orderDate);
   const formattedTime = formatTime(orderDate);
 
-  const itemCount = order.items?.length || 0;
-  const totalQuantity = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
-
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
@@ -112,10 +107,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
           sx={{ mt: 2 }}
         >
           <Typography variant="body2" color="text.secondary">
-            {t('orders.itemsSummary', { count: itemCount, total: totalQuantity })}
+            {t('orders.itemsSummary', { count: order.item_count, total: order.total_quantity })}
           </Typography>
           <Typography variant="h6" color="primary" fontWeight={600}>
-            {formatCurrency(order.total || order.total_price)}
+            {formatCurrency(order.total_price)}
           </Typography>
         </Stack>
 
@@ -131,37 +126,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
           </IconButton>
         </Box>
 
-        {/* Expanded Details */}
-        <Collapse in={expanded}>
+        {/* Expanded Details: loaded the first time the card is opened */}
+        <Collapse in={expanded} mountOnEnter>
           <Divider sx={{ my: 2 }} />
-          <Typography variant="subtitle2" gutterBottom>
-            {t('orders.itemsHeading')}
-          </Typography>
-          <List disablePadding dense>
-            {order.items?.map((item, idx) => (
-              <ListItem key={idx} disableGutters>
-                <ListItemText
-                  primary={item.product_name || t('orders.productFallback', { id: item.product_id || item.product })}
-                  secondary={t('checkout.quantity', { count: item.quantity })}
-                />
-                <Typography variant="body2">
-                  {formatCurrency(Number(item.price) * item.quantity)}
-                </Typography>
-              </ListItem>
-            ))}
-          </List>
-
-          {order.notes && (
-            <>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle2" gutterBottom>
-                {t('orders.notesHeading')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {order.notes}
-              </Typography>
-            </>
-          )}
+          <OrderCardDetails orderId={order.id} />
         </Collapse>
       </CardContent>
     </Card>

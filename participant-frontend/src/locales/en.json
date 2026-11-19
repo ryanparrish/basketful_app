@@ -191,6 +191,8 @@
     "itemsHeading": "Items",
     "notesHeading": "Notes",
     "productFallback": "Product #{{id}}",
+    "detailsLoading": "Loading order details",
+    "detailsLoadFailed": "Couldn't load this order's items. Please try again.",
     "status": {
       "pending": "Pending",
       "confirmed": "Confirmed",
