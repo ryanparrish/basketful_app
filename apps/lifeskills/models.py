@@ -180,22 +180,15 @@ class ProgramPause(models.Model):
     
     def archive(self):
         """
-        Archive this pause and clean up associated voucher flags.
-        
-        Sets archived=True, archived_at=now, and resets all vouchers to 
-        program_pause_flag=False and multiplier=1.
+        Archive this pause and clear voucher pause flags.
+
+        Sets archived=True and archived_at=now. Voucher flags are cleared
+        unless another pause is in its double-week window (#121).
         """
-        from apps.lifeskills.utils import set_voucher_pause_state
-        from apps.voucher.models import Voucher
-        
-        # Reset all vouchers that were flagged for this pause
-        active_voucher_ids = list(
-            Voucher.objects.filter(active=True, program_pause_flag=True)
-            .values_list('id', flat=True)
-        )
-        if active_voucher_ids:
-            set_voucher_pause_state(active_voucher_ids, activate=False, multiplier=1)
-        
+        from apps.lifeskills.utils import clear_stale_pause_flags
+
+        clear_stale_pause_flags(f"[Archive] ProgramPause ID={self.id}:")
+
         # Mark as archived
         self.archived = True
         self.archived_at = timezone.now()

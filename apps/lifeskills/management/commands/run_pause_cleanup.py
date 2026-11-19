@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.lifeskills.models import ProgramPause
+from apps.lifeskills.utils import pause_in_double_week
 from apps.voucher.models import Voucher
 
 
@@ -92,10 +93,22 @@ class Command(BaseCommand):
 
             will_archive = not pp.archived
 
-            if dry_run:
+            # Flags are kept while another pause is in its double-week
+            # window: they belong to that pause (#121)
+            live_pause = pause_in_double_week()
+            if live_pause is not None:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  [DRY RUN] Would reset {flagged_count} voucher(s) "
+                        f"  ProgramPause ID={live_pause.id} is in its double-week window: "
+                        f"voucher flags will be kept."
+                    )
+                )
+
+            if dry_run:
+                reset_count = 0 if live_pause is not None else flagged_count
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  [DRY RUN] Would reset {reset_count} voucher(s) "
                         f"and {'archive' if will_archive else 'skip archive of'} "
                         f"this pause."
                     )

@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.voucher.models import Voucher
 from apps.lifeskills.models import ProgramPause
-from apps.lifeskills.utils import set_voucher_pause_state
+from apps.lifeskills.utils import clear_stale_pause_flags, set_voucher_pause_state
 from apps.pantry.utils.utils import skip_signals
 
 logger = logging.getLogger(__name__)
@@ -348,27 +348,8 @@ def final_cleanup_after_pause_end(
         )
         return
     
-    # Find all vouchers still flagged
-    flagged_vouchers = Voucher.objects.filter(
-        program_pause_flag=True,
-        active=True
-    )
-    
-    if flagged_vouchers.exists():
-        voucher_ids = list(flagged_vouchers.values_list('id', flat=True))
-        updated, skipped = set_voucher_pause_state(voucher_ids, activate=False)
-        
-        logger.info(
-            "[Final Cleanup] Reset %d vouchers for ProgramPause ID=%s",
-            updated,
-            program_pause_id
-        )
-    else:
-        logger.info(
-            "[Final Cleanup] No flagged vouchers found for ProgramPause ID=%s",
-            program_pause_id
-        )
-    
+    clear_stale_pause_flags(f"[Final Cleanup] ProgramPause ID={program_pause_id}:")
+
     # Mark pause as archived
     if not pp.archived:
         pp.archived = True
@@ -388,55 +369,29 @@ def final_cleanup_after_pause_end(
 @shared_task(bind=True)
 def cleanup_expired_pause_flags(self):
     """
-    Daily task that finds expired pauses and cleans up any remaining flagged vouchers.
-    Provides safety net for missed cleanups.
+    Daily safety net for missed cleanups: archive pauses that have ended and
+    clear voucher pause flags left behind, unless another pause is in its
+    double-week window and owns them (#121).
     """
     now = timezone.now()
-    
-    # Find all pauses (including archived) that have ended
-    expired_pauses = ProgramPause.objects.all_pauses().filter(
-        pause_end__lt=now
-    )
-    
-    total_pauses_processed = 0
-    total_vouchers_cleaned = 0
-    
-    for pause in expired_pauses:
-        # Find vouchers still flagged
-        flagged_vouchers = Voucher.objects.filter(
-            program_pause_flag=True,
-            active=True
-        )
-        
-        if flagged_vouchers.exists():
-            voucher_ids = list(flagged_vouchers.values_list('id', flat=True))
-            updated, skipped = set_voucher_pause_state(voucher_ids, activate=False)
-            
-            if updated > 0:
-                logger.info(
-                    "[Daily Cleanup] Reset %d stale vouchers for ProgramPause ID=%s",
-                    updated,
-                    pause.id
-                )
-                total_vouchers_cleaned += updated
-        
-        # Mark as archived if not already
-        if not pause.archived:
-            pause.archived = True
-            pause.archived_at = now
-            # See final_cleanup_after_pause_end: skip the signal so this
-            # bookkeeping save doesn't re-trigger handle_program_pause().
-            with skip_signals(pause):
-                pause.save(update_fields=['archived', 'archived_at'])
-            logger.info(
-                "[Daily Cleanup] Marked ProgramPause ID=%s as archived",
-                pause.id
-            )
-        
-        total_pauses_processed += 1
-    
+
+    ended_pauses = ProgramPause.objects.filter(pause_end__lt=now)  # excludes archived
+
+    archived_count = 0
+    for pause in ended_pauses:
+        pause.archived = True
+        pause.archived_at = now
+        # See final_cleanup_after_pause_end: skip the signal so this
+        # bookkeeping save doesn't re-trigger handle_program_pause().
+        with skip_signals(pause):
+            pause.save(update_fields=['archived', 'archived_at'])
+        logger.info("[Daily Cleanup] Marked ProgramPause ID=%s as archived", pause.id)
+        archived_count += 1
+
+    cleared_count = clear_stale_pause_flags("[Daily Cleanup]")
+
     logger.info(
-        "[Daily Cleanup] Processed %d expired pauses, cleaned %d vouchers",
-        total_pauses_processed,
-        total_vouchers_cleaned
+        "[Daily Cleanup] Archived %d ended pauses, cleared %d voucher flags",
+        archived_count,
+        cleared_count,
     )
