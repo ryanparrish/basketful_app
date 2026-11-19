@@ -91,14 +91,20 @@ apiClient.interceptors.response.use(
 
     // Handle 401 - try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Don't retry refresh, login or password-reset endpoints: none of
-      // them depend on a session, so a 401 there is never an expired one
+      // A rejected refresh token is the one 401 that really means the
+      // session has expired
+      if (originalRequest.url?.includes('/auth/refresh')) {
+        dispatchSessionExpired();
+        return Promise.reject(error);
+      }
+
+      // Sign-in and password reset don't depend on a session, so a 401 there
+      // is a rejected request, never an expired session: hand it back to the
+      // page to show its own error (#135)
       if (
-        originalRequest.url?.includes('/auth/refresh') ||
         originalRequest.url?.includes('/auth/login') ||
         originalRequest.url?.includes('/auth/password-reset')
       ) {
-        dispatchSessionExpired();
         return Promise.reject(error);
       }
 
