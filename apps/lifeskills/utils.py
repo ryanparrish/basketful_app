@@ -121,3 +121,57 @@ def set_voucher_pause_state(voucher_ids, activate=False, multiplier=1):
         )
     
     return (updated_count, skipped_count)
+
+
+def pause_in_double_week():
+    """
+    The live (non-archived) pause currently in its double-week window
+    (10-14 days before its start), or None.
+
+    Uses the EST-correct ProgramPause.is_active_gate property rather than
+    the UTC-approximate .active() annotation, matching
+    _get_current_pause_multiplier() in balance_utils.
+    """
+    from apps.lifeskills.models import ProgramPause
+
+    return next(
+        (pause for pause in ProgramPause.objects.all() if pause.is_active_gate),
+        None,
+    )
+
+
+def clear_stale_pause_flags(context):
+    """
+    Clear every voucher's pause flag, unless a live pause is in its
+    double-week window.
+
+    Vouchers don't record which pause flagged them, so a reset can't be
+    scoped to one pause. While another pause is in its window the flags
+    belong to it, and clearing them un-doubles its vouchers (#121).
+
+    Args:
+        context (str): Log prefix naming the caller, e.g. "[Daily Cleanup]".
+
+    Returns:
+        int: Number of vouchers cleared (0 when skipped).
+    """
+    from apps.voucher.models import Voucher
+
+    live_pause = pause_in_double_week()
+    if live_pause is not None:
+        logger.info(
+            "%s Kept voucher pause flags: ProgramPause ID=%s is in its double-week window",
+            context,
+            live_pause.id,
+        )
+        return 0
+
+    flagged_ids = list(
+        Voucher.objects.filter(program_pause_flag=True, active=True).values_list('id', flat=True)
+    )
+    if not flagged_ids:
+        return 0
+
+    updated, _skipped = set_voucher_pause_state(flagged_ids, activate=False)
+    logger.info("%s Cleared %d stale voucher pause flags", context, updated)
+    return updated
