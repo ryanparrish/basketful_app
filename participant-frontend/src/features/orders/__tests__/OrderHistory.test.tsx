@@ -35,7 +35,7 @@ const ORDER_STUB: OrderListItem = {
   created_at: '2026-05-01T10:00:00Z',
   total_price: 25.00,
   item_count: 2,
-  items: [],
+  total_quantity: 3,
 };
 
 function renderOrderHistory() {

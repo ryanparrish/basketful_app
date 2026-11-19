@@ -191,6 +191,8 @@
     "itemsHeading": "Artículos",
     "notesHeading": "Notas",
     "productFallback": "Producto #{{id}}",
+    "detailsLoading": "Cargando los detalles del pedido",
+    "detailsLoadFailed": "No se pudieron cargar los artículos de este pedido. Intente de nuevo.",
     "status": {
       "pending": "Pendiente",
       "confirmed": "Confirmado",

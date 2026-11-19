@@ -139,7 +139,15 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter orders based on user permissions."""
-        qs = super().get_queryset()
+        if self.action == 'list':
+            # The list shows only order fields, the participant and item
+            # totals: skip the detail view's item/product/validation-log
+            # prefetches and total the items in SQL (#129)
+            qs = OrderListSerializer.annotate_item_totals(
+                Order.objects.select_related('account__participant')
+            )
+        else:
+            qs = super().get_queryset()
         user = self.request.user
         # Ownership runs through account -> participant -> user, not the
         # separate (frequently-null) `user` audit field on Order — orders

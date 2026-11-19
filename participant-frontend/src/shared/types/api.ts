@@ -187,11 +187,11 @@ export interface OrderListItem {
   order_date: string;
   status: string;
   total_price: number;
+  // The list carries item totals, not items: the card loads the order's
+  // items with getOrder(id) when it is expanded (#129)
   item_count: number;
-  items?: OrderItem[];
-  total?: number;
+  total_quantity: number;
   created_at?: string;
-  notes?: string;
 }
 
 export interface ParticipantProgram {
