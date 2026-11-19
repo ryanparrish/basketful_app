@@ -79,6 +79,11 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // The password-reset endpoints never use a session (#137)
+    if (originalRequest.url?.includes('/auth/password-reset')) {
+      return Promise.reject(error);
+    }
+
     // Handle 401 - try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Don't retry refresh or login endpoints

@@ -96,32 +96,26 @@ urlpatterns = [
         order_views.order_detail,
         name="order_detail",
     ),
+    # Password reset happens in the React apps (#137). These URLs stay
+    # because emails and bookmarks point at them.
     path(
         'password_reset/',
-        auth_views.PasswordResetView.as_view(
-            template_name='registration/password_reset_form.html'
-        ),
+        account_views.participant_app_page('forgot-password'),
         name='password_reset',
     ),
     path(
         'password_reset/done/',
-        auth_views.PasswordResetDoneView.as_view(
-            template_name='registration/password_reset_done.html'
-        ),
+        account_views.participant_app_page('forgot-password'),
         name='password_reset_done',
     ),
     path(
         'reset/<uidb64>/<token>/',
-        account_views.ClearingPasswordResetConfirmView.as_view(
-            template_name='registration/password_reset_confirm.html'
-        ),
+        account_views.password_reset_link,
         name='password_reset_confirm',
     ),
     path(
         'reset/done/',
-        auth_views.PasswordResetCompleteView.as_view(
-            template_name='registration/password_reset_complete.html'
-        ),
+        account_views.participant_app_page('login'),
         name='password_reset_complete',
     ),
 ]

@@ -91,6 +91,8 @@ import PrintCustomerList from './pages/PrintCustomerList';
 import BulkParticipantCreate from './pages/BulkParticipantCreate';
 import PrintWelcomeCards from './pages/PrintWelcomeCards';
 import LoginPage from './pages/Login';
+import ForgotPasswordPage from './pages/ForgotPassword';
+import ResetPasswordPage from './pages/ResetPassword';
 import StaffOrderPage from './pages/StaffOrderPage';
 
 // Branding
@@ -407,6 +409,13 @@ const App = () => (
       icon={ConfirmationNumberIcon}
       options={{ label: 'Voucher Logs' }}
     />
+
+    {/* Signed-out pages: password reset (#137) */}
+    <CustomRoutes noLayout>
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+    </CustomRoutes>
 
     {/* Custom Routes */}
     <CustomRoutes>

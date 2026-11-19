@@ -44,7 +44,8 @@
     "completeRecaptcha": "Please complete the reCAPTCHA verification",
     "recaptchaLoadFailed": "reCAPTCHA failed to load. Please refresh the page.",
     "forgotPassword": "Forgot your password?",
-    "needHelp": "Need help? Contact your program administrator."
+    "needHelp": "Need help? Contact your program administrator.",
+    "passwordSet": "Your password is set. Sign in with your new password."
   },
   "authErrors": {
     "customer_not_found": "Customer number not found. Please check and try again.",
@@ -55,6 +56,33 @@
     "recaptcha_required": "Please complete the security verification.",
     "recaptcha_failed": "Security verification failed. Please try again.",
     "default": "Login failed. Please try again."
+  },
+  "forgotPassword": {
+    "title": "Forgot your password?",
+    "instructions": "Enter your customer number or email address. We'll email you a link to set a new password.",
+    "identifier": "Customer number or email",
+    "enterIdentifier": "Please enter your customer number or email address",
+    "submit": "Send reset link",
+    "sentTitle": "Check your email",
+    "sent": "If an account matches, we sent it an email with a link to set a new password. The link works for 3 days.",
+    "noEmail": "No email? Check your spam folder, or ask your program coordinator for help.",
+    "backToSignIn": "Back to sign in",
+    "tooMany": "Too many requests. Please wait a while and try again.",
+    "failed": "Something went wrong. Please try again."
+  },
+  "resetPassword": {
+    "title": "Set a new password",
+    "instructions": "Choose a new password for your account.",
+    "checking": "Checking your link…",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "submit": "Set password",
+    "saving": "Saving…",
+    "mismatch": "The passwords don't match.",
+    "invalidTitle": "This link has expired",
+    "invalid": "This link is no longer valid. It may have been used already or be more than 3 days old. You can ask for a new one.",
+    "requestNew": "Get a new link",
+    "failed": "Your password could not be set. Please try again."
   },
   "session": {
     "expiredTitle": "Session Expired",

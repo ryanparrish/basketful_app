@@ -44,7 +44,8 @@
     "completeRecaptcha": "Por favor, complete la verificación reCAPTCHA",
     "recaptchaLoadFailed": "No se pudo cargar reCAPTCHA. Por favor, actualice la página.",
     "forgotPassword": "¿Olvidó su contraseña?",
-    "needHelp": "¿Necesita ayuda? Comuníquese con el administrador de su programa."
+    "needHelp": "¿Necesita ayuda? Comuníquese con el administrador de su programa.",
+    "passwordSet": "Su contraseña está lista. Inicie sesión con su nueva contraseña."
   },
   "authErrors": {
     "customer_not_found": "Número de cliente no encontrado. Verifíquelo e intente de nuevo.",
@@ -55,6 +56,33 @@
     "recaptcha_required": "Por favor, complete la verificación de seguridad.",
     "recaptcha_failed": "La verificación de seguridad falló. Intente de nuevo.",
     "default": "No se pudo iniciar sesión. Intente de nuevo."
+  },
+  "forgotPassword": {
+    "title": "¿Olvidó su contraseña?",
+    "instructions": "Ingrese su número de cliente o correo electrónico. Le enviaremos un enlace para crear una nueva contraseña.",
+    "identifier": "Número de cliente o correo electrónico",
+    "enterIdentifier": "Por favor, ingrese su número de cliente o correo electrónico",
+    "submit": "Enviar enlace",
+    "sentTitle": "Revise su correo electrónico",
+    "sent": "Si encontramos una cuenta, le enviamos un correo con un enlace para crear una nueva contraseña. El enlace funciona durante 3 días.",
+    "noEmail": "¿No le llegó el correo? Revise su carpeta de correo no deseado o pida ayuda al coordinador de su programa.",
+    "backToSignIn": "Volver a iniciar sesión",
+    "tooMany": "Demasiadas solicitudes. Espere un rato e intente de nuevo.",
+    "failed": "Algo salió mal. Por favor, intente de nuevo."
+  },
+  "resetPassword": {
+    "title": "Cree una nueva contraseña",
+    "instructions": "Elija una nueva contraseña para su cuenta.",
+    "checking": "Verificando su enlace…",
+    "new": "Nueva contraseña",
+    "confirm": "Confirme la nueva contraseña",
+    "submit": "Guardar contraseña",
+    "saving": "Guardando…",
+    "mismatch": "Las contraseñas no coinciden.",
+    "invalidTitle": "Este enlace ha vencido",
+    "invalid": "Este enlace ya no es válido. Es posible que ya se haya usado o que tenga más de 3 días. Puede pedir uno nuevo.",
+    "requestNew": "Pedir un enlace nuevo",
+    "failed": "No se pudo guardar su contraseña. Por favor, intente de nuevo."
   },
   "session": {
     "expiredTitle": "Sesión expirada",

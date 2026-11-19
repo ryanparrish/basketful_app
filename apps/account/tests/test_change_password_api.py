@@ -7,9 +7,6 @@ nothing cleared it before, so it isn't enforced. Changing or resetting a
 password clears it.
 """
 import pytest
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 from rest_framework.test import APIClient
 
 from apps.account.models import UserProfile
@@ -111,25 +108,3 @@ class TestAuthMeFlag:
         UserProfile.objects.filter(user=user).delete()
 
         assert client.get('/api/v1/auth/me/').data['user']['must_change_password'] is False
-
-
-@pytest.mark.django_db
-def test_django_password_reset_clears_flag(client, user):
-    """The emailed reset link still uses Django's page; it clears the flag too."""
-    from django.test import Client
-
-    browser = Client()
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    # Django swaps the token for a session marker on the first visit
-    response = browser.get(f'/reset/{uid}/{token}/')
-    assert response.status_code == 302
-    response = browser.post(response.url, {
-        'new_password1': NEW_PASSWORD,
-        'new_password2': NEW_PASSWORD,
-    })
-
-    assert response.status_code == 302
-    user.refresh_from_db()
-    assert user.check_password(NEW_PASSWORD)
-    assert flag(user) is False

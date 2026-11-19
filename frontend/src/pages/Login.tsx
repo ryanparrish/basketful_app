@@ -1,73 +1,56 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useLogin, useNotify } from 'react-admin';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
-  Avatar,
   Button,
-  Card,
   CardActions,
   CircularProgress,
+  Divider,
+  Link,
   TextField,
   Box,
   Typography,
   Alert,
   Skeleton,
 } from '@mui/material';
-import LockIcon from '@mui/icons-material/Lock';
 import ReCAPTCHA from 'react-google-recaptcha';
-import apiClient from '../lib/api/apiClient.ts';
+import { StaffAuthCard } from '../components/auth/StaffAuthCard';
+import { useRecaptchaSiteKey } from '../lib/useRecaptchaSiteKey';
+import { apiErrorDetails } from '../lib/api/passwordReset';
 
-interface ProgramConfig {
-  recaptcha_site_key?: string;
+/** Participants who land here by mistake (#137) need their own sign-in. */
+const PARTICIPANT_SIGN_IN_URL = import.meta.env.VITE_PARTICIPANT_APP_URL || '/cart/login';
+
+interface LoginLocationState {
+  /** Set by the reset page after a new password is saved. */
+  passwordSet?: boolean;
+  username?: string;
 }
 
+const loginErrorMessage = (error: unknown): string => {
+  const { status, code: errorCode } = apiErrorDetails(error);
+  if (status === 429) return 'Too many login attempts. Please wait a few minutes before trying again.';
+  if (errorCode === 'recaptcha_failed') return 'reCAPTCHA verification failed. Please try again.';
+  if (status === 401 || status === 400) {
+    return 'Invalid username or password. Please check your credentials and try again.';
+  }
+  if (status !== null && status >= 500) return 'The server encountered an error. Please try again later.';
+  if (!status) return 'Unable to reach the server. Please check your connection and try again.';
+  return 'Invalid username or password';
+};
+
 const LoginPage = () => {
-  const [username, setUsername] = useState('');
+  const locationState = (useLocation().state ?? {}) as LoginLocationState;
+  const [username, setUsername] = useState(locationState.username ?? '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState<string | null>(null);
-  const [recaptchaLoading, setRecaptchaLoading] = useState(true);
   const [recaptchaError, setRecaptchaError] = useState<string | null>(null);
+  const { siteKey: recaptchaSiteKey, isLoading: recaptchaLoading } = useRecaptchaSiteKey();
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const login = useLogin();
   const notify = useNotify();
-
-  // Fetch reCAPTCHA site key on mount
-  useEffect(() => {
-    const fetchRecaptchaKey = async () => {
-      try {
-        setRecaptchaLoading(true);
-        setRecaptchaError(null);
-
-        const response = await apiClient.get<ProgramConfig>('/settings/program-config/current/');
-        const siteKey = response.data?.recaptcha_site_key;
-
-        if (siteKey && siteKey !== 'test-public-key') {
-          setRecaptchaSiteKey(siteKey);
-        } else {
-          // Use Google's test key for development
-          setRecaptchaSiteKey('6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI');
-        }
-      } catch (err) {
-        console.error('Failed to load reCAPTCHA config:', err);
-        // Fallback to test key
-        setRecaptchaSiteKey('6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI');
-      } finally {
-        setRecaptchaLoading(false);
-      }
-    };
-
-    fetchRecaptchaKey();
-  }, []);
-
-  const handleRecaptchaChange = (token: string | null) => {
-    setRecaptchaToken(token);
-  };
-
-  const handleRecaptchaExpired = () => {
-    setRecaptchaToken(null);
-  };
 
   const handleRecaptchaError = () => {
     setRecaptchaError('reCAPTCHA failed to load. Please refresh the page.');
@@ -90,117 +73,97 @@ const LoginPage = () => {
         password,
         recaptcha_token: recaptchaToken,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Login error:', error);
-      
-      // Reset reCAPTCHA on failure
+      // A reCAPTCHA token is single-use
       recaptchaRef.current?.reset();
       setRecaptchaToken(null);
-
-      // Handle specific error codes
-      const status = error?.response?.status;
-      const errorCode = error?.response?.data?.code;
-      let errorMessage = 'Invalid username or password';
-
-      if (status === 429) {
-        errorMessage = 'Too many login attempts. Please wait a few minutes before trying again.';
-      } else if (errorCode === 'recaptcha_failed') {
-        errorMessage = 'reCAPTCHA verification failed. Please try again.';
-      } else if (status === 401 || status === 400) {
-        errorMessage = 'Invalid username or password. Please check your credentials and try again.';
-      } else if (status >= 500) {
-        errorMessage = 'The server encountered an error. Please try again later.';
-      } else if (!status) {
-        errorMessage = 'Unable to reach the server. Please check your connection and try again.';
-      }
-
-      notify(errorMessage, { type: 'error' });
+      notify(loginErrorMessage(error), { type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      }}
-    >
-      <Card sx={{ minWidth: 400, maxWidth: 450, p: 3 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-          <Avatar sx={{ bgcolor: 'primary.main', mb: 2 }}>
-            <LockIcon />
-          </Avatar>
-          <Typography component="h1" variant="h5">
-            Basketful Admin
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Sign in to continue
-          </Typography>
+    <StaffAuthCard subtitle="Sign in to continue">
+      {locationState.passwordSet && (
+        <Alert severity="success" sx={{ mb: 1 }}>
+          Your password is set. Sign in with your new password.
+        </Alert>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <Box sx={{ mt: 2 }}>
+          <TextField
+            autoFocus={!locationState.username}
+            fullWidth
+            label="Username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            disabled={loading}
+            required
+            margin="normal"
+          />
+          <TextField
+            autoFocus={!!locationState.username}
+            fullWidth
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            required
+            margin="normal"
+          />
         </Box>
 
-        <form onSubmit={handleSubmit}>
-          <Box sx={{ mt: 2 }}>
-            <TextField
-              autoFocus
-              fullWidth
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={loading}
-              required
-              margin="normal"
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+          {recaptchaLoading ? (
+            <Skeleton variant="rectangular" width={304} height={78} />
+          ) : recaptchaError ? (
+            <Alert severity="error" sx={{ width: '100%' }}>
+              {recaptchaError}
+            </Alert>
+          ) : recaptchaSiteKey ? (
+            <ReCAPTCHA
+              ref={recaptchaRef}
+              sitekey={recaptchaSiteKey}
+              onChange={setRecaptchaToken}
+              onExpired={() => setRecaptchaToken(null)}
+              onErrored={handleRecaptchaError}
             />
-            <TextField
-              fullWidth
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-              required
-              margin="normal"
-            />
-          </Box>
+          ) : null}
+        </Box>
 
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-            {recaptchaLoading ? (
-              <Skeleton variant="rectangular" width={304} height={78} />
-            ) : recaptchaError ? (
-              <Alert severity="error" sx={{ width: '100%' }}>
-                {recaptchaError}
-              </Alert>
-            ) : recaptchaSiteKey ? (
-              <ReCAPTCHA
-                ref={recaptchaRef}
-                sitekey={recaptchaSiteKey}
-                onChange={handleRecaptchaChange}
-                onExpired={handleRecaptchaExpired}
-                onErrored={handleRecaptchaError}
-              />
-            ) : null}
-          </Box>
+        <CardActions sx={{ justifyContent: 'center', mt: 3 }}>
+          <Button
+            variant="contained"
+            type="submit"
+            color="primary"
+            disabled={loading || !recaptchaToken}
+            fullWidth
+            size="large"
+          >
+            {loading ? <CircularProgress size={24} /> : 'Sign In'}
+          </Button>
+        </CardActions>
+      </form>
 
-          <CardActions sx={{ justifyContent: 'center', mt: 3 }}>
-            <Button
-              variant="contained"
-              type="submit"
-              color="primary"
-              disabled={loading || !recaptchaToken}
-              fullWidth
-              size="large"
-            >
-              {loading ? <CircularProgress size={24} /> : 'Sign In'}
-            </Button>
-          </CardActions>
-        </form>
-      </Card>
-    </Box>
+      <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+        <Link component={RouterLink} to="/forgot-password">
+          Forgot your password?
+        </Link>
+      </Typography>
+
+      <Divider sx={{ my: 2 }} />
+
+      <Typography variant="body2" align="center" color="text.secondary">
+        Shopping with Basketful?{' '}
+        <Link href={PARTICIPANT_SIGN_IN_URL}>Participant sign-in</Link>
+      </Typography>
+    </StaffAuthCard>
   );
 };
 

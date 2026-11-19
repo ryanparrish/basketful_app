@@ -12,3 +12,16 @@ export const serverErrorMessage = (error: unknown): string | null => {
   }
   return null;
 };
+
+/** The machine-readable `code` and HTTP status of a failed request. */
+export const apiErrorDetails = (
+  error: unknown
+): { status: number | null; code: string | null; data: Record<string, unknown> } => {
+  if (!isAxiosError(error)) return { status: null, code: null, data: {} };
+  const data = (error.response?.data ?? {}) as Record<string, unknown>;
+  return {
+    status: error.response?.status ?? null,
+    code: typeof data.code === 'string' ? data.code : null,
+    data,
+  };
+};

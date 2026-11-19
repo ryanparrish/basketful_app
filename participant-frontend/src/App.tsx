@@ -31,7 +31,7 @@ import { AccountPage } from './components/AccountPage';
 import { SessionExpiredDialog } from './components/SessionExpiredDialog';
 
 // Features
-import { LoginPage } from './features/auth';
+import { LoginPage, ForgotPasswordPage, ResetLinkLanding, ResetPasswordPage } from './features/auth';
 import { ProductsPage } from './features/products';
 import { CheckoutPage, OrderHistory } from './features/orders';
 
@@ -168,6 +168,9 @@ const App: React.FC = () => {
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset/:uid/:token" element={<ResetLinkLanding />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
 
               {/* Protected routes with Refine layout */}
               <Route

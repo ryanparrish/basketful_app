@@ -1,6 +1,7 @@
 """
 Tests for core.middleware.LegacyParticipantRedirectMiddleware: the old
-Django participant pages send people to the React app at /cart/.
+Django pages send people to the React apps (participants at /cart/, the
+Django admin sign-in to the staff app).
 """
 import pytest
 from django.test import Client
@@ -10,6 +11,7 @@ from django.test import Client
 def redirects_on(settings):
     settings.LEGACY_PARTICIPANT_REDIRECTS = True
     settings.PARTICIPANT_APP_PATH = '/cart/'
+    settings.STAFF_APP_PATH = '/new/admin/'
 
 
 @pytest.mark.django_db
@@ -22,6 +24,7 @@ def redirects_on(settings):
     ('/order/abc123XYZ/', '/cart/orders'),
     ('/account/update/', '/cart/account'),
     ('/accounts/password_change/', '/cart/account'),
+    ('/admin/login/', '/new/admin/login'),
 ])
 def test_old_pages_redirect_to_react(redirects_on, old, new):
     response = Client().get(old)
@@ -49,10 +52,8 @@ def test_posts_are_not_redirected(redirects_on):
 @pytest.mark.django_db
 @pytest.mark.parametrize('path', [
     '/',
-    '/password_reset/',
-    '/reset/done/',
     '/api/health/',
-    '/admin/login/',
+    '/admin/',
 ])
 def test_other_pages_are_untouched(redirects_on, path):
     response = Client().get(path)

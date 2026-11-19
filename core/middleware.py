@@ -41,7 +41,7 @@ class StaffAwareLocaleMiddleware(LocaleMiddleware):
 
 class LegacyParticipantRedirectMiddleware:
     """
-    Send participants from the old Django pages to the React app.
+    Send people from the old Django pages to the React apps.
 
     Only GET and HEAD are redirected, so a form posted from a page that was
     already open (an order being submitted, say) still completes. Redirects
@@ -61,6 +61,13 @@ class LegacyParticipantRedirectMiddleware:
         (re.compile(r'^/accounts/password_change/$'), 'account'),
     ]
 
+    # (old path pattern, page in the staff app). The Django admin sign-in is
+    # a dead end for participants who wander onto it (#137); the staff app's
+    # sign-in links them to theirs.
+    STAFF_ROUTES = [
+        (re.compile(r'^/admin/login/$'), 'login'),
+    ]
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -72,6 +79,9 @@ class LegacyParticipantRedirectMiddleware:
             for pattern, page in self.ROUTES:
                 if pattern.match(request.path):
                     return HttpResponseRedirect(settings.PARTICIPANT_APP_PATH + page)
+            for pattern, page in self.STAFF_ROUTES:
+                if pattern.match(request.path):
+                    return HttpResponseRedirect(settings.STAFF_APP_PATH + page)
         return self.get_response(request)
 
 

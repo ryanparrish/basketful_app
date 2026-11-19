@@ -5,8 +5,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   TextField,
   Button,
   Typography,
@@ -18,18 +16,18 @@ import {
   Link,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Person, Lock, Refresh } from '@mui/icons-material';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../providers/AuthContext';
-import { useThemeConfig } from '../../shared/theme/dynamicTheme';
-import { MAX_WIDTHS } from '../../shared/constants/layout';
 import { apiClient } from '../../shared/api/secureClient';
 import { translateDynamic } from '../../i18n';
-import { LanguageSwitcher } from '../../components/LanguageSwitcher';
+import { AuthPageShell } from './AuthPageShell';
 
 interface LocationState {
   from?: { pathname: string };
+  /** Set by the reset page: what the account signs in with. */
+  signInAs?: string;
 }
 
 interface ProgramConfig {
@@ -48,9 +46,9 @@ export const LoginPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
   const { login, isAuthenticated, isLoading, error, clearError } = useAuth();
-  const { themeConfig } = useThemeConfig();
+  const locationState = location.state as LocationState | null;
 
-  const [customerNumber, setCustomerNumber] = useState('');
+  const [customerNumber, setCustomerNumber] = useState(locationState?.signInAs ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<LoginFormErrorKey | null>(null);
@@ -64,8 +62,10 @@ export const LoginPage: React.FC = () => {
   
   // Session expired check
   const sessionExpired = searchParams.get('session_expired') === 'true';
+  // Arrived from setting a new password
+  const passwordSet = searchParams.get('reset') === 'success';
 
-  const from = (location.state as LocationState)?.from?.pathname || '/products';
+  const from = locationState?.from?.pathname || '/products';
 
   // Fetch reCAPTCHA site key from backend
   useEffect(() => {
@@ -182,191 +182,138 @@ export const LoginPage: React.FC = () => {
     : null;
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'background.default',
-        p: 2,
-      }}
-    >
-      <Card
-        sx={{
-          width: '100%',
-          maxWidth: MAX_WIDTHS.FORM,
-          mx: 'auto',
-        }}
-        elevation={4}
-      >
-        <CardContent sx={{ p: 4 }}>
-          {/* Logo/App Name */}
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            {themeConfig?.logo ? (
-              <Box
-                component="img"
-                src={themeConfig.logo}
-                alt={themeConfig.app_name}
-                sx={{
-                  maxHeight: 80,
-                  maxWidth: '100%',
-                  mb: 2,
-                }}
-              />
-            ) : (
-              <Typography variant="h4" component="h1" color="primary" gutterBottom>
-                {themeConfig?.app_name || 'Basketful'}
-              </Typography>
-            )}
-            <Typography variant="body2" color="text.secondary">
-              {t('login.subtitle')}
-            </Typography>
-          </Box>
+    <AuthPageShell subtitle={t('login.subtitle')}>
+      {passwordSet && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          {t('login.passwordSet')}
+        </Alert>
+      )}
 
-          {/* Session Expired Warning */}
-          {sessionExpired && (
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              {t('login.sessionExpired')}
-            </Alert>
-          )}
+      {/* Session Expired Warning */}
+      {sessionExpired && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          {t('login.sessionExpired')}
+        </Alert>
+      )}
 
-          {/* Error Messages */}
-          {(authErrorText || formError) && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {formError ? t(formError) : authErrorText}
-            </Alert>
-          )}
+      {/* Error Messages */}
+      {(authErrorText || formError) && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {formError ? t(formError) : authErrorText}
+        </Alert>
+      )}
 
-          {/* Login Form */}
-          <Box component="form" onSubmit={handleSubmit} noValidate>
-            <TextField
-              fullWidth
-              id="customer-number"
-              label={t('login.customerNumber')}
-              value={customerNumber}
-              onChange={(e) => setCustomerNumber(e.target.value)}
-              margin="normal"
-              autoComplete="username"
-              autoFocus
-              disabled={isLoading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Person color="action" />
-                  </InputAdornment>
-                ),
-              }}
-              inputProps={{
-                inputMode: 'text',
-                'aria-label': t('login.customerNumber'),
-              }}
-            />
+      {/* Login Form */}
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <TextField
+          fullWidth
+          id="customer-number"
+          label={t('login.customerNumber')}
+          value={customerNumber}
+          onChange={(e) => setCustomerNumber(e.target.value)}
+          margin="normal"
+          autoComplete="username"
+          autoFocus={!locationState?.signInAs}
+          disabled={isLoading}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Person color="action" />
+              </InputAdornment>
+            ),
+          }}
+          inputProps={{
+            inputMode: 'text',
+            'aria-label': t('login.customerNumber'),
+          }}
+        />
 
-            <TextField
-              fullWidth
-              id="password"
-              label={t('login.password')}
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              margin="normal"
-              autoComplete="current-password"
-              disabled={isLoading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Lock color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
-                      onClick={toggleShowPassword}
-                      edge="end"
-                      disabled={isLoading}
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            {/* reCAPTCHA */}
-            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-              {recaptchaLoading ? (
-                <Skeleton variant="rectangular" width={304} height={78} />
-              ) : recaptchaFailed ? (
-                <Alert
-                  severity="error"
-                  sx={{ width: '100%' }}
-                  action={
-                    <IconButton
-                      aria-label={t('common.retry')}
-                      color="inherit"
-                      size="small"
-                      onClick={handleRetryRecaptcha}
-                    >
-                      <Refresh />
-                    </IconButton>
-                  }
+        <TextField
+          fullWidth
+          id="password"
+          label={t('login.password')}
+          type={showPassword ? 'text' : 'password'}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          margin="normal"
+          autoComplete="current-password"
+          autoFocus={!!locationState?.signInAs}
+          disabled={isLoading}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Lock color="action" />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+                  onClick={toggleShowPassword}
+                  edge="end"
+                  disabled={isLoading}
                 >
-                  {t('login.recaptchaLoadFailed')}
-                </Alert>
-              ) : recaptchaSiteKey ? (
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={recaptchaSiteKey}
-                  onChange={handleRecaptchaChange}
-                  onExpired={handleRecaptchaExpired}
-                  onErrored={handleRecaptchaError}
-                />
-              ) : null}
-            </Box>
+                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isLoading || !isFormReady}
-              sx={{ mt: 3, mb: 2, py: 1.5 }}
+        {/* reCAPTCHA */}
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+          {recaptchaLoading ? (
+            <Skeleton variant="rectangular" width={304} height={78} />
+          ) : recaptchaFailed ? (
+            <Alert
+              severity="error"
+              sx={{ width: '100%' }}
+              action={
+                <IconButton
+                  aria-label={t('common.retry')}
+                  color="inherit"
+                  size="small"
+                  onClick={handleRetryRecaptcha}
+                >
+                  <Refresh />
+                </IconButton>
+              }
             >
-              {isLoading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                t('common.signIn')
-              )}
-            </Button>
-          </Box>
+              {t('login.recaptchaLoadFailed')}
+            </Alert>
+          ) : recaptchaSiteKey ? (
+            <ReCAPTCHA
+              ref={recaptchaRef}
+              sitekey={recaptchaSiteKey}
+              onChange={handleRecaptchaChange}
+              onExpired={handleRecaptchaExpired}
+              onErrored={handleRecaptchaError}
+            />
+          ) : null}
+        </Box>
 
-          {/* Forgot password: Django's reset pages, outside this app */}
-          <Typography variant="body2" align="center" sx={{ mt: 2 }}>
-            <Link href="/password_reset/">{t('login.forgotPassword')}</Link>
-          </Typography>
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={isLoading || !isFormReady}
+          sx={{ mt: 3, mb: 2, py: 1.5 }}
+        >
+          {isLoading ? (
+            <CircularProgress size={24} color="inherit" />
+          ) : (
+            t('common.signIn')
+          )}
+        </Button>
+      </Box>
 
-          {/* Help Text */}
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            align="center"
-            sx={{ mt: 2 }}
-          >
-            {t('login.needHelp')}
-          </Typography>
-
-          {/* Language Switcher */}
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-            <Box sx={{ minWidth: 180 }}>
-              <LanguageSwitcher variant="select" />
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    </Box>
+      <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+        <Link component={RouterLink} to="/forgot-password">
+          {t('login.forgotPassword')}
+        </Link>
+      </Typography>
+    </AuthPageShell>
   );
 };
 

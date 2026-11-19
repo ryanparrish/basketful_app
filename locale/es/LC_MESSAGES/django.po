@@ -249,3 +249,23 @@ msgstr ""
 #: apps/pantry/templates/admin/logged_out.html:10
 msgid "Log in again"
 msgstr ""
+
+#: apps/account/api/password_reset_views.py
+msgid "This link is invalid or has expired."
+msgstr "Este enlace no es válido o ha vencido."
+
+#: apps/account/api/password_reset_views.py
+msgid "Enter your customer number or email address."
+msgstr "Ingrese su número de cliente o correo electrónico."
+
+#: apps/account/api/password_reset_views.py
+msgid ""
+"If an account matches, we sent it an email with a link to set a new "
+"password."
+msgstr ""
+"Si encontramos una cuenta, le enviamos un correo con un enlace para crear "
+"una nueva contraseña."
+
+#: apps/account/api/password_reset_views.py
+msgid "Your password is set."
+msgstr "Su contraseña está lista."

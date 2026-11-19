@@ -19,6 +19,7 @@ export interface ProgramConfig {
   grace_message: string;
   rules_version: string;
   updated_at: string;
+  recaptcha_site_key?: string;
 }
 
 // Authentication

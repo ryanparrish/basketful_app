@@ -20,6 +20,11 @@ from .auth_views import (
     AuthMeView,
     ChangePasswordView,
 )
+from .password_reset_views import (
+    PasswordResetRequestView,
+    PasswordResetValidateView,
+    PasswordResetConfirmView,
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -37,6 +42,11 @@ urlpatterns = [
     path('auth/logout/', CookieTokenLogoutView.as_view(), name='auth_logout'),
     path('auth/me/', AuthMeView.as_view(), name='auth_me'),
     path('auth/change-password/', ChangePasswordView.as_view(), name='auth_change_password'),
+    path('auth/password-reset/', PasswordResetRequestView.as_view(), name='auth_password_reset'),
+    path('auth/password-reset/validate/', PasswordResetValidateView.as_view(),
+         name='auth_password_reset_validate'),
+    path('auth/password-reset/confirm/', PasswordResetConfirmView.as_view(),
+         name='auth_password_reset_confirm'),
     
     # ViewSet routes
     path('', include(router.urls)),

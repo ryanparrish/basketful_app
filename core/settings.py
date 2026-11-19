@@ -34,6 +34,8 @@ DOMAIN_NAME = env('DOMAIN_NAME', default='localhost')
 PARTICIPANT_FRONTEND_URL = env('PARTICIPANT_FRONTEND_URL', default='https://app.basketful.org')
 # Where nginx serves the React participant app on this host
 PARTICIPANT_APP_PATH = env('PARTICIPANT_APP_PATH', default='/cart/')
+# Where nginx serves the React staff app on this host
+STAFF_APP_PATH = env('STAFF_APP_PATH', default='/new/admin/')
 # Send participants from the old Django pages to the React app
 # (core.middleware.LegacyParticipantRedirectMiddleware). Off = the Django pages come back.
 LEGACY_PARTICIPANT_REDIRECTS = env.bool('LEGACY_PARTICIPANT_REDIRECTS', default=True)
@@ -445,6 +447,9 @@ REST_FRAMEWORK = {
         'login_ip': '30/minute',  # per address, all usernames
         'refresh': '30/minute',   # per signed-in user
         'password_change': '5/minute',
+        'password_reset': '5/hour',          # per address + identifier
+        'password_reset_ip': '30/hour',      # per address, all identifiers
+        'password_reset_confirm': '20/minute',
         'order_submission': '3/minute',  # Order submission rate limiting
         'order_submission_hourly': '10/hour',  # M8: documented hourly cap
         'order_submission_daily': '50/day',  # M8: documented daily cap

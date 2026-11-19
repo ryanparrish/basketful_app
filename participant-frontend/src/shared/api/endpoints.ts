@@ -150,6 +150,39 @@ export const changePassword = async (data: {
   await apiClient.post('/auth/change-password/', data);
 };
 
+// Password reset (#137) — anonymous; errors are 400s with a `code`
+export interface PasswordResetLink {
+  uid: string;
+  token: string;
+}
+
+export interface PasswordResetResult {
+  app: 'participant' | 'staff';
+  /** What the account signs in with: customer number, or username for staff. */
+  sign_in_as: string;
+}
+
+export const requestPasswordReset = async (data: {
+  identifier: string;
+  recaptcha_token: string;
+}): Promise<void> => {
+  await apiClient.post('/auth/password-reset/', data);
+};
+
+export const validatePasswordResetLink = async (
+  link: PasswordResetLink
+): Promise<{ valid: boolean }> => {
+  const response = await apiClient.post<{ valid: boolean }>('/auth/password-reset/validate/', link);
+  return response.data;
+};
+
+export const confirmPasswordReset = async (
+  data: PasswordResetLink & { new_password: string }
+): Promise<PasswordResetResult> => {
+  const response = await apiClient.post<PasswordResetResult>('/auth/password-reset/confirm/', data);
+  return response.data;
+};
+
 // Balances
 export const getAccountBalance = async (): Promise<{
   available_balance: number;

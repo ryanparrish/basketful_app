@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth.views import PasswordChangeView, PasswordResetConfirmView
+from django.conf import settings
+from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
 from django.contrib.auth import login
 from .forms import CustomLoginForm
@@ -20,15 +21,41 @@ class CustomPasswordChangeView(PasswordChangeView):
         return response
 
 
-class ClearingPasswordResetConfirmView(PasswordResetConfirmView):
-    """Password reset that also clears the must_change_password flag."""
+def password_reset_link(request, uidb64, token):
+    """Send an emailed reset link into the app that finishes it (#137).
 
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        UserProfile.objects.filter(user=form.user).update(
-            must_change_password=False
-        )
-        return response
+    The reset and onboarding emails build this URL with
+    {% url 'password_reset_confirm' %}, and staff edit those templates, so
+    the URL stays; Django's reset page behind it is gone. Participants go
+    to the participant app (in their language), everyone else to the staff
+    app. A link that doesn't decode still goes to the participant app,
+    which explains it has expired.
+    """
+    from django.contrib.auth import get_user_model
+    from django.utils.http import urlsafe_base64_decode
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=urlsafe_base64_decode(uidb64).decode())
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    participant = getattr(user, 'participant', None) if user else None
+    if user is not None and participant is None:
+        return redirect(f"{settings.STAFF_APP_PATH}reset-password/{uidb64}/{token}")
+
+    target = f"{settings.PARTICIPANT_APP_PATH}reset/{uidb64}/{token}"
+    language = getattr(participant, 'preferred_language', None)
+    if language:
+        target += f"?lang={language}"
+    return redirect(target)
+
+
+def participant_app_page(page):
+    """A view that sends the browser to a page of the participant app."""
+    def view(request, *args, **kwargs):
+        return redirect(f"{settings.PARTICIPANT_APP_PATH}{page}")
+    return view
 
 
 def _client_ip(request):
