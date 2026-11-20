@@ -16,6 +16,7 @@ import json
 from apps.voucher.models import Voucher
 # Local imports
 from .models import Order, FailedOrderAttempt, CombinedOrder, PackingSplitRule, PackingList
+from . import views_reports
 from .inline import OrderItemInline
 from .forms import CreateCombinedOrderForm
 from .utils.order_helper import OrderHelper
@@ -36,6 +37,7 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = ('paid',)
     inlines = [OrderItemInline]
     change_form_template = "admin/food_orders/order/change_form.html"
+    change_list_template = "admin/orders/order/change_list.html"
     exclude = ('user',)
 
     def display_total_price(self, obj):
@@ -55,8 +57,19 @@ class OrderAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.print_order),
                 name='order-print',
             ),
+            path(
+                'inventory-report/',
+                self.admin_site.admin_view(views_reports.inventory_report),
+                name='inventory_report',
+            ),
         ]
         return custom_urls + urls
+
+    def changelist_view(self, request, extra_context=None):
+        """Add the inventory report link to the order list."""
+        extra_context = extra_context or {}
+        extra_context['show_reports_link'] = True
+        return super().changelist_view(request, extra_context=extra_context)
 
     def print_order(self, request, order_id):
         """Render a printable view of the order."""
