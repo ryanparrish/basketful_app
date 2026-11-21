@@ -67,7 +67,7 @@ class LoginRateThrottle:
     Custom throttle class for login endpoints.
     More restrictive than default anonymous rate.
     """
-    from rest_framework.throttling import AnonRateThrottle
+    from core.throttling import AnonRateThrottle
     
     class LoginThrottle(AnonRateThrottle):
         rate = '5/minute'

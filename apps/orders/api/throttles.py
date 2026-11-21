@@ -4,7 +4,7 @@ Custom throttle classes for order submission with exponential backoff.
 import logging
 import math
 import time
-from rest_framework.throttling import UserRateThrottle
+from core.throttling import UserRateThrottle
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)

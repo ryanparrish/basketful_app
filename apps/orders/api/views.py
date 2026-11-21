@@ -53,6 +53,7 @@ from apps.orders.api.throttles import (
     OrderSubmissionDailyThrottle,
 )
 from apps.orders.utils.balance_rules import check_cart_balances
+from core.client_ip import get_client_ip
 from core.models import ProgramSettings
 
 logger = logging.getLogger(__name__)
@@ -213,14 +214,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
     
     def get_client_ip(self, request):
-        """Extract the real client IP address from request."""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR', '')
-        if x_forwarded_for:
-            # The leftmost IP is the original client; strip whitespace
-            ip = x_forwarded_for.split(',')[0].strip()
-        else:
-            ip = request.META.get('REMOTE_ADDR', '')
-        return ip
+        """The client's IP; see core.client_ip for how it's chosen (#111)."""
+        return get_client_ip(request) or ''
 
     def perform_update(self, serializer):
         """Set bypass flags on the instance before saving.
