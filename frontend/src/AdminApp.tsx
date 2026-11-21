@@ -78,6 +78,7 @@ import {
   CoachCreate,
 } from './resources';
 import CoachDashboard from './pages/CoachDashboard';
+import InventoryReport from './pages/InventoryReport';
 
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
@@ -113,6 +114,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import SchoolIcon from '@mui/icons-material/School';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CategoryIcon from '@mui/icons-material/Category';
 import MergeIcon from '@mui/icons-material/Merge';
@@ -147,6 +149,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="combined-orders" />
     <Menu.ResourceItem name="packing-lists" />
     <Menu.ResourceItem name="warehouse-inventory-lists" />
+    <Menu.Item to="/reports/inventory" primaryText="Inventory Report" leftIcon={<AssessmentIcon />} />
     <Menu.ResourceItem name="tags" />
     <Menu.ResourceItem name="product-limits" />
     <Menu.ResourceItem name="order-packers" />
@@ -431,6 +434,7 @@ const App = () => (
       <Route path="/participants/welcome-cards/:batchId" element={<PrintWelcomeCards />} />
       <Route path="/participants/welcome-cards" element={<PrintWelcomeCards />} />
       <Route path="/coach-dashboard" element={<CoachDashboard />} />
+      <Route path="/reports/inventory" element={<InventoryReport />} />
     </CustomRoutes>
   </Admin>
 );

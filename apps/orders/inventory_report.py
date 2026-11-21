@@ -1,12 +1,12 @@
-# apps/orders/views_reports.py
-"""Views for the inventory report (Issue #143).
+# apps/orders/inventory_report.py
+"""Inventory report data and CSV export (Issue #143).
 
 Staff-only report of what was ordered over a date range: items ordered,
-order cost by program, and distinct participants per week. Follows the
-voucher redemption report pattern (apps/voucher/views_reports.py): an
-admin view with a date-range form, on-screen tables, and a downloadable
-export (CSV here, so the pantry team can work the numbers in a
-spreadsheet).
+order cost by program, and distinct participants per week. Served by the
+API (apps/orders/api/reports.py, /api/v1/reports/inventory/) and shown in
+the React staff admin (frontend/src/pages/InventoryReport.tsx), with a CSV
+export of the same numbers so the pantry team can work them in a
+spreadsheet.
 
 Defaults (agreed with Liv Wilbraham, Nov 19, 2026):
 - Only orders that actually moved product count: statuses confirmed,
@@ -32,20 +32,36 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import Coalesce, TruncMonth, TruncWeek
 from django.http import HttpResponse
-from django.shortcuts import render
 from django.utils import timezone
 
-from apps.orders.forms import InventoryReportForm
 from apps.orders.models import Order, OrderItem
 
 # Orders that moved product: the statuses that hold stock.
 COUNTED_STATUSES = tuple(sorted(Order.RESOURCE_HOLDING_STATUSES))
 
 CENTS = Decimal('0.01')
+
+DATE_RANGE_CHOICES = [
+    ('last_6_months', 'Last 6 Months'),
+    ('this_week', 'This Week'),
+    ('this_month', 'This Month'),
+    ('last_month', 'Last Month'),
+    ('this_year', 'This Year'),
+    ('custom', 'Custom Range'),
+]
+
+GROUPING_CHOICES = [
+    ('range', 'Whole Range'),
+    ('weekly', 'Weekly'),
+    ('monthly', 'Monthly'),
+]
+
+# Longest custom range accepted. Weekly rows grow with the range, and a
+# typo'd year (0026 instead of 2026) shouldn't scan all of history.
+MAX_RANGE_DAYS = 3 * 366
 
 # Same cost rule as OrderItem.total_price(): the price snapshotted at order
 # time, falling back to price for rows created before the snapshot existed.
@@ -282,59 +298,6 @@ def _get_inventory_data(start_date, end_date, program=None, grouping='range'):
         'grand_total': grand_total,
         'participants_per_week': participants_per_week,
     }
-
-
-@staff_member_required
-def inventory_report(request):
-    """
-    View for the inventory report.
-
-    Shows items ordered, order cost by program, and distinct participants
-    per week for a selected date range, with an optional CSV export of
-    exactly the tables shown on screen.
-    """
-    form = InventoryReportForm(request.GET or None)
-    report_data = None
-    date_range_display = None
-    grouping = 'range'
-    start_date = end_date = None
-
-    if request.GET and form.is_valid():
-        start_date, end_date = _get_date_range(
-            form.cleaned_data['date_range'],
-            form.cleaned_data.get('start_date'),
-            form.cleaned_data.get('end_date'),
-        )
-        program = form.cleaned_data.get('program')
-        grouping = form.cleaned_data.get('grouping', 'range')
-
-        report_data = _get_inventory_data(
-            start_date, end_date, program, grouping
-        )
-        date_range_display = (
-            f"{start_date.strftime('%b %d, %Y')} - "
-            f"{end_date.strftime('%b %d, %Y')}"
-        )
-
-        # Handle CSV export
-        if 'export_csv' in request.GET:
-            return _generate_csv_report(
-                report_data, start_date, end_date, grouping
-            )
-
-    context = {
-        'form': form,
-        'report_data': report_data,
-        'date_range_display': date_range_display,
-        'grouping': grouping,
-        'title': 'Inventory Report',
-    }
-
-    return render(
-        request,
-        'admin/orders/inventory_report.html',
-        context
-    )
 
 
 def _csv_safe(value):

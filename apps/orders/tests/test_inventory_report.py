@@ -1,5 +1,8 @@
 """Tests for the inventory report (Issue #143).
 
+Data rules are tested on apps.orders.inventory_report directly; the API
+the React admin uses is /api/v1/reports/inventory/.
+
 The centrepiece is a spot check: a known set of orders in a known week,
 with the report's three tables verified against hand-computed numbers —
 item quantities, cost by program, and the distinct participant count.
@@ -13,8 +16,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import Client
-from django.urls import reverse
+from rest_framework.test import APIClient
 from django.utils import timezone
 
 from apps.account.models import AccountBalance
@@ -25,7 +27,7 @@ from apps.orders.tests.factories import (
     ProductFactory,
     ProgramFactory,
 )
-from apps.orders.views_reports import (
+from apps.orders.inventory_report import (
     COUNTED_STATUSES,
     _csv_safe,
     _get_date_range,
@@ -316,61 +318,93 @@ class TestDateRangeHelper:
         assert (start, end) == (date(2026, 1, 5), date(2026, 2, 5))
 
 
-class TestReportView:
-    def test_staff_can_view(self, db, staff_user, known_week):
-        client = Client()
-        client.force_login(staff_user)
-        response = client.get(
-            reverse('admin:inventory_report'),
-            {'date_range': 'custom', 'start_date': '2026-11-02',
-             'end_date': '2026-11-08', 'grouping': 'range'},
-        )
-        assert response.status_code == 200
-        assert b'Whole Milk' in response.content
-        assert b'22.50' in response.content
+REPORT_URL = '/api/v1/reports/inventory/'
+KNOWN_WEEK_PARAMS = {'date_range': 'custom', 'start_date': '2026-11-02',
+                     'end_date': '2026-11-08', 'grouping': 'range'}
 
-    def test_non_staff_cannot_view(self, db):
+
+def _api(user=None):
+    client = APIClient()
+    if user is not None:
+        client.force_authenticate(user)
+    return client
+
+
+class TestReportApi:
+    def test_staff_gets_known_week_numbers(self, db, staff_user, known_week):
+        response = _api(staff_user).get(REPORT_URL, KNOWN_WEEK_PARAMS)
+        assert response.status_code == 200, response.data
+        data = response.data
+        assert data['start_date'] == '2026-11-02'
+        assert data['end_date'] == '2026-11-08'
+        milk = next(r for r in data['items']
+                    if r['product_name'] == 'Whole Milk')
+        assert milk['quantity'] == 7
+        assert milk['total_cost'] == '17.50'
+        costs = {r['program_name']: r['total_cost']
+                 for r in data['program_costs']}
+        assert costs == {'Program One': '21.25', 'Program Two': '1.25'}
+        assert data['grand_total'] == '22.50'
+        week = data['participants_per_week'][0]
+        assert week['week_start'] == '2026-11-02'
+        assert week['participant_count'] == 3
+        assert week['is_partial'] is False
+
+    def test_program_filter(self, db, staff_user, known_week):
+        response = _api(staff_user).get(REPORT_URL, {
+            **KNOWN_WEEK_PARAMS, 'program': known_week['program_two'].pk,
+        })
+        assert response.status_code == 200
+        assert response.data['grand_total'] == '1.25'
+        assert response.data['program_name'] == 'Program Two'
+
+    def test_defaults_to_last_6_months(self, db, staff_user):
+        response = _api(staff_user).get(REPORT_URL)
+        assert response.status_code == 200
+        assert response.data['end_date'] == timezone.localdate().isoformat()
+        assert response.data['grouping'] == 'range'
+
+    @pytest.mark.parametrize('params, field', [
+        ({'date_range': 'custom'}, 'start_date'),
+        ({'date_range': 'custom', 'start_date': '2026-11-08',
+          'end_date': '2026-11-02'}, 'end_date'),
+        ({'date_range': 'custom', 'start_date': '0026-01-01',
+          'end_date': '2026-11-02'}, 'end_date'),
+        ({'grouping': 'daily'}, 'grouping'),
+        ({'program': 999999}, 'program'),
+    ])
+    def test_bad_params_are_400s(self, db, staff_user, params, field):
+        response = _api(staff_user).get(REPORT_URL, params)
+        assert response.status_code == 400
+        assert field in response.data
+
+    def test_non_staff_and_anonymous_refused(self, db):
         with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
             plain = User.objects.create_user(
                 username='plain', password='testpass123'
             )
-        client = Client()
-        client.force_login(plain)
-        response = client.get(reverse('admin:inventory_report'))
-        assert response.status_code in (302, 403)
+        assert _api(plain).get(REPORT_URL).status_code == 403
+        assert _api().get(REPORT_URL).status_code in (401, 403)
 
-    def test_csv_matches_screen_numbers(self, db, staff_user, known_week):
-        client = Client()
-        client.force_login(staff_user)
-        params = {'date_range': 'custom', 'start_date': '2026-11-02',
-                  'end_date': '2026-11-08', 'grouping': 'range'}
-        response = client.get(
-            reverse('admin:inventory_report'),
-            {**params, 'export_csv': '1'},
-        )
+    def test_csv_matches_json_numbers(self, db, staff_user, known_week):
+        client = _api(staff_user)
+        json_data = client.get(REPORT_URL, KNOWN_WEEK_PARAMS).data
+        response = client.get(REPORT_URL, {**KNOWN_WEEK_PARAMS, 'export': 'csv'})
         assert response.status_code == 200
         assert response['Content-Type'] == 'text/csv'
+        assert 'attachment' in response['Content-Disposition']
 
         rows = list(csv.reader(io.StringIO(response.content.decode())))
         flat = [cell for row in rows for cell in row]
-
-        data = _get_inventory_data(WEEK_START, WEEK_END)
-        # Every on-screen number appears in the CSV.
-        for item in data['items']:
+        for item in json_data['items']:
             assert item['product_name'] in flat
             assert str(item['quantity']) in flat
-            assert f"{item['total_cost']:.2f}" in flat
-        for cost in data['program_costs']:
+            assert item['total_cost'] in flat
+        for cost in json_data['program_costs']:
             assert cost['program_name'] in flat
-            assert f"{cost['total_cost']:.2f}" in flat
-        assert f"{data['grand_total']:.2f}" in flat
-        # Spot-check the exact known values.
-        assert '17.50' in flat  # Milk total
-        assert '21.25' in flat  # Program One total
-        assert '22.50' in flat  # Grand total
-        week_row = next(
-            r for r in rows if r and r[0] == '2026-11-02'
-        )
+            assert cost['total_cost'] in flat
+        assert json_data['grand_total'] in flat
+        week_row = next(r for r in rows if r and r[0] == '2026-11-02')
         assert week_row == ['2026-11-02', '2026-11-08', '3', '']
 
 
@@ -401,11 +435,9 @@ class TestPartialWeeks:
         assert labels == {'2026-11-04 to 2026-11-08 (partial week)'}
 
     def test_csv_notes_partial_week(self, db, staff_user, known_week):
-        client = Client()
-        client.force_login(staff_user)
-        response = client.get(reverse('admin:inventory_report'), {
+        response = _api(staff_user).get(REPORT_URL, {
             'date_range': 'custom', 'start_date': '2026-11-04',
-            'end_date': '2026-11-08', 'grouping': 'range', 'export_csv': '1',
+            'end_date': '2026-11-08', 'grouping': 'range', 'export': 'csv',
         })
         rows = list(csv.reader(io.StringIO(response.content.decode())))
         week_row = next(r for r in rows if r and r[0] == '2026-11-02')
