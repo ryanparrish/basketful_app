@@ -143,7 +143,14 @@ export const ProductEdit = () => (
       <ReferenceArrayInput source="tag_ids" reference="tags">
         <SelectArrayInput optionText="name" />
       </ReferenceArrayInput>
-      <NumberInput source="quantity_in_stock" min={0} />
+      {/* Read-only after creation: stock changes go through Stock Movements
+          so they are logged (Issue #144). The API rejects direct edits. */}
+      <NumberInput
+        source="quantity_in_stock"
+        label="Stock"
+        readOnly
+        helperText="To change stock, record a stock movement in the Django admin (Pantry > Stock Movements)"
+      />
       <NumberInput source="weight_lbs" min={0} step={0.1} />
       <BooleanInput source="active" />
       <BooleanInput source="is_meat" label="Is Meat Product" />

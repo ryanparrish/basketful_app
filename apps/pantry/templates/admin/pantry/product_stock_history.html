@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .stock-summary {
+        background: #e8f4fd;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border-left: 4px solid #417690;
+    }
+    .stock-summary p {
+        margin: 4px 0;
+        font-size: 14px;
+    }
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .results-table th {
+        background-color: #417690;
+        color: white;
+        padding: 12px;
+        text-align: left;
+        font-weight: bold;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .results-table td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+        font-size: 13px;
+    }
+    .results-table .num {
+        text-align: right;
+    }
+    .results-table tr:nth-child(even) {
+        background-color: #f5f5f5;
+    }
+    .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+        font-style: italic;
+    }
+    .btn-secondary {
+        background-color: #417690;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+
+    <div class="stock-summary">
+        <p><strong>Product:</strong> {{ product.name }}</p>
+        <p><strong>Current quantity in stock:</strong> {{ product.quantity_in_stock }}</p>
+        <p><strong>Active:</strong> {{ product.active|yesno:"Yes,No" }}</p>
+        <p>
+            Order activity (confirmed orders going out, cancellations
+            coming back) is automatic and is not listed here — this page
+            shows the manual movements recorded by staff.
+        </p>
+        <p>
+            <a href="{{ add_movement_url }}" class="btn-secondary">Record a stock movement for this product</a>
+            &nbsp;
+            <a href="{% url 'admin:pantry_product_change' product.pk %}">Back to product</a>
+        </p>
+    </div>
+
+    {% if movements %}
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Entered By</th>
+                    <th>Kind</th>
+                    <th class="num">Quantity Change</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for movement in movements %}
+                    <tr>
+                        <td>{{ movement.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>{{ movement.entered_by|default_if_none:"(deleted user)" }}</td>
+                        <td>{{ movement.get_kind_display }}</td>
+                        <td class="num">{{ movement.quantity_change|stringformat:"+d" }}</td>
+                        <td>{{ movement.note }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="no-data">
+            <p>No stock movements recorded for this product yet.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

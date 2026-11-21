@@ -2,6 +2,8 @@
 """Admin configuration for Pantry app."""
 # Django imports
 from django.contrib import admin
+from django.shortcuts import get_object_or_404, render
+from django.urls import path, reverse
 from django.utils.html import format_html
 from django.http import HttpResponseRedirect
 from django.core.exceptions import PermissionDenied
@@ -12,7 +14,7 @@ from apps.orders.tasks.weekly_orders import create_weekly_combined_orders
 from apps.pantry.models import (
     Product, Category,
     Subcategory, OrderPacker,
-    ProductLimit, Tag
+    ProductLimit, Tag, StockMovement
 )
 
 # Protected categories that cannot be modified or deleted
@@ -80,7 +82,7 @@ class SubcategoryAdmin(TranslationAdmin):
 @admin.register(Product)
 class ProductAdmin(TranslationAdmin):
     """Admin for Product model with image preview."""
-    readonly_fields = ['image_preview']
+    readonly_fields = ['image_preview', 'stock_history_link']
     search_fields = ['name', 'description', 'category__name', 'tags__name']
     list_display = ('name', 'category', 'subcategory', 'price', 'active', 'display_tags')
     list_filter = ('category', 'subcategory', 'active', 'tags')
@@ -101,6 +103,68 @@ class ProductAdmin(TranslationAdmin):
         return "(No image uploaded)"
 
     image_preview.short_description = "Current Image"
+
+    def get_readonly_fields(self, request, obj=None):
+        """Stock is read-only once a product exists (Issue #144).
+
+        After creation, every stock change must go through a
+        StockMovement so it is logged, and so a stale product form cannot
+        overwrite a movement's update. The initial count on a new product
+        is still entered here.
+        """
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.pk:
+            fields.append('quantity_in_stock')
+        return fields
+
+    def stock_history_link(self, obj):
+        """Link to this product's stock movement history (Issue #144)."""
+        if not obj or not obj.pk:
+            return "(Save the product first)"
+        url = reverse('admin:product_stock_history', args=[obj.pk])
+        count = obj.stock_movements.count()
+        return format_html(
+            '<a href="{}">View stock history</a> ({} movement{}). '
+            'To change the stock count, record a stock movement.',
+            url, count, '' if count == 1 else 's',
+        )
+
+    stock_history_link.short_description = "Stock History"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/stock-history/',
+                self.admin_site.admin_view(self.stock_history_view),
+                name='product_stock_history',
+            ),
+        ]
+        return custom_urls + urls
+
+    def stock_history_view(self, request, object_id):
+        """Per-product stock history: movements plus the current count."""
+        product = get_object_or_404(Product, pk=object_id)
+        if not self.has_view_permission(request, product):
+            raise PermissionDenied
+        movements = (
+            product.stock_movements.select_related('entered_by').all()
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Stock History: {product.name}',
+            'product': product,
+            'movements': movements,
+            'add_movement_url': (
+                reverse('admin:pantry_stockmovement_add')
+                + f'?product={product.pk}'
+            ),
+        }
+        return render(
+            request,
+            'admin/pantry/product_stock_history.html',
+            context,
+        )
 
     class Media:
         """Media class to include custom JS for image preview."""
@@ -230,3 +294,38 @@ class ProductLimitAdmin(admin.ModelAdmin):
         )
     get_limit_explanation.short_description = 'How Limit Works'
 
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    """Admin for StockMovement (Issue #144).
+
+    The add form is the pantry team's stock-entry form: product
+    autocomplete, signed quantity change, kind, and an optional note.
+    Existing movements are read-only and cannot be deleted — a wrong
+    entry is fixed with a new correction movement, so the history stays
+    trustworthy. Creating a movement updates the product's stock count
+    (see StockMovement.save).
+    """
+    list_display = (
+        'created_at', 'product', 'kind', 'quantity_change', 'entered_by',
+    )
+    list_filter = ('kind', 'created_at')
+    search_fields = ('product__name', 'note')
+    autocomplete_fields = ('product',)
+    readonly_fields = ('entered_by', 'created_at')
+    ordering = ('-created_at',)
+    date_hierarchy = 'created_at'
+
+    def save_model(self, request, obj, form, change):
+        if not change and obj.entered_by is None:
+            obj.entered_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def has_change_permission(self, request, obj=None):
+        # Existing movements are never edited.
+        if obj is not None:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
