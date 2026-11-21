@@ -104,6 +104,19 @@ class ProductAdmin(TranslationAdmin):
 
     image_preview.short_description = "Current Image"
 
+    def get_readonly_fields(self, request, obj=None):
+        """Stock is read-only once a product exists (Issue #144).
+
+        After creation, every stock change must go through a
+        StockMovement so it is logged, and so a stale product form cannot
+        overwrite a movement's update. The initial count on a new product
+        is still entered here.
+        """
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.pk:
+            fields.append('quantity_in_stock')
+        return fields
+
     def stock_history_link(self, obj):
         """Link to this product's stock movement history (Issue #144)."""
         if not obj or not obj.pk:
@@ -111,7 +124,8 @@ class ProductAdmin(TranslationAdmin):
         url = reverse('admin:product_stock_history', args=[obj.pk])
         count = obj.stock_movements.count()
         return format_html(
-            '<a href="{}">View stock history</a> ({} movement{})',
+            '<a href="{}">View stock history</a> ({} movement{}). '
+            'To change the stock count, record a stock movement.',
             url, count, '' if count == 1 else 's',
         )
 
@@ -131,6 +145,8 @@ class ProductAdmin(TranslationAdmin):
     def stock_history_view(self, request, object_id):
         """Per-product stock history: movements plus the current count."""
         product = get_object_or_404(Product, pk=object_id)
+        if not self.has_view_permission(request, product):
+            raise PermissionDenied
         movements = (
             product.stock_movements.select_related('entered_by').all()
         )
@@ -277,7 +293,6 @@ class ProductLimitAdmin(admin.ModelAdmin):
             example
         )
     get_limit_explanation.short_description = 'How Limit Works'
-
 
 
 @admin.register(StockMovement)

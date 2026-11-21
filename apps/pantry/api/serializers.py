@@ -120,6 +120,20 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_limit(self, obj):
         return Product.get_limit_for_product(obj)
 
+    def validate_quantity_in_stock(self, value):
+        """Stock can only be set when a product is created (Issue #144).
+
+        After that, every change must be a StockMovement so it is logged
+        and cannot be clobbered by a stale edit form. Sending the current
+        value back unchanged (as edit forms do) is allowed.
+        """
+        if self.instance is not None and value != self.instance.quantity_in_stock:
+            raise serializers.ValidationError(
+                "Stock can't be edited directly. Record a stock movement "
+                "(Pantry > Stock Movements) so the change is logged."
+            )
+        return value
+
 
 class ProductListSerializer(serializers.ModelSerializer):
     """Simplified serializer for Product list views."""

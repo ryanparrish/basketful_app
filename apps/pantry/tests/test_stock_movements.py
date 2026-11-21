@@ -283,3 +283,143 @@ class TestProductHistoryView:
             reverse('admin:product_stock_history', args=[product.pk])
         )
         assert response.status_code in (302, 403)
+
+
+# ---------------------------------------------------------------------------
+# Review fixes
+# ---------------------------------------------------------------------------
+
+class TestAdminShowsValidationErrors:
+    """The admin form must show a form error, never a 500."""
+
+    def _post(self, user, product, change, kind):
+        client = Client()
+        client.force_login(user)
+        return client.post(
+            reverse('admin:pantry_stockmovement_add'),
+            {
+                'product': str(product.pk),
+                'quantity_change': str(change),
+                'kind': kind,
+                'note': '',
+            },
+        )
+
+    def test_below_zero_is_a_form_error(self, staff_user):
+        product = ProductFactory(quantity_in_stock=5)
+        response = self._post(
+            staff_user, product, -6, StockMovement.Kind.SPOILAGE
+        )
+        assert response.status_code == 200
+        assert 'below zero' in response.content.decode()
+        product.refresh_from_db()
+        assert product.quantity_in_stock == 5
+        assert StockMovement.objects.count() == 0
+
+    def test_wrong_sign_is_a_form_error(self, staff_user):
+        product = ProductFactory(quantity_in_stock=5)
+        response = self._post(
+            staff_user, product, -3, StockMovement.Kind.RECEIVED
+        )
+        assert response.status_code == 200
+        assert 'must be positive' in response.content.decode()
+        assert StockMovement.objects.count() == 0
+
+
+class TestKindSignRules:
+
+    @pytest.mark.parametrize('kind', [
+        StockMovement.Kind.RECEIVED, StockMovement.Kind.DONATION,
+    ])
+    def test_incoming_kinds_reject_negative(self, kind):
+        product = ProductFactory(quantity_in_stock=50)
+        with pytest.raises(ValidationError):
+            StockMovement.objects.create(
+                product=product, quantity_change=-5, kind=kind,
+            )
+
+    def test_spoilage_rejects_positive(self):
+        product = ProductFactory(quantity_in_stock=5)
+        with pytest.raises(ValidationError):
+            StockMovement.objects.create(
+                product=product, quantity_change=5,
+                kind=StockMovement.Kind.SPOILAGE,
+            )
+
+    @pytest.mark.parametrize('change', [3, -3])
+    def test_correction_allows_either_sign(self, change):
+        product = ProductFactory(quantity_in_stock=10)
+        StockMovement.objects.create(
+            product=product, quantity_change=change,
+            kind=StockMovement.Kind.CORRECTION,
+        )
+        product.refresh_from_db()
+        assert product.quantity_in_stock == 10 + change
+
+
+class TestHistoryIsProtected:
+
+    def test_product_with_movements_cannot_be_deleted(self):
+        from django.db.models import ProtectedError
+
+        product = ProductFactory(quantity_in_stock=1)
+        StockMovement.objects.create(
+            product=product, quantity_change=4,
+            kind=StockMovement.Kind.RECEIVED,
+        )
+        with pytest.raises(ProtectedError):
+            product.delete()
+        assert StockMovement.objects.filter(product=product).exists()
+
+
+class TestStockOnlyChangesThroughMovements:
+
+    def test_product_admin_stock_readonly_on_change(self, rf, staff_user):
+        from django.contrib import admin as django_admin
+
+        product = ProductFactory()
+        model_admin = django_admin.site._registry[Product]
+        request = rf.get('/')
+        request.user = staff_user
+        assert 'quantity_in_stock' in model_admin.get_readonly_fields(
+            request, product
+        )
+        # A new product still takes its initial count on the add form.
+        assert 'quantity_in_stock' not in model_admin.get_readonly_fields(
+            request, None
+        )
+
+    def test_api_rejects_direct_stock_edit(self):
+        from apps.pantry.api.serializers import ProductSerializer
+
+        product = ProductFactory(quantity_in_stock=10)
+        serializer = ProductSerializer(
+            product, data={'quantity_in_stock': 99}, partial=True,
+        )
+        assert not serializer.is_valid()
+        assert 'quantity_in_stock' in serializer.errors
+
+    def test_api_allows_unchanged_stock_value(self):
+        from apps.pantry.api.serializers import ProductSerializer
+
+        product = ProductFactory(quantity_in_stock=10)
+        serializer = ProductSerializer(
+            product, data={'quantity_in_stock': 10}, partial=True,
+        )
+        assert serializer.is_valid(), serializer.errors
+
+
+class TestHistoryPermissions:
+
+    def test_history_requires_view_permission(self):
+        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
+            bare_staff = password_already_chosen(User.objects.create_user(
+                username='bare-staff', password='x', is_staff=True,
+            ))
+        product = ProductFactory()
+        client = Client()
+        client.force_login(bare_staff)
+        response = client.get(
+            reverse('admin:product_stock_history', args=[product.pk])
+        )
+        assert response.status_code == 403

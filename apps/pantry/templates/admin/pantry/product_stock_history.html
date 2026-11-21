@@ -97,7 +97,7 @@
                 {% for movement in movements %}
                     <tr>
                         <td>{{ movement.created_at|date:"Y-m-d H:i" }}</td>
-                        <td>{{ movement.entered_by }}</td>
+                        <td>{{ movement.entered_by|default_if_none:"(deleted user)" }}</td>
                         <td>{{ movement.get_kind_display }}</td>
                         <td class="num">{{ movement.quantity_change|stringformat:"+d" }}</td>
                         <td>{{ movement.note }}</td>

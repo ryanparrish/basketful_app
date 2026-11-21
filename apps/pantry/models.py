@@ -8,7 +8,7 @@ from django.contrib.auth.models import Group
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
-from django.utils.translation import gettext as _, ngettext
+from django.utils.translation import gettext as _, gettext_lazy, ngettext
 from django.db import models, transaction
 from django.core.cache import cache
 # Local app imports
@@ -316,14 +316,23 @@ class StockMovement(models.Model):
     """
 
     class Kind(models.TextChoices):
-        RECEIVED = 'received', _('Received / Purchase')
-        DONATION = 'donation', _('Donation')
-        SPOILAGE = 'spoilage', _('Spoilage / Removal')
-        CORRECTION = 'correction', _('Correction')
+        # gettext_lazy: these labels are evaluated at import time, so a
+        # non-lazy gettext would freeze them in the startup language.
+        RECEIVED = 'received', gettext_lazy('Received / Purchase')
+        DONATION = 'donation', gettext_lazy('Donation')
+        SPOILAGE = 'spoilage', gettext_lazy('Spoilage / Removal')
+        CORRECTION = 'correction', gettext_lazy('Correction')
+
+    # Kinds that only ever add stock / only ever remove it. Corrections
+    # may go either way.
+    INCOMING_KINDS = frozenset({Kind.RECEIVED, Kind.DONATION})
+    OUTGOING_KINDS = frozenset({Kind.SPOILAGE})
 
     product = models.ForeignKey(
         'pantry.Product',
-        on_delete=models.CASCADE,
+        # PROTECT: the movement log is the audit record — deleting a
+        # product must not silently wipe its history. Deactivate instead.
+        on_delete=models.PROTECT,
         related_name='stock_movements',
     )
     quantity_change = models.IntegerField(
@@ -361,15 +370,54 @@ class StockMovement(models.Model):
             f"({self.get_kind_display()})"
         )
 
+    def _below_zero_message(self, product):
+        return _(
+            "This movement would take %(name)s below zero "
+            "(current stock: %(stock)s, change: %(change)+d)."
+        ) % {
+            'name': product.name,
+            'stock': product.quantity_in_stock,
+            'change': self.quantity_change,
+        }
+
     def clean(self):
+        """Validate the movement so the admin form can show errors inline.
+
+        The below-zero check here gives a friendly form error; save()
+        repeats it under a row lock to close the race between two
+        concurrent entries.
+        """
         super().clean()
-        if self.quantity_change == 0:
+        change = self.quantity_change
+        if change is None:
+            return
+        if change == 0:
             raise ValidationError({
                 'quantity_change': _(
                     "A stock movement must change the quantity "
                     "(use a positive or negative number, not zero)."
                 ),
             })
+        if self.kind in self.INCOMING_KINDS and change < 0:
+            raise ValidationError({
+                'quantity_change': _(
+                    "%(kind)s adds stock, so the quantity must be positive. "
+                    "Use Spoilage / Removal or Correction to take stock out."
+                ) % {'kind': self.get_kind_display()},
+            })
+        if self.kind in self.OUTGOING_KINDS and change > 0:
+            raise ValidationError({
+                'quantity_change': _(
+                    "%(kind)s removes stock, so the quantity must be "
+                    "negative (for example -5)."
+                ) % {'kind': self.get_kind_display()},
+            })
+        if self.product_id is not None:
+            product = Product.objects.filter(pk=self.product_id).first()
+            if product and product.quantity_in_stock + change < 0:
+                raise ValidationError({
+                    'quantity_change': self._below_zero_message(product),
+                })
 
     def save(self, *args, **kwargs):
         # Movements are the audit record: once written, a movement is
@@ -384,13 +432,13 @@ class StockMovement(models.Model):
             product = Product.objects.select_for_update().get(
                 pk=self.product_id
             )
+            # Re-check under the lock: clean() ran without one, so another
+            # movement or order may have changed stock since.
             new_stock = product.quantity_in_stock + self.quantity_change
             if new_stock < 0:
-                raise ValidationError(
-                    f"This movement would take {product.name} below zero "
-                    f"(current stock: {product.quantity_in_stock}, "
-                    f"change: {self.quantity_change:+d})."
-                )
+                raise ValidationError({
+                    'quantity_change': self._below_zero_message(product),
+                })
             # Update the count only. In particular, receiving stock does
             # NOT reactivate an inactive product — making a product
             # orderable again stays a deliberate staff action (see

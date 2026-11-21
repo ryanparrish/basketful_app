@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('note', models.TextField(blank=True, help_text='Optional source or note (donor, store, reason for a correction, ...).')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('entered_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='stock_movements', to=settings.AUTH_USER_MODEL)),
-                ('product', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='stock_movements', to='pantry.product')),
+                ('product', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='stock_movements', to='pantry.product')),
             ],
             options={
                 'verbose_name': 'Stock Movement',
