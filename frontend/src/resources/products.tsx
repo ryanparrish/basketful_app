@@ -34,7 +34,12 @@ import {
   ArrayField,
   SingleFieldList,
   ChipField,
+  ReferenceManyField,
+  Pagination,
+  Labeled,
 } from 'react-admin';
+import { Box } from '@mui/material';
+import { RecordStockMovementButton, StockMovementRows } from './stockMovements';
 
 const productFilters = [
   <SearchInput source="q" alwaysOn key="search" />,
@@ -110,11 +115,30 @@ export const ProductShow = () => (
           <ChipField source="name" />
         </SingleFieldList>
       </ArrayField>
-      <NumberField source="quantity_in_stock" label="Stock" />
+      <Labeled label="Stock">
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <NumberField source="quantity_in_stock" />
+          <RecordStockMovementButton />
+        </Box>
+      </Labeled>
       <NumberField source="weight_lbs" label="Weight (lbs)" />
       <NumberField source="limit" label="Purchase Limit" />
       <BooleanField source="active" />
       <BooleanField source="is_meat" label="Is Meat Product" />
+      {/* Manual stock changes recorded by staff (Issue #144). Order
+          activity moves stock automatically and isn't listed here. */}
+      <Labeled label="Stock history (manual movements; orders adjust stock automatically)" fullWidth>
+        <ReferenceManyField
+          reference="stock-movements"
+          target="product"
+          sort={{ field: 'created_at', order: 'DESC' }}
+          perPage={10}
+          pagination={<Pagination />}
+          empty={<span>No stock movements recorded yet.</span>}
+        >
+          <StockMovementRows showProduct={false} />
+        </ReferenceManyField>
+      </Labeled>
     </SimpleShowLayout>
   </Show>
 );
@@ -149,7 +173,7 @@ export const ProductEdit = () => (
         source="quantity_in_stock"
         label="Stock"
         readOnly
-        helperText="To change stock, record a stock movement in the Django admin (Pantry > Stock Movements)"
+        helperText="To change stock, use Record stock movement on the product page (or Stock Movements in the menu)"
       />
       <NumberInput source="weight_lbs" min={0} step={0.1} />
       <BooleanInput source="active" />

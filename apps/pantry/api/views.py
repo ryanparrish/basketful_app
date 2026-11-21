@@ -1,7 +1,8 @@
 """
 ViewSets for the Pantry app.
 """
-from rest_framework import viewsets, filters
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import filters, mixins, serializers, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -17,6 +18,7 @@ from apps.pantry.models import (
     ProductLimit,
     OrderPacker,
     LowInventoryAlertSettings,
+    StockMovement,
 )
 from apps.pantry.api.serializers import (
     CategorySerializer,
@@ -28,6 +30,7 @@ from apps.pantry.api.serializers import (
     ProductLimitSerializer,
     OrderPackerSerializer,
     LowInventoryAlertSettingsSerializer,
+    StockMovementSerializer,
 )
 
 
@@ -176,3 +179,43 @@ class LowInventoryAlertSettingsViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class StockMovementViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Manual stock entry and history (Issue #144).
+
+    List / retrieve / create only. Movements are the audit record, so
+    there is no update or delete: a mistake is fixed by recording a
+    correction movement. Creating one updates Product.quantity_in_stock in
+    the same transaction (StockMovement.save).
+    """
+    queryset = StockMovement.objects.select_related('product', 'entered_by')
+    serializer_class = StockMovementSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [
+        DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
+    ]
+    filterset_fields = ['product', 'kind', 'entered_by']
+    search_fields = ['product__name', 'note']
+    ordering_fields = ['created_at', 'quantity_change', 'product__name']
+    ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        try:
+            movement = serializer.save(entered_by=self.request.user)
+        except DjangoValidationError as exc:
+            # The locked re-check in save() can still refuse it if stock
+            # changed since validation (another entry or an order).
+            raise serializers.ValidationError(
+                exc.message_dict if hasattr(exc, 'error_dict') else exc.messages
+            )
+        movement._stock_after = (
+            Product.objects.values_list('quantity_in_stock', flat=True)
+            .get(pk=movement.product_id)
+        )

@@ -11,9 +11,12 @@ Business rules verified:
      reactivation stays a deliberate staff action.
   5. Movements are immutable: editing or deleting one is refused; a
      mistake is fixed with a new correction movement.
-  6. Entry and history are staff-only (admin); non-staff are turned away.
+  6. Entry and history are staff-only (API at /api/v1/stock-movements/,
+     used by the React admin); non-staff are turned away.
   7. A product's history lists its movements (who, when, kind, quantity,
      note), newest first.
+  8. The API has no update or delete; rule violations come back as 400
+     field errors, not 500s.
 """
 from unittest.mock import patch
 
@@ -21,7 +24,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
-from django.test import Client
+from rest_framework.test import APIClient
 from django.urls import reverse
 
 from apps.account.tests.helpers import password_already_chosen
@@ -184,147 +187,9 @@ class TestImmutability:
         assert product.stock_movements.count() == 2
 
 
-class TestAdminEntryAndPermissions:
-
-    def test_staff_can_create_movement_via_admin(self, staff_user):
-        product = ProductFactory(name='Canned Soup', quantity_in_stock=16)
-        client = Client()
-        client.force_login(staff_user)
-        response = client.post(
-            reverse('admin:pantry_stockmovement_add'),
-            {
-                'product': str(product.pk),
-                'quantity_change': '24',
-                'kind': StockMovement.Kind.RECEIVED,
-                'note': 'Morning delivery',
-            },
-        )
-        assert response.status_code == 302
-        product.refresh_from_db()
-        assert product.quantity_in_stock == 40
-        movement = StockMovement.objects.get(product=product)
-        assert movement.entered_by == staff_user
-        assert movement.note == 'Morning delivery'
-
-    def test_non_staff_cannot_open_entry_form(self, plain_user):
-        client = Client()
-        client.force_login(plain_user)
-        response = client.get(reverse('admin:pantry_stockmovement_add'))
-        assert response.status_code in (302, 403)
-
-    def test_anonymous_cannot_open_entry_form(self):
-        client = Client()
-        response = client.get(reverse('admin:pantry_stockmovement_add'))
-        assert response.status_code == 302
-
-    def test_admin_refuses_delete(self, staff_user):
-        product = ProductFactory(quantity_in_stock=10)
-        movement = StockMovement.objects.create(
-            product=product, quantity_change=5,
-            kind=StockMovement.Kind.RECEIVED, entered_by=staff_user,
-        )
-        client = Client()
-        client.force_login(staff_user)
-        response = client.post(
-            reverse('admin:pantry_stockmovement_delete', args=[movement.pk]),
-            {'post': 'yes'},
-        )
-        assert response.status_code in (302, 403, 404)
-        assert StockMovement.objects.filter(pk=movement.pk).exists()
-
-
-class TestProductHistoryView:
-
-    def test_history_lists_movements_newest_first(
-        self, staff_user
-    ):
-        product = ProductFactory(name='Canned Soup', quantity_in_stock=16)
-        StockMovement.objects.create(
-            product=product, quantity_change=24,
-            kind=StockMovement.Kind.RECEIVED,
-            note='Morning delivery', entered_by=staff_user,
-        )
-        StockMovement.objects.create(
-            product=product, quantity_change=-2,
-            kind=StockMovement.Kind.CORRECTION,
-            note='Count was off', entered_by=staff_user,
-        )
-        other = ProductFactory(name='Other Product')
-        StockMovement.objects.create(
-            product=other, quantity_change=9,
-            kind=StockMovement.Kind.DONATION, note='Not this product',
-        )
-
-        client = Client()
-        client.force_login(staff_user)
-        response = client.get(
-            reverse('admin:product_stock_history', args=[product.pk])
-        )
-        assert response.status_code == 200
-        content = response.content.decode()
-        assert 'Canned Soup' in content
-        # Current count reflects both movements: 16 + 24 - 2.
-        assert '38' in content
-        assert 'Morning delivery' in content
-        assert 'Count was off' in content
-        assert 'pantry-staff' in content
-        # The other product's movement is not listed here.
-        assert 'Not this product' not in content
-        # Newest movement (the correction) is listed before the receiving.
-        assert content.index('Count was off') < content.index(
-            'Morning delivery'
-        )
-
-    def test_history_requires_staff(self, plain_user):
-        product = ProductFactory()
-        client = Client()
-        client.force_login(plain_user)
-        response = client.get(
-            reverse('admin:product_stock_history', args=[product.pk])
-        )
-        assert response.status_code in (302, 403)
-
-
 # ---------------------------------------------------------------------------
 # Review fixes
 # ---------------------------------------------------------------------------
-
-class TestAdminShowsValidationErrors:
-    """The admin form must show a form error, never a 500."""
-
-    def _post(self, user, product, change, kind):
-        client = Client()
-        client.force_login(user)
-        return client.post(
-            reverse('admin:pantry_stockmovement_add'),
-            {
-                'product': str(product.pk),
-                'quantity_change': str(change),
-                'kind': kind,
-                'note': '',
-            },
-        )
-
-    def test_below_zero_is_a_form_error(self, staff_user):
-        product = ProductFactory(quantity_in_stock=5)
-        response = self._post(
-            staff_user, product, -6, StockMovement.Kind.SPOILAGE
-        )
-        assert response.status_code == 200
-        assert 'below zero' in response.content.decode()
-        product.refresh_from_db()
-        assert product.quantity_in_stock == 5
-        assert StockMovement.objects.count() == 0
-
-    def test_wrong_sign_is_a_form_error(self, staff_user):
-        product = ProductFactory(quantity_in_stock=5)
-        response = self._post(
-            staff_user, product, -3, StockMovement.Kind.RECEIVED
-        )
-        assert response.status_code == 200
-        assert 'must be positive' in response.content.decode()
-        assert StockMovement.objects.count() == 0
-
 
 class TestKindSignRules:
 
@@ -409,17 +274,108 @@ class TestStockOnlyChangesThroughMovements:
         assert serializer.is_valid(), serializer.errors
 
 
-class TestHistoryPermissions:
+# ---------------------------------------------------------------------------
+# API used by the React admin (/api/v1/stock-movements/)
+# ---------------------------------------------------------------------------
 
-    def test_history_requires_view_permission(self):
-        with patch('apps.pantry.signals.send_new_user_onboarding_email.delay'):
-            bare_staff = password_already_chosen(User.objects.create_user(
-                username='bare-staff', password='x', is_staff=True,
-            ))
-        product = ProductFactory()
-        client = Client()
-        client.force_login(bare_staff)
-        response = client.get(
-            reverse('admin:product_stock_history', args=[product.pk])
+URL = '/api/v1/stock-movements/'
+
+
+def _api(user=None):
+    client = APIClient()
+    if user is not None:
+        client.force_authenticate(user)
+    return client
+
+
+class TestStockMovementApi:
+
+    def test_staff_records_receiving(self, staff_user):
+        product = ProductFactory(name='Canned Soup', quantity_in_stock=16)
+        response = _api(staff_user).post(URL, {
+            'product': product.pk, 'quantity_change': 24,
+            'kind': 'received', 'note': 'Morning delivery',
+        }, format='json')
+        assert response.status_code == 201, response.data
+        assert response.data['stock_after'] == 40
+        assert response.data['entered_by'] == staff_user.pk
+        assert response.data['product_name'] == 'Canned Soup'
+        product.refresh_from_db()
+        assert product.quantity_in_stock == 40
+
+    def test_entered_by_cannot_be_spoofed(self, staff_user, plain_user):
+        product = ProductFactory(quantity_in_stock=1)
+        response = _api(staff_user).post(URL, {
+            'product': product.pk, 'quantity_change': 2,
+            'kind': 'donation', 'entered_by': plain_user.pk,
+        }, format='json')
+        assert response.status_code == 201
+        assert StockMovement.objects.get().entered_by == staff_user
+
+    def test_below_zero_is_a_400_field_error(self, staff_user):
+        product = ProductFactory(name='Rice', quantity_in_stock=5)
+        response = _api(staff_user).post(URL, {
+            'product': product.pk, 'quantity_change': -6, 'kind': 'spoilage',
+        }, format='json')
+        assert response.status_code == 400
+        assert 'below zero' in str(response.data['quantity_change'])
+        product.refresh_from_db()
+        assert product.quantity_in_stock == 5
+        assert not StockMovement.objects.exists()
+
+    def test_wrong_sign_is_a_400_field_error(self, staff_user):
+        product = ProductFactory(quantity_in_stock=5)
+        response = _api(staff_user).post(URL, {
+            'product': product.pk, 'quantity_change': -3, 'kind': 'received',
+        }, format='json')
+        assert response.status_code == 400
+        assert 'must be positive' in str(response.data['quantity_change'])
+
+    def test_zero_is_a_400(self, staff_user):
+        product = ProductFactory(quantity_in_stock=5)
+        response = _api(staff_user).post(URL, {
+            'product': product.pk, 'quantity_change': 0, 'kind': 'correction',
+        }, format='json')
+        assert response.status_code == 400
+
+    def test_no_update_or_delete(self, staff_user):
+        product = ProductFactory(quantity_in_stock=10)
+        movement = StockMovement.objects.create(
+            product=product, quantity_change=5, kind='received',
         )
+        client = _api(staff_user)
+        assert client.patch(f'{URL}{movement.pk}/', {'quantity_change': 50},
+                            format='json').status_code == 405
+        assert client.put(f'{URL}{movement.pk}/', {}, format='json').status_code == 405
+        assert client.delete(f'{URL}{movement.pk}/').status_code == 405
+        product.refresh_from_db()
+        assert product.quantity_in_stock == 15
+        assert StockMovement.objects.filter(pk=movement.pk).exists()
+
+    def test_history_for_one_product_newest_first(self, staff_user):
+        product = ProductFactory(quantity_in_stock=16)
+        other = ProductFactory()
+        StockMovement.objects.create(product=product, quantity_change=24,
+                                     kind='received', note='Morning delivery',
+                                     entered_by=staff_user)
+        StockMovement.objects.create(product=product, quantity_change=-2,
+                                     kind='correction', note='Count was off',
+                                     entered_by=staff_user)
+        StockMovement.objects.create(product=other, quantity_change=9,
+                                     kind='donation', note='Not this product')
+        response = _api(staff_user).get(URL, {'product': product.pk})
+        assert response.status_code == 200
+        notes = [row['note'] for row in response.data['results']]
+        assert notes == ['Count was off', 'Morning delivery']
+        assert response.data['results'][0]['entered_by_name'] == 'pantry-staff'
+        assert response.data['results'][0]['kind_display'] == 'Correction'
+
+    def test_non_staff_and_anonymous_refused(self, plain_user):
+        assert _api(plain_user).get(URL).status_code == 403
+        assert _api().get(URL).status_code in (401, 403)
+        product = ProductFactory(quantity_in_stock=1)
+        response = _api(plain_user).post(URL, {
+            'product': product.pk, 'quantity_change': 5, 'kind': 'received',
+        }, format='json')
         assert response.status_code == 403
+        assert not StockMovement.objects.exists()
