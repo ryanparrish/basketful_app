@@ -7,6 +7,7 @@ item quantities, cost by program, and the distinct participant count.
 import csv
 import io
 from datetime import date, datetime, time, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -26,6 +27,7 @@ from apps.orders.tests.factories import (
 )
 from apps.orders.views_reports import (
     COUNTED_STATUSES,
+    _csv_safe,
     _get_date_range,
     _get_inventory_data,
 )
@@ -302,7 +304,7 @@ class TestPriceFallback:
 class TestDateRangeHelper:
     def test_last_6_months_preset(self):
         start, end = _get_date_range('last_6_months')
-        assert end == date.today()
+        assert end == timezone.localdate()
         assert start < end
         # Roughly six months back (same day-of-month, clamped).
         assert (end - start).days >= 180
@@ -369,4 +371,64 @@ class TestReportView:
         week_row = next(
             r for r in rows if r and r[0] == '2026-11-02'
         )
-        assert week_row == ['2026-11-02', '2026-11-08', '3']
+        assert week_row == ['2026-11-02', '2026-11-08', '3', '']
+
+
+# ---------------------------------------------------------------------------
+# Review fixes
+# ---------------------------------------------------------------------------
+
+class TestPartialWeeks:
+    def test_mid_week_range_flags_partial_weeks(self, known_week):
+        # Wed Nov 4 to Tue Nov 10: both weeks are cut short.
+        data = _get_inventory_data(date(2026, 11, 4), date(2026, 11, 10))
+        first, last = data['participants_per_week']
+        assert first['is_partial'] and last['is_partial']
+        assert first['counted_from'] == date(2026, 11, 4)
+        assert first['counted_to'] == date(2026, 11, 8)
+        assert last['counted_from'] == date(2026, 11, 9)
+        assert last['counted_to'] == date(2026, 11, 10)
+
+    def test_full_week_is_not_partial(self, known_week):
+        data = _get_inventory_data(WEEK_START, WEEK_END)
+        assert data['participants_per_week'][0]['is_partial'] is False
+
+    def test_weekly_item_label_shows_counted_days(self, known_week):
+        data = _get_inventory_data(
+            date(2026, 11, 4), date(2026, 11, 8), grouping='weekly'
+        )
+        labels = {r['period_label'] for r in data['items']}
+        assert labels == {'2026-11-04 to 2026-11-08 (partial week)'}
+
+    def test_csv_notes_partial_week(self, db, staff_user, known_week):
+        client = Client()
+        client.force_login(staff_user)
+        response = client.get(reverse('admin:inventory_report'), {
+            'date_range': 'custom', 'start_date': '2026-11-04',
+            'end_date': '2026-11-08', 'grouping': 'range', 'export_csv': '1',
+        })
+        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        week_row = next(r for r in rows if r and r[0] == '2026-11-02')
+        assert week_row[3] == (
+            'Partial week: counts 2026-11-04 to 2026-11-08 only'
+        )
+
+
+class TestLocalToday:
+    def test_presets_use_local_date_not_server_date(self):
+        # 11:30pm Eastern on Sat Nov 7 is already Nov 8 in UTC.
+        late_evening_utc = datetime(2026, 11, 8, 4, 30, tzinfo=dt_timezone.utc)
+        with patch('django.utils.timezone.now', return_value=late_evening_utc):
+            start, end = _get_date_range('this_week')
+        assert end == date(2026, 11, 7)
+        assert start == date(2026, 11, 2)
+
+
+class TestCsvSafety:
+    @pytest.mark.parametrize('value', ['=1+1', '+SUM(A1)', '-2', '@cmd'])
+    def test_formula_like_cells_are_escaped(self, value):
+        assert _csv_safe(value) == "'" + value
+
+    def test_plain_text_untouched(self):
+        assert _csv_safe('Whole Milk') == 'Whole Milk'
+        assert _csv_safe(7) == 7

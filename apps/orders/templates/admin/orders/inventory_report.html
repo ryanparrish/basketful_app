@@ -147,6 +147,11 @@
         padding: 0;
         list-style: none;
     }
+    .partial-note {
+        color: #8a6d3b;
+        font-size: 12px;
+        font-style: italic;
+    }
 </style>
 {% endblock %}
 
@@ -292,7 +297,7 @@
                         <tr>
                             <td>{{ row.week_start|date:"Y-m-d" }}</td>
                             <td>{{ row.week_end|date:"Y-m-d" }}</td>
-                            <td class="num">{{ row.participant_count }}</td>
+                            <td class="num">{{ row.participant_count }}{% if row.is_partial %} <span class="partial-note" title="The date range cuts this week short">(partial week: {{ row.counted_from|date:"M j" }}&ndash;{{ row.counted_to|date:"M j" }} only)</span>{% endif %}</td>
                         </tr>
                     {% endfor %}
                 </tbody>
