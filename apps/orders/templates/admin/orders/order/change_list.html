@@ -1,0 +1,12 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    {% if show_reports_link %}
+    <li>
+        <a href="{% url 'admin:inventory_report' %}" class="viewlink">
+            📊 Inventory Report
+        </a>
+    </li>
+    {% endif %}
+{% endblock %}

@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django import forms
 from django.forms import BaseInlineFormSet
 from .models import OrderItem
+from apps.lifeskills.models import Program
 
 
 # --------------------------
@@ -134,3 +135,96 @@ class OrderItemInlineFormSet(BaseInlineFormSet):
         self.instance._pending_items = items
 
         # Trigger model-level validation (e.g
+
+
+# --------------------------
+# Inventory Report Form (Issue #143)
+# --------------------------
+class InventoryReportForm(forms.Form):
+    """Form for filtering the inventory report by date range.
+
+    Mirrors VoucherRedemptionReportForm (apps/voucher/forms.py), with an
+    added 'last_6_months' preset (the pantry team's planning horizon) and a
+    grouping choice: whole range, weekly buckets, or monthly buckets.
+    """
+
+    DATE_RANGE_CHOICES = [
+        ('last_6_months', 'Last 6 Months'),
+        ('this_week', 'This Week'),
+        ('this_month', 'This Month'),
+        ('last_month', 'Last Month'),
+        ('this_year', 'This Year'),
+        ('custom', 'Custom Range'),
+    ]
+
+    GROUPING_CHOICES = [
+        ('range', 'Whole Range'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+    ]
+
+    date_range = forms.ChoiceField(
+        choices=DATE_RANGE_CHOICES,
+        initial='last_6_months',
+        required=True,
+        widget=forms.Select(attrs={
+            'class': 'form-control date-range-select',
+            'id': 'date-range-select',
+        }),
+    )
+
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'class': 'form-control date-input',
+            'type': 'date',
+            'id': 'start-date',
+        }),
+        help_text="Required for custom date range",
+    )
+
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'class': 'form-control date-input',
+            'type': 'date',
+            'id': 'end-date',
+        }),
+        help_text="Required for custom date range",
+    )
+
+    program = forms.ModelChoiceField(
+        queryset=Program.objects.all(),
+        required=False,
+        empty_label="All Programs",
+        widget=forms.Select(attrs={
+            'class': 'form-control program-select',
+        }),
+    )
+
+    grouping = forms.ChoiceField(
+        choices=GROUPING_CHOICES,
+        initial='range',
+        required=True,
+        widget=forms.Select(attrs={
+            'class': 'form-control group-by-select',
+        }),
+        label='Group Results',
+    )
+
+    def clean(self):
+        """Validate custom date range fields."""
+        cleaned_data = super().clean()
+        date_range = cleaned_data.get('date_range')
+        start_date = cleaned_data.get('start_date')
+        end_date = cleaned_data.get('end_date')
+
+        if date_range == 'custom':
+            if not start_date:
+                self.add_error('start_date', 'Start date is required for custom range.')
+            if not end_date:
+                self.add_error('end_date', 'End date is required for custom range.')
+            if start_date and end_date and start_date > end_date:
+                self.add_error('end_date', 'End date must be after start date.')
+
+        return cleaned_data
