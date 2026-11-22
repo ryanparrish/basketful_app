@@ -1,6 +1,8 @@
 """
 ViewSets for the Log app.
 """
+import logging
+
 from rest_framework import viewsets, filters, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -26,6 +28,8 @@ from apps.log.api.serializers import (
     UserLoginLogSerializer,
     GraceAllowanceLogSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmailTypeViewSet(viewsets.ModelViewSet):
@@ -87,6 +91,10 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
                     else:
                         rendered[key] = saved_renderers[key]()
                 except TemplateSyntaxError as exc:
+                    # Intentionally returned (CodeQL py/stack-trace-exposure
+                    # dismissed, #149): staff-only endpoint, and the message
+                    # describes the template the caller just wrote so they
+                    # can fix it. Not a traceback.
                     field = 'subject' if key == 'subject' else f'{key}_content'
                     return Response(
                         {'detail': str(exc), 'field': field},
@@ -154,6 +162,7 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
                     else email_type.render_text(context)
                 )
             except TemplateSyntaxError as exc:
+                # Intentionally returned — see the matching note in preview().
                 return Response(
                     {'detail': str(exc)},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -169,9 +178,15 @@ class EmailTypeViewSet(viewsets.ModelViewSet):
                 subject, html, text or html, request.user.email,
                 from_email=from_email, reply_to=reply_to,
             )
-        except Exception as exc:
+        except Exception:
+            # Provider errors can carry hostnames, API responses and config
+            # details — keep them in the server log, never in the response.
+            logger.exception(
+                "Test send failed for email_type=%s to user=%s",
+                email_type.pk, request.user.pk,
+            )
             return Response(
-                {'detail': f'Send failed: {exc}'},
+                {'detail': 'Send failed. The error has been logged for an administrator.'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 

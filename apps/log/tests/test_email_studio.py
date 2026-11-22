@@ -6,6 +6,8 @@ Tests for the email design studio backend (Stage 2):
   3. Test sends never poison the real pipeline: the already-sent dedup
      guard ignores them and the DLQ never re-dispatches a failed test.
 """
+from unittest import mock
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -116,6 +118,23 @@ class TestSendTest:
         )
         assert response.status_code == 400
         assert not mail.outbox
+        assert not EmailLog.objects.filter(user=staff_user, is_test=True).exists()
+
+    def test_send_test_provider_failure_hides_error_details(
+        self, staff_client, staff_user, caplog,
+    ):
+        provider_error = ConnectionError('smtp.internal.example:587 refused (key=abc123)')
+        with mock.patch(
+            'apps.account.tasks.email.send_email_message', side_effect=provider_error,
+        ):
+            response = staff_client.post(
+                onboarding_url('send-test/'), {'language': 'en'}, format='json',
+            )
+
+        assert response.status_code == 502
+        assert 'smtp.internal' not in response.data['detail']
+        assert 'abc123' not in response.data['detail']
+        assert 'smtp.internal.example' in caplog.text
         assert not EmailLog.objects.filter(user=staff_user, is_test=True).exists()
 
     def test_send_test_requires_staff(self):
