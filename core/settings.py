@@ -440,6 +440,11 @@ TINYMCE_DEFAULT_CONFIG = {
 # =============================================================================
 # Django REST Framework Configuration
 # =============================================================================
+# Request header (in META form) holding the real client IP, set by a proxy
+# the client can't bypass. Cloudflare's CF-Connecting-IP by default; set to
+# "" to fall back to the last X-Forwarded-For hop. See core/client_ip.py (#111).
+CLIENT_IP_HEADER = env('CLIENT_IP_HEADER', default='HTTP_CF_CONNECTING_IP')
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'apps.account.api.authentication.CookieJWTAuthentication',
@@ -448,8 +453,10 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        # core.throttling, not rest_framework.throttling: DRF's default
+        # identifies clients by raw X-Forwarded-For, which is forgeable (#111).
+        'core.throttling.AnonRateThrottle',
+        'core.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',

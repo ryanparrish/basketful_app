@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth.signals import user_logged_in, user_logged_out, user_login_failed
 from django.dispatch import receiver
 from .models import VoucherLog
+from core.client_ip import get_client_ip as _shared_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +54,10 @@ def get_client_ip(request):
 
     authenticate() and the login signals allow request=None; a crash here
     would take down the login log and the login response with it (#136).
+    The address itself comes from core.client_ip (#111): the old version
+    logged the leftmost X-Forwarded-For entry, which the client controls.
     """
-    if request is None:
-        return None
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0]
-    return request.META.get('REMOTE_ADDR')
+    return _shared_client_ip(request)
 
 
 def get_user_agent(request):

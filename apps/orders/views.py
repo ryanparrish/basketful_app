@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 # First-party
 from apps.account.models import AccountBalance
 from apps.pantry.models import Product
+from core.client_ip import get_client_ip
 from core.utils import can_place_order
 # Local application
 from .models import Order, OrderItemData
@@ -95,12 +96,6 @@ def submit_order(request):
     ]
 
     # Extract request metadata for audit
-    def get_client_ip(request):
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            return x_forwarded_for.split(',')[0]
-        return request.META.get('REMOTE_ADDR')
-    
     request_meta = {
         'ip': get_client_ip(request),
         'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500]

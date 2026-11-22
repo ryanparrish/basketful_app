@@ -1,6 +1,6 @@
 # Admin hardening (parked)
 
-> Status: **not started**. Written 2026-10-19 so we can pick it up later.
+> Status: item 1 done in code (#111), pending the firewall check below. The rest is parked. Written 2026-10-19.
 
 Ideas for protecting the staff admin at `/new/admin/` from scraping, bots and password guessing. They're listed in the order we'd do them. Item 1 is the real protection; the rest add to it.
 
@@ -10,14 +10,12 @@ The site sits behind Cloudflare, then a Linode NodeBalancer (where TLS ends), th
 
 **The problem.** DRF's login throttle (`LoginRateThrottle`, 5/minute, in `apps/account/api/auth_views.py`) identifies clients with `get_ident()`. `REST_FRAMEWORK` doesn't set `NUM_PROXIES`, so DRF uses the whole `X-Forwarded-For` header as the client's identity. Cloudflare and nginx (`$proxy_add_x_forwarded_for`) add to whatever header the client sent rather than replacing it. So anyone can send a different `X-Forwarded-For: <random>` with each request and get a new 5-per-minute allowance every time, which makes password guessing effectively unthrottled. The same applies to every anonymous throttle (`anon`, `login`).
 
-**The fix.**
-- In the host nginx `location /` block, pass the address Cloudflare saw, which the client can't change:
-  ```nginx
-  proxy_set_header X-Real-IP $http_cf_connecting_ip;
-  ```
-- Make Django trust only that header. Either subclass the throttles to read `HTTP_X_REAL_IP`, or set `NUM_PROXIES` to the exact number of proxies in the chain (Cloudflare, NodeBalancer, nginx) so DRF takes the right entry from `X-Forwarded-For`.
-- Don't trust `CF-Connecting-IP` unless requests can only arrive through Cloudflare. Check that the NodeBalancer or firewall only accepts Cloudflare's IP ranges; otherwise someone could skip Cloudflare and set the header themselves.
-- Add a test: two login requests with different made-up `X-Forwarded-For` values must share one rate-limit bucket.
+**The fix (done, #111).**
+- `core/client_ip.py` is now the one place that picks a request's IP. It trusts `CF-Connecting-IP` (Cloudflare sets it and overwrites any value the client sent), then falls back to the **last** `X-Forwarded-For` hop, then `REMOTE_ADDR`. Values that aren't valid IPs are ignored. The trusted header is the `CLIENT_IP_HEADER` setting (env var; default `HTTP_CF_CONNECTING_IP`).
+- `core/throttling.py` has `AnonRateThrottle` / `UserRateThrottle` / `ScopedRateThrottle` that use it. `DEFAULT_THROTTLE_CLASSES` and every project throttle subclass these, and a test fails if a new throttle subclasses DRF's directly.
+- The audit-log and order IP helpers use it too (they used to record the leftmost, client-controlled entry).
+- No nginx change is needed: nginx already passes `CF-Connecting-IP` through.
+- **Still to check (infrastructure, not code):** the trusted header is only safe if the origin accepts traffic **only** from Cloudflare. Confirm the NodeBalancer / Linode Cloud Firewall allows inbound 80/443 from Cloudflare's IP ranges (https://www.cloudflare.com/ips/) and nothing else. Otherwise someone can skip Cloudflare and send their own `CF-Connecting-IP`; that's no worse than before the fix, but it isn't fixed for them either.
 
 ## 2. Cloudflare Access in front of `/new/admin/`
 

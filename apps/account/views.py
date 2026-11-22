@@ -5,6 +5,7 @@ from django.urls import reverse_lazy
 from django.contrib.auth import login
 from .forms import CustomLoginForm
 from .models import UserProfile
+from core.client_ip import get_client_ip
 
 
 class CustomPasswordChangeView(PasswordChangeView):
@@ -59,19 +60,8 @@ def participant_app_page(page):
 
 
 def _client_ip(request):
-    """The client's IP as seen by our proxy.
-
-    Basketful runs behind exactly one proxy (nginx in docker-compose,
-    Render's load balancer on Render), and both append the address they saw
-    to the END of X-Forwarded-For. Entries to its left come from the client
-    and can be forged, and REMOTE_ADDR is the proxy itself, shared by
-    everyone. Falls back to REMOTE_ADDR when there is no proxy (local dev).
-    """
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
-    if hops:
-        return hops[-1]
-    return request.META.get("REMOTE_ADDR", "unknown")
+    """The client's IP; see core.client_ip for how it's chosen (#111)."""
+    return get_client_ip(request) or "unknown"
 
 
 def custom_login_view(request):
