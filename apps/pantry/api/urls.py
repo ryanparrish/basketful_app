@@ -15,6 +15,8 @@ from apps.pantry.api.views import (
     StockMovementViewSet,
 )
 
+from apps.pantry.api.reports import StockForecastView
+
 router = DefaultRouter()
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'subcategories', SubcategoryViewSet, basename='subcategory')
@@ -30,5 +32,10 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        'reports/stock-forecast/',
+        StockForecastView.as_view(),
+        name='stock-forecast',
+    ),
     path('', include(router.urls)),
 ]

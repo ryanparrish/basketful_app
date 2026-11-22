@@ -145,14 +145,30 @@ class ProductListSerializer(serializers.ModelSerializer):
     subcategory_sort_order = serializers.SerializerMethodField()
     is_available = serializers.BooleanField(source='active', read_only=True)
     budget = serializers.CharField(read_only=True)
+    forecast_weeks_left = serializers.SerializerMethodField()
+    forecast_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'price', 'category', 'category_name', 'budget',
             'subcategory', 'subcategory_name', 'subcategory_sort_order',
-            'image', 'active', 'is_available', 'quantity_in_stock', 'sort_order'
+            'image', 'active', 'is_available', 'quantity_in_stock', 'sort_order',
+            'forecast_weeks_left', 'forecast_status',
         ]
+
+    def _forecast(self, obj):
+        # Filled in by ProductViewSet.list for staff (Issue #148); absent
+        # elsewhere, where these fields are null.
+        return self.context.get('forecast', {}).get(obj.pk)
+
+    def get_forecast_weeks_left(self, obj):
+        row = self._forecast(obj)
+        return row['weeks_left'] if row else None
+
+    def get_forecast_status(self, obj):
+        row = self._forecast(obj)
+        return row['status'] if row else None
         read_only_fields = ['id']
 
     def get_subcategory_sort_order(self, obj) -> int:
@@ -231,6 +247,7 @@ class LowInventoryAlertSettingsSerializer(serializers.ModelSerializer):
         model = LowInventoryAlertSettings
         fields = [
             'id', 'threshold', 'enabled',
+            'forecast_alerts_enabled', 'forecast_alert_weeks',
             'notify_groups', 'notify_users',
             'notify_group_details', 'notify_user_details',
         ]

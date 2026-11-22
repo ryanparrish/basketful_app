@@ -96,6 +96,38 @@ export const InventoryAlertsTab = ({
         sx={{ mb: 3, display: 'block' }}
       />
 
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <AlertTitle>Stock Forecast Alerts</AlertTitle>
+        Once a day, email the same people a digest of products that the stock forecast says will
+        run out within the window below, at the current rate of orders (after pending orders). Each
+        product alerts once until its forecast recovers.
+      </Alert>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={settings.forecast_alerts_enabled}
+            onChange={e => setSettings({ ...settings, forecast_alerts_enabled: e.target.checked })}
+          />
+        }
+        label="Enable Stock Forecast Alerts"
+        sx={{ mb: 2, display: 'block' }}
+      />
+
+      <TextField
+        fullWidth
+        type="number"
+        label="Forecast Alert Window (weeks)"
+        value={settings.forecast_alert_weeks}
+        onChange={e =>
+          setSettings({ ...settings, forecast_alert_weeks: Math.max(1, parseInt(e.target.value, 10) || 1) })
+        }
+        inputProps={{ min: 1, step: 1 }}
+        helperText="Alert when a product is forecast to run out within this many weeks"
+        disabled={!settings.forecast_alerts_enabled}
+        sx={{ mb: 3 }}
+      />
+
       <Autocomplete
         multiple
         loading={optionsLoading}

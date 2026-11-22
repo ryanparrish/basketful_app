@@ -77,6 +77,8 @@ export interface LowInventoryAlertSettings {
   id: number;
   threshold: number;
   enabled: boolean;
+  forecast_alerts_enabled: boolean;
+  forecast_alert_weeks: number;
   notify_groups: number[];
   notify_users: number[];
   notify_group_details: { id: number; name: string }[];

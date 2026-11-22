@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.api.pagination import StandardResultsSetPagination
+from apps.pantry.forecast import forecast_by_product
 from apps.api.permissions import IsAdminOrReadOnly, IsSingletonAdmin, IsStaffUser
 from apps.pantry.models import (
     Category,
@@ -96,6 +97,20 @@ class ProductViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return ProductListSerializer
         return ProductSerializer
+
+    def list(self, request, *args, **kwargs):
+        """Product list; for staff, each row carries its stock forecast
+        (weeks left and status, Issue #148), computed for this page only."""
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        items = page if page is not None else list(queryset)
+        context = self.get_serializer_context()
+        if request.user.is_staff and items:
+            context['forecast'] = forecast_by_product([p.pk for p in items])
+        serializer = ProductListSerializer(items, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def active(self, request):
