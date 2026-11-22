@@ -33,7 +33,7 @@
     "@usewaypoint/block-text": "^0.0.7",
     "@usewaypoint/document-core": "^0.0.6",
     "@usewaypoint/email-builder": "^0.0.9",
-    "axios": "^1.15.2",
+    "axios": "^1.21.1",
     "ra-data-simple-rest": "^5.4.0",
     "react": "^18.3.1",
     "react-admin": "^5.4.0",
