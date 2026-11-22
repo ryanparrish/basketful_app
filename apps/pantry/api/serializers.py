@@ -4,6 +4,8 @@ Serializers for the Pantry app.
 from django.contrib.auth.models import Group, User
 from rest_framework import serializers
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from apps.pantry.models import (
     Category,
     Subcategory,
@@ -12,6 +14,7 @@ from apps.pantry.models import (
     ProductLimit,
     OrderPacker,
     LowInventoryAlertSettings,
+    StockMovement,
 )
 from apps.lifeskills.models import Program
 
@@ -120,6 +123,20 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_limit(self, obj):
         return Product.get_limit_for_product(obj)
 
+    def validate_quantity_in_stock(self, value):
+        """Stock can only be set when a product is created (Issue #144).
+
+        After that, every change must be a StockMovement so it is logged
+        and cannot be clobbered by a stale edit form. Sending the current
+        value back unchanged (as edit forms do) is allowed.
+        """
+        if self.instance is not None and value != self.instance.quantity_in_stock:
+            raise serializers.ValidationError(
+                "Stock can't be edited directly. Record a stock movement "
+                "(Stock Movements in the staff app) so the change is logged."
+            )
+        return value
+
 
 class ProductListSerializer(serializers.ModelSerializer):
     """Simplified serializer for Product list views."""
@@ -224,3 +241,47 @@ class LowInventoryAlertSettingsSerializer(serializers.ModelSerializer):
 
     def get_notify_user_details(self, obj) -> list:
         return list(obj.notify_users.values('id', 'username', 'email'))
+
+
+class StockMovementSerializer(serializers.ModelSerializer):
+    """A manual stock change (Issue #144). Create-only: movements are never
+    edited or deleted; a mistake is fixed with a new correction movement."""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    entered_by_name = serializers.SerializerMethodField()
+    stock_after = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id', 'product', 'product_name', 'kind', 'kind_display',
+            'quantity_change', 'note', 'entered_by', 'entered_by_name',
+            'created_at', 'stock_after',
+        ]
+        read_only_fields = ['id', 'entered_by', 'created_at']
+
+    def get_entered_by_name(self, obj):
+        user = obj.entered_by
+        if user is None:
+            return ''
+        return user.get_full_name() or user.username
+
+    def get_stock_after(self, obj):
+        """The product's stock right after this movement was saved.
+
+        Only known on the create response (the view sets it); history rows
+        return None because order activity also moves stock in between.
+        """
+        return getattr(obj, '_stock_after', None)
+
+    def validate(self, attrs):
+        """Run the model's rules (sign per kind, no zero, not below zero)
+        so they come back as normal 400 field errors."""
+        instance = StockMovement(**attrs)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                exc.message_dict if hasattr(exc, 'error_dict') else exc.messages
+            )
+        return attrs

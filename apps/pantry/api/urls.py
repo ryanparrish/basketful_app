@@ -12,6 +12,7 @@ from apps.pantry.api.views import (
     ProductLimitViewSet,
     OrderPackerViewSet,
     LowInventoryAlertSettingsViewSet,
+    StockMovementViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +22,7 @@ router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'product-limits', ProductLimitViewSet, basename='product-limit')
 router.register(r'order-packers', OrderPackerViewSet, basename='order-packer')
+router.register(r'stock-movements', StockMovementViewSet, basename='stock-movement')
 router.register(
     r'low-inventory-alert-settings',
     LowInventoryAlertSettingsViewSet,

@@ -102,6 +102,18 @@ class ProductAdmin(TranslationAdmin):
 
     image_preview.short_description = "Current Image"
 
+    def get_readonly_fields(self, request, obj=None):
+        """Stock is read-only once a product exists (Issue #144).
+
+        After creation, every stock change must go through a
+        StockMovement (React admin: Stock Movements) so it is logged, and
+        so a stale product form cannot overwrite a movement's update.
+        """
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.pk:
+            fields.append('quantity_in_stock')
+        return fields
+
     class Media:
         """Media class to include custom JS for image preview."""
         js = ('food_orders/js/admin_image_preview.js',)
@@ -229,4 +241,3 @@ class ProductLimitAdmin(admin.ModelAdmin):
             example
         )
     get_limit_explanation.short_description = 'How Limit Works'
-

@@ -29,6 +29,9 @@ import {
   ProductShow,
   ProductEdit,
   ProductCreate,
+  StockMovementList,
+  StockMovementShow,
+  StockMovementCreate,
   VoucherList,
   VoucherShow,
   VoucherEdit,
@@ -113,6 +116,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import SchoolIcon from '@mui/icons-material/School';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CategoryIcon from '@mui/icons-material/Category';
 import MergeIcon from '@mui/icons-material/Merge';
@@ -142,6 +146,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="programs" />
     <Menu.ResourceItem name="orders" />
     <Menu.ResourceItem name="products" />
+    <Menu.ResourceItem name="stock-movements" />
     <Menu.ResourceItem name="vouchers" />
     <Menu.ResourceItem name="categories" />
     <Menu.ResourceItem name="combined-orders" />
@@ -234,6 +239,14 @@ const App = () => (
       create={ProductCreate}
       icon={InventoryIcon}
       options={{ label: 'Products' }}
+    />
+    <Resource
+      name="stock-movements"
+      list={StockMovementList}
+      show={StockMovementShow}
+      create={StockMovementCreate}
+      icon={SwapVertIcon}
+      options={{ label: 'Stock Movements' }}
     />
     <Resource
       name="vouchers"
