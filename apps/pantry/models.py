@@ -113,6 +113,14 @@ class Product(models.Model):
             "above the alert threshold."
         ),
     )
+    forecast_alerted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text=(
+            "When this product was last included in a stock forecast alert "
+            "(Issue #148). Cleared once its projected weeks of stock climb "
+            "back above the alert threshold, so each episode alerts once."
+        ),
+    )
     tags = models.ManyToManyField(
         'pantry.Tag',
         related_name='products',
@@ -275,6 +283,22 @@ class LowInventoryAlertSettings(models.Model):
         related_name="low_inventory_alert_settings",
         help_text="Additional individual users who receive the low-inventory alert."
     )
+    # Stock forecast alerts (Issue #148) go to the same recipients.
+    forecast_alerts_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Email the recipients above when a product's forecast shows it "
+            "running out within the forecast alert window."
+        ),
+    )
+    forecast_alert_weeks = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text=(
+            "Forecast alert when a product's projected weeks of stock left "
+            "is at or below this many weeks."
+        ),
+    )
 
     class Meta:
         verbose_name = "Low Inventory Alert Settings"
@@ -296,6 +320,45 @@ class LowInventoryAlertSettings(models.Model):
 
     def __str__(self) -> str:
         return f"Low Inventory Alert Settings (Threshold: {self.threshold}, Enabled: {self.enabled})"
+
+
+class ProductStockSnapshot(models.Model):
+    """A product's stock on one local day (Issue #148).
+
+    Recorded by a beat task several times a day; each day keeps the lowest
+    stock seen and whether the product was ever inactive that day. The
+    stock forecast uses these to leave out weeks when a product was out of
+    stock: zero orders in those weeks means nobody *could* order it, not
+    that nobody wanted it.
+    """
+    product = models.ForeignKey(
+        'pantry.Product',
+        on_delete=models.CASCADE,
+        related_name='stock_snapshots',
+    )
+    date = models.DateField()
+    quantity_in_stock = models.IntegerField(
+        help_text="Lowest stock seen on this day."
+    )
+    active = models.BooleanField(
+        help_text="False if the product was inactive at any check that day."
+    )
+
+    class Meta:
+        db_table = 'food_orders_product_stock_snapshot'
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['product', 'date'], name='unique_product_snapshot_per_day'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} on {self.date}: {self.quantity_in_stock}"
+
+    @property
+    def was_available(self) -> bool:
+        return self.active and self.quantity_in_stock > 0
 
 
 class StockMovement(models.Model):

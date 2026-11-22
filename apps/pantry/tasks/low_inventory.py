@@ -19,11 +19,30 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def alert_recipients(alert_settings):
+    """Active, emailable users in the alert settings' groups and users.
+
+    Shared by the low-inventory and stock-forecast alerts (#148), which go
+    to the same pantry admins.
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    return (
+        User.objects
+        .filter(
+            models.Q(groups__in=alert_settings.notify_groups.all())
+            | models.Q(pk__in=alert_settings.notify_users.all())
+        )
+        .filter(is_active=True)
+        .exclude(email='')
+        .distinct()
+    )
+
+
 @shared_task
 def check_low_inventory():
     """Alert configured recipients about products newly at/below the threshold."""
-    from django.contrib.auth import get_user_model
-
     from apps.account.tasks.email import send_email_by_type
     from apps.pantry.models import LowInventoryAlertSettings, Product
 
@@ -65,17 +84,7 @@ def check_low_inventory():
     if not newly_low_products:
         return
 
-    User = get_user_model()
-    recipients = (
-        User.objects
-        .filter(
-            models.Q(groups__in=alert_settings.notify_groups.all())
-            | models.Q(pk__in=alert_settings.notify_users.all())
-        )
-        .filter(is_active=True)
-        .exclude(email='')
-        .distinct()
-    )
+    recipients = alert_recipients(alert_settings)
     if not recipients.exists():
         logger.warning(
             "[LowInventory] %d product(s) newly low but no configured "

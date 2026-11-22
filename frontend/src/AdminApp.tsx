@@ -82,6 +82,7 @@ import {
 } from './resources';
 import CoachDashboard from './pages/CoachDashboard';
 import InventoryReport from './pages/InventoryReport';
+import StockForecast from './pages/StockForecast';
 
 // Custom Pages
 import { Dashboard } from './pages/Dashboard';
@@ -118,6 +119,7 @@ import SchoolIcon from '@mui/icons-material/School';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CategoryIcon from '@mui/icons-material/Category';
@@ -149,6 +151,7 @@ const CustomMenu = () => (
     <Menu.ResourceItem name="orders" />
     <Menu.ResourceItem name="products" />
     <Menu.ResourceItem name="stock-movements" />
+    <Menu.Item to="/reports/stock-forecast" primaryText="Stock Forecast" leftIcon={<TrendingDownIcon />} />
     <Menu.ResourceItem name="vouchers" />
     <Menu.ResourceItem name="categories" />
     <Menu.ResourceItem name="combined-orders" />
@@ -448,6 +451,7 @@ const App = () => (
       <Route path="/participants/welcome-cards" element={<PrintWelcomeCards />} />
       <Route path="/coach-dashboard" element={<CoachDashboard />} />
       <Route path="/reports/inventory" element={<InventoryReport />} />
+      <Route path="/reports/stock-forecast" element={<StockForecast />} />
     </CustomRoutes>
   </Admin>
 );

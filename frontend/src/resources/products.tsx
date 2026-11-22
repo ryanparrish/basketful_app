@@ -40,6 +40,7 @@ import {
 } from 'react-admin';
 import { Box } from '@mui/material';
 import { RecordStockMovementButton, StockMovementRows } from './stockMovements';
+import { ProductUsagePanel, WeeksLeftCell } from '../components/StockForecastWidgets';
 
 const productFilters = [
   <SearchInput source="q" alwaysOn key="search" />,
@@ -78,6 +79,8 @@ export const ProductList = () => (
         }
       />
       <NumberField source="quantity_in_stock" label="Stock" />
+      {/* Stock forecast (Issue #148): weeks until it runs out at the current rate. */}
+      <FunctionField label="Weeks left" sortable={false} render={() => <WeeksLeftCell />} />
       <BooleanField source="active" />
       <BooleanField source="is_meat" label="Meat" />
       <EditButton />
@@ -125,6 +128,9 @@ export const ProductShow = () => (
       <NumberField source="limit" label="Purchase Limit" />
       <BooleanField source="active" />
       <BooleanField source="is_meat" label="Is Meat Product" />
+      <Labeled label="Usage forecast (last 12 weeks)" fullWidth>
+        <ProductUsagePanel />
+      </Labeled>
       {/* Manual stock changes recorded by staff (Issue #144). Order
           activity moves stock automatically and isn't listed here. */}
       <Labeled label="Stock history (manual movements; orders adjust stock automatically)" fullWidth>
