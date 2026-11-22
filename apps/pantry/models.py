@@ -8,8 +8,8 @@ from django.contrib.auth.models import Group
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
-from django.utils.translation import gettext as _, ngettext
-from django.db import models
+from django.utils.translation import gettext as _, gettext_lazy, ngettext
+from django.db import models, transaction
 from django.core.cache import cache
 # Local app imports
 
@@ -111,6 +111,14 @@ class Product(models.Model):
             "When the current low-stock episode was alerted. Set and cleared "
             "by the low-inventory beat task; cleared once stock recovers "
             "above the alert threshold."
+        ),
+    )
+    forecast_alerted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text=(
+            "When this product was last included in a stock forecast alert "
+            "(Issue #148). Cleared once its projected weeks of stock climb "
+            "back above the alert threshold, so each episode alerts once."
         ),
     )
     tags = models.ManyToManyField(
@@ -275,6 +283,22 @@ class LowInventoryAlertSettings(models.Model):
         related_name="low_inventory_alert_settings",
         help_text="Additional individual users who receive the low-inventory alert."
     )
+    # Stock forecast alerts (Issue #148) go to the same recipients.
+    forecast_alerts_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Email the recipients above when a product's forecast shows it "
+            "running out within the forecast alert window."
+        ),
+    )
+    forecast_alert_weeks = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text=(
+            "Forecast alert when a product's projected weeks of stock left "
+            "is at or below this many weeks."
+        ),
+    )
 
     class Meta:
         verbose_name = "Low Inventory Alert Settings"
@@ -296,6 +320,202 @@ class LowInventoryAlertSettings(models.Model):
 
     def __str__(self) -> str:
         return f"Low Inventory Alert Settings (Threshold: {self.threshold}, Enabled: {self.enabled})"
+
+
+class ProductStockSnapshot(models.Model):
+    """A product's stock on one local day (Issue #148).
+
+    Recorded by a beat task several times a day; each day keeps the lowest
+    stock seen and whether the product was ever inactive that day. The
+    stock forecast uses these to leave out weeks when a product was out of
+    stock: zero orders in those weeks means nobody *could* order it, not
+    that nobody wanted it.
+    """
+    product = models.ForeignKey(
+        'pantry.Product',
+        on_delete=models.CASCADE,
+        related_name='stock_snapshots',
+    )
+    date = models.DateField()
+    quantity_in_stock = models.IntegerField(
+        help_text="Lowest stock seen on this day."
+    )
+    active = models.BooleanField(
+        help_text="False if the product was inactive at any check that day."
+    )
+
+    class Meta:
+        db_table = 'food_orders_product_stock_snapshot'
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['product', 'date'], name='unique_product_snapshot_per_day'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} on {self.date}: {self.quantity_in_stock}"
+
+    @property
+    def was_available(self) -> bool:
+        return self.active and self.quantity_in_stock > 0
+
+
+class StockMovement(models.Model):
+    """A manual stock change recorded by a staff member (Issue #144).
+
+    This is the audit record for stock that moves outside of orders:
+    product received, donations, spoilage/removals, and corrections.
+    Creating a movement updates ``Product.quantity_in_stock`` in the same
+    transaction, so the log and the count can never disagree.
+
+    Movements are immutable once written: a wrong entry is fixed with a
+    new correction movement, never by editing or deleting the original,
+    so the history stays trustworthy.
+
+    Order-driven stock changes stay automatic and separate — confirmed
+    orders decrement and cancellations restore in apps/orders — and are
+    not recorded here.
+    """
+
+    class Kind(models.TextChoices):
+        # gettext_lazy: these labels are evaluated at import time, so a
+        # non-lazy gettext would freeze them in the startup language.
+        RECEIVED = 'received', gettext_lazy('Received / Purchase')
+        DONATION = 'donation', gettext_lazy('Donation')
+        SPOILAGE = 'spoilage', gettext_lazy('Spoilage / Removal')
+        CORRECTION = 'correction', gettext_lazy('Correction')
+
+    # Kinds that only ever add stock / only ever remove it. Corrections
+    # may go either way.
+    INCOMING_KINDS = frozenset({Kind.RECEIVED, Kind.DONATION})
+    OUTGOING_KINDS = frozenset({Kind.SPOILAGE})
+
+    product = models.ForeignKey(
+        'pantry.Product',
+        # PROTECT: the movement log is the audit record — deleting a
+        # product must not silently wipe its history. Deactivate instead.
+        on_delete=models.PROTECT,
+        related_name='stock_movements',
+    )
+    quantity_change = models.IntegerField(
+        help_text=(
+            "Signed change to stock: positive when product comes in, "
+            "negative when it goes out."
+        )
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    note = models.TextField(
+        blank=True,
+        help_text=(
+            "Optional source or note (donor, store, reason for a "
+            "correction, ...)."
+        ),
+    )
+    entered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='stock_movements',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'food_orders_stock_movement'
+        ordering = ['-created_at']
+        verbose_name = 'Stock Movement'
+        verbose_name_plural = 'Stock Movements'
+
+    def __str__(self) -> str:
+        return (
+            f"{self.product} {self.quantity_change:+d} "
+            f"({self.get_kind_display()})"
+        )
+
+    def _below_zero_message(self, product):
+        return _(
+            "This movement would take %(name)s below zero "
+            "(current stock: %(stock)s, change: %(change)+d)."
+        ) % {
+            'name': product.name,
+            'stock': product.quantity_in_stock,
+            'change': self.quantity_change,
+        }
+
+    def clean(self):
+        """Validate the movement so the admin form can show errors inline.
+
+        The below-zero check here gives a friendly form error; save()
+        repeats it under a row lock to close the race between two
+        concurrent entries.
+        """
+        super().clean()
+        change = self.quantity_change
+        if change is None:
+            return
+        if change == 0:
+            raise ValidationError({
+                'quantity_change': _(
+                    "A stock movement must change the quantity "
+                    "(use a positive or negative number, not zero)."
+                ),
+            })
+        if self.kind in self.INCOMING_KINDS and change < 0:
+            raise ValidationError({
+                'quantity_change': _(
+                    "%(kind)s adds stock, so the quantity must be positive. "
+                    "Use Spoilage / Removal or Correction to take stock out."
+                ) % {'kind': self.get_kind_display()},
+            })
+        if self.kind in self.OUTGOING_KINDS and change > 0:
+            raise ValidationError({
+                'quantity_change': _(
+                    "%(kind)s removes stock, so the quantity must be "
+                    "negative (for example -5)."
+                ) % {'kind': self.get_kind_display()},
+            })
+        if self.product_id is not None:
+            product = Product.objects.filter(pk=self.product_id).first()
+            if product and product.quantity_in_stock + change < 0:
+                raise ValidationError({
+                    'quantity_change': self._below_zero_message(product),
+                })
+
+    def save(self, *args, **kwargs):
+        # Movements are the audit record: once written, a movement is
+        # never edited. A mistake is fixed with a new correction movement.
+        if self.pk is not None:
+            raise ValidationError(
+                "Stock movements cannot be edited. "
+                "Record a correction movement instead."
+            )
+        self.full_clean()
+        with transaction.atomic():
+            product = Product.objects.select_for_update().get(
+                pk=self.product_id
+            )
+            # Re-check under the lock: clean() ran without one, so another
+            # movement or order may have changed stock since.
+            new_stock = product.quantity_in_stock + self.quantity_change
+            if new_stock < 0:
+                raise ValidationError({
+                    'quantity_change': self._below_zero_message(product),
+                })
+            # Update the count only. In particular, receiving stock does
+            # NOT reactivate an inactive product — making a product
+            # orderable again stays a deliberate staff action (see
+            # apps/pantry/utils/product_lifecycle.py).
+            Product.objects.filter(pk=product.pk).update(
+                quantity_in_stock=new_stock
+            )
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError(
+            "Stock movements cannot be deleted. "
+            "Record a correction movement instead."
+        )
 
 
 class CategoryLimitValidator:

@@ -405,6 +405,18 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.pantry.tasks.product_lifecycle.deactivate_zero_stock_products',
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
     },
+    # Stock forecast (#148): snapshots catch stockouts during the day; the
+    # forecast itself moves slowly, so one alert check a day is enough.
+    'record-stock-snapshots': {
+        'task': 'apps.pantry.tasks.stock_forecast.record_stock_snapshots',
+        'schedule': crontab(minute=5, hour='*/2'),  # Every 2 hours
+    },
+    'check-stock-forecast': {
+        'task': 'apps.pantry.tasks.stock_forecast.check_stock_forecast',
+        # Beat uses Django's TIME_ZONE (America/New_York), so this is 7 AM
+        # local: the digest is waiting when staff arrive.
+        'schedule': crontab(hour=7, minute=0),
+    },
 }
 
 SILENCED_SYSTEM_CHECKS = ['django_recaptcha.recaptcha_test_key_error']

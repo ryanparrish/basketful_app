@@ -131,12 +131,41 @@ EMAIL_TYPE_VARIABLES = {
             'product_count', 'Product count',
             'How many products are in this alert.', 2),
     ],
+    'stock_forecast_alert': [
+        EmailVariable(
+            'products', 'At-risk products',
+            'Products newly forecast to run out within the alert window. Loop '
+            'with {% for product in products %} — product.name, '
+            'product.available, product.weekly_usage, product.weeks_left, '
+            'product.runout_date, product.suggested_reorder.',
+            None, kind='list',
+            item_attributes=(
+                'name', 'available', 'weekly_usage', 'weeks_left',
+                'runout_date', 'suggested_reorder',
+            )),
+        EmailVariable(
+            'product_count', 'Product count',
+            'How many products are in this alert.', 2),
+        EmailVariable(
+            'alert_weeks', 'Alert window (weeks)',
+            'The configured forecast alert window in weeks.', 1),
+    ],
     # Seeded but inactive placeholders — common variables only.
     'order_confirmation': [],
     'voucher_notification': [],
 }
 
 _SAMPLE_OVERRIDES = {
+    'stock_forecast_alert': lambda: {
+        'products': [
+            SimpleNamespace(name='Canned Soup', available=9, weekly_usage=11.2,
+                            weeks_left=0.8, runout_date='Dec 3, 2026',
+                            suggested_reorder=47),
+            SimpleNamespace(name='Whole Milk', available=6, weekly_usage=7.5,
+                            weeks_left=0.8, runout_date='Dec 3, 2026',
+                            suggested_reorder=32),
+        ],
+    },
     'low_inventory_alert': lambda: {
         'products': [
             SimpleNamespace(name='Canned Beans', quantity_in_stock=12),

@@ -15,6 +15,8 @@ from apps.orders.api.views import (
     FailedOrderAttemptViewSet,
 )
 
+from apps.orders.api.reports import InventoryReportView
+
 router = DefaultRouter()
 router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'order-items', OrderItemViewSet, basename='order-item')
@@ -30,5 +32,10 @@ router.register(r'warehouse-inventory-lists', WarehouseInventoryListViewSet, bas
 router.register(r'failed-order-attempts', FailedOrderAttemptViewSet, basename='failed-order-attempt')
 
 urlpatterns = [
+    path(
+        'reports/inventory/',
+        InventoryReportView.as_view(),
+        name='inventory-report',
+    ),
     path('', include(router.urls)),
 ]

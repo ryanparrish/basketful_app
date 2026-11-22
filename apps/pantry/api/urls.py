@@ -12,7 +12,10 @@ from apps.pantry.api.views import (
     ProductLimitViewSet,
     OrderPackerViewSet,
     LowInventoryAlertSettingsViewSet,
+    StockMovementViewSet,
 )
+
+from apps.pantry.api.reports import StockForecastView
 
 router = DefaultRouter()
 router.register(r'categories', CategoryViewSet, basename='category')
@@ -21,6 +24,7 @@ router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'product-limits', ProductLimitViewSet, basename='product-limit')
 router.register(r'order-packers', OrderPackerViewSet, basename='order-packer')
+router.register(r'stock-movements', StockMovementViewSet, basename='stock-movement')
 router.register(
     r'low-inventory-alert-settings',
     LowInventoryAlertSettingsViewSet,
@@ -28,5 +32,10 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        'reports/stock-forecast/',
+        StockForecastView.as_view(),
+        name='stock-forecast',
+    ),
     path('', include(router.urls)),
 ]
