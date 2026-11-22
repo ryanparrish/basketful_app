@@ -26,14 +26,18 @@ function renderCard() {
 }
 
 async function fill(current: string, next: string, confirm: string) {
-  const user = userEvent.setup();
+  // delay: null skips the per-keystroke timer yield; with ~45 keystrokes
+  // per test the default pushed these close to the 5s timeout under load.
+  const user = userEvent.setup({ delay: null });
   await user.type(screen.getByLabelText(/current password/i), current);
   await user.type(screen.getByLabelText(/^new password/i), next);
   await user.type(screen.getByLabelText(/confirm new password/i), confirm);
   await user.click(screen.getByRole('button', { name: /change password/i }));
 }
 
-describe('ChangePasswordCard', () => {
+// Typing into three MUI fields takes ~1s alone but can pass 5s when the
+// full suite runs in parallel, so give these more than the default timeout.
+describe('ChangePasswordCard', { timeout: 15_000 }, () => {
   beforeEach(() => {
     mockChangePassword.mockReset();
   });
