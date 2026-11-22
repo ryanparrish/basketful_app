@@ -21,6 +21,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.api.errors import validation_error_response, validation_error_text
 from apps.api.pagination import StandardResultsSetPagination
 from apps.api.permissions import IsAdminOrReadOnly, IsStaffUser, IsOwnerOrAdmin
 from apps.orders.models import (
@@ -205,12 +206,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
         except ValidationError as e:
             # Validation errors are already logged by OrderOrchestration.create_order.
-            # The participant sees this text, so send the messages, not the
-            # exception's list repr.
-            return Response(
-                {'error': ' '.join(e.messages)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return validation_error_response(e)
     
     def get_client_ip(self, request):
         """Extract the real client IP address from request."""
@@ -266,7 +262,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.confirm()
             return Response(OrderSerializer(order).data)
         except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return validation_error_response(e)
         except Exception:
             logger.exception("Unexpected error confirming order pk=%s", pk)
             return Response(
@@ -295,7 +291,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 order._status_change_user = request.user
                 order.save(update_fields=['status', 'updated_at'])
         except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return validation_error_response(e)
         except Exception:
             # M6: never leak a raw 500 — staff must be able to tell the
             # cancel did not apply (atomicity guarantees it didn't).
@@ -476,7 +472,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                             # outer transaction stays healthy. Unexpected
                             # (non-domain) exceptions still propagate and
                             # roll back, as they should.
-                            failed_ids[order.id] = str(exc)
+                            failed_ids[order.id] = validation_error_text(exc)
                 if failed_ids:
                     updated_ids = [
                         oid for oid in updated_ids if oid not in failed_ids
@@ -743,7 +739,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     duplicate_violation = {
                         'type': 'limit',
                         'severity': 'error',
-                        'message': str(e),
+                        'message': validation_error_text(e),
                         'amount_over': 0,
                         'grace_allowed': False,
                     }
@@ -1521,8 +1517,16 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
             program = Program.objects.get(id=program_id)
             start_date = date.fromisoformat(start_date_str)
             end_date = date.fromisoformat(end_date_str)
-        except (Program.DoesNotExist, ValueError) as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Program.DoesNotExist:
+            return Response(
+                {'error': 'Program not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError:
+            return Response(
+                {'error': 'start_date and end_date must be dates in YYYY-MM-DD format.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         effective_strategy = split_strategy_override or program.default_split_strategy
         eligible_orders, excluded_orders, warnings = get_eligible_orders(program, start_date, end_date)
         errors = []
@@ -1611,7 +1615,7 @@ class CombinedOrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED
             )
         except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return validation_error_response(e)
         except IntegrityError:
             return Response(
                 {'error': (
