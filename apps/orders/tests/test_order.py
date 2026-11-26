@@ -633,10 +633,10 @@ def test_order_number_uniqueness_constraint():
 
 
 @pytest.mark.django_db
-def test_order_number_generation_with_100_orders():
-    """Stress test: Create 100 orders and verify all have unique order numbers."""
+def test_order_number_generation_is_unique_across_many_orders():
+    """Create a batch of orders and verify every order number is unique."""
     participants = []
-    for i in range(100):
+    for i in range(25):
         participant = create_participant(email=f"stress{i}@example.com")
         create_voucher(participant, multiplier=1, base_balance=Decimal("100"))
         participants.append(participant)

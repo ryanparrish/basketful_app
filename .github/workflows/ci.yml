@@ -129,29 +129,7 @@ jobs:
           MAILGUN_SENDER_DOMAIN: test.example.com
           DEFAULT_FROM_EMAIL: test@example.com
         run: |
-          pytest --tb=short --maxfail=5 -v
-
-      - name: Generate coverage report
-        # Run even when tests fail, for the full coverage picture, but not
-        # when setup failed: with "Run tests" skipped, the catalogs and
-        # migrations were skipped too, and the run only produced misleading
-        # failures (e.g. Spanish i18n tests getting English, Issue #119).
-        if: ${{ !cancelled() && steps.run_tests.conclusion != 'skipped' }}
-        env:
-          DJANGO_SETTINGS_MODULE: core.settings
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/basketful_test
-          REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test-secret-key-for-ci
-          DOMAIN_NAME: test.example.com
-          HASHIDS_SALT: test-hashids-salt-for-ci
-          DEBUG: 'True'
-          ALLOWED_HOSTS: localhost,127.0.0.1
-          CELERY_TASK_ALWAYS_EAGER: 'True'
-          MAILGUN_API_KEY: test-key
-          MAILGUN_SENDER_DOMAIN: test.example.com
-          DEFAULT_FROM_EMAIL: test@example.com
-        run: |
-          pytest --cov=apps --cov-report=xml --cov-report=html --cov-report=term-missing
+          pytest -n auto --tb=short --cov=apps --cov-report=xml --cov-report=html --cov-report=term-missing
 
       - name: Print coverage summary
         if: always()
