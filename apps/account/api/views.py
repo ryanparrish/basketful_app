@@ -26,10 +26,15 @@ from apps.account.models import (
     HygieneSettings,
     BulkCreateBatch,
 )
-from apps.account.utils.balance_utils import calculate_base_balance
+from apps.account.utils.balance_utils import (
+    BalanceRules,
+    calculate_base_balance,
+    open_grocery_vouchers_prefetch,
+)
 from apps.account.utils.user_utils import ensure_participant_user
 from apps.account.tasks.email import send_password_reset_email, send_new_user_onboarding_email
 from .serializers import (
+    BALANCE_RULES_CONTEXT_KEY,
     UserSerializer,
     UserCreateSerializer,
     UserProfileSerializer,
@@ -159,7 +164,19 @@ class ParticipantViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         if not self.request.user.is_staff:
             qs = qs.filter(user=self.request.user)
+        if self.action == 'list':
+            # Load every row's account and open grocery vouchers up front so
+            # the list costs the same number of queries at any page size (#156).
+            qs = qs.select_related('accountbalance').prefetch_related(
+                open_grocery_vouchers_prefetch('accountbalance__')
+            )
         return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.action == 'list':
+            context[BALANCE_RULES_CONTEXT_KEY] = BalanceRules.load()
+        return context
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
