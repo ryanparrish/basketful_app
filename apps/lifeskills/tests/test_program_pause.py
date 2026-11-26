@@ -3,23 +3,17 @@ from freezegun import freeze_time
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
-from unittest import mock
 
 
 from apps.account.models import Participant, AccountBalance
 from apps.voucher.models import Voucher
 from apps.lifeskills.models import ProgramPause, Program
-from apps.lifeskills.tasks.program_pause import update_voucher_flag
 from core.models import OrderWindowSettings
 
 
 # ----------------------------
 # Fixtures
 # ----------------------------
-@pytest.fixture
-def pause_duration():
-    """Return a timedelta for pause duration."""
-    return timedelta(days=7)
 
 
 @pytest.fixture
@@ -83,306 +77,34 @@ def participant_with_vouchers(db):
     }
 
 
-# ----------------------------
-# Helpers
-# ----------------------------
-def _count_flagged_active(vouchers):
-    return sum(1 for v in vouchers if v.active and v.program_pause_flag)
-
-
-def _trigger_program_pause(start, end):
-    """
-    Create a ProgramPause and synchronously update vouchers.
-    """
-    pp = ProgramPause.objects.create(pause_start=start, pause_end=end, reason="Test Pause")
-    update_voucher_flag(pp.id)
-    return pp
 
 
 # ----------------------------
-# Tests - Legacy (with helper)
+# Tests
 # ----------------------------
-@freeze_time("2025-09-13 19:16:38")
-@pytest.mark.django_db(transaction=True)
-def test_signal_flags_two_active_vouchers(
-    participant_with_vouchers, pause_duration
-):
-    participant = participant_with_vouchers["participant"]
-    account = participant_with_vouchers["account"]
-    v1, v2, v3 = participant_with_vouchers["vouchers"]
-
-    start = timezone.now()
-    end = start + pause_duration
-
-    # Patch apply_async so scheduled deactivation does not run in eager mode
-    with mock.patch(
-        "apps.lifeskills.tasks.program_pause."
-        "update_voucher_flag_task.apply_async"
-    ):
-        _trigger_program_pause(start, end)
-
-    # Refresh objects from DB to get task updates
-    account.refresh_from_db()
-    v1.refresh_from_db()
-    v2.refresh_from_db()
-    v3.refresh_from_db()
-
-    flagged_active = _count_flagged_active([v1, v2, v3])
-    assert flagged_active == 2
-    assert v3.program_pause_flag is False
-
-
-@freeze_time("2025-09-13 19:16:38")
-@pytest.mark.django_db(transaction=True)
-def test_signal_idempotency(participant_with_vouchers, pause_duration):
-    participant = participant_with_vouchers["participant"]
-    account = participant_with_vouchers["account"]
-    v1, v2, v3 = participant_with_vouchers["vouchers"]
-
-    start = timezone.now()
-    end = start + pause_duration
-
-    with mock.patch(
-        "apps.lifeskills.tasks.program_pause."
-        "update_voucher_flag_task.apply_async"
-    ):
-        pause = _trigger_program_pause(start, end)
-        pause.save()
-        pause.save()  # saving multiple times should not break flags
-
-    v1.refresh_from_db()
-    v2.refresh_from_db()
-    v3.refresh_from_db()
-
-    assert v1.program_pause_flag is True
-    assert v2.program_pause_flag is True
-    assert v3.program_pause_flag is False
-
-
-@freeze_time("2025-09-13 19:16:38")
-@pytest.mark.django_db(transaction=True)
-def test_participant_with_single_voucher(db, pause_duration):
-    participant = Participant.objects.create(
-        name="P2", email="p2@test.com", active=True
-    )
-    account = AccountBalance.objects.get_or_create(participant=participant)[0]
-    v = Voucher.objects.create(account=account, active=True)
-
-    start = timezone.now()
-    end = start + pause_duration
-
-    with mock.patch(
-        "apps.lifeskills.tasks.program_pause."
-        "update_voucher_flag_task.apply_async"
-    ):
-        _trigger_program_pause(start, end)
-
-    v.refresh_from_db()
-    assert v.program_pause_flag is True
-
-
-# ----------------------------
-# Tests - New: Ordering Window Logic
-# ----------------------------
-@freeze_time("2026-02-10 12:00:00")  # 12 days before Feb 22
-@pytest.mark.django_db(transaction=True)
-def test_pause_created_in_ordering_window_flags_immediately(
-    participant_with_vouchers
-):
-    """
-    Test that when a pause is created 11-14 days in the future,
-    vouchers are flagged immediately via the signal handler.
-    """
-    v1, v2, v3 = participant_with_vouchers["vouchers"]
-    
-    # Create pause 12 days in future (within 11-14 day window)
-    pause_start = timezone.now() + timedelta(days=12)
-    pause_end = pause_start + timedelta(days=7)
-    
-    # Mock both the task call and deactivation scheduling
-    with mock.patch(
-        "apps.lifeskills.signals.update_voucher_flag_task.delay"
-    ) as mock_task, mock.patch(
-        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
-    ) as mock_deactivate:
-        pp = ProgramPause.objects.create(
-            pause_start=pause_start,
-            pause_end=pause_end,
-            reason="Week Off"
-        )
-        
-        # Verify task was called immediately with correct multiplier
-        assert mock_task.called
-        call_args = mock_task.call_args
-        voucher_ids = call_args[0][0]
-        assert len(voucher_ids) == 2  # Only active vouchers
-        assert call_args[1]['multiplier'] == 2  # Short pause
-        assert call_args[1]['activate'] is True
-        
-        # Verify deactivation was scheduled
-        assert mock_deactivate.called
-
-
-@freeze_time("2026-02-10 12:00:00")  # 12 days before pause
-@pytest.mark.django_db(transaction=True)
-def test_pause_extended_duration_uses_multiplier_3(participant_with_vouchers):
-    """
-    Test that pauses with duration >= 14 days use multiplier 3.
-    """
-    # Create pause with 14-day duration
-    pause_start = timezone.now() + timedelta(days=12)
-    pause_end = pause_start + timedelta(days=14)
-    
-    with mock.patch(
-        "apps.lifeskills.signals.update_voucher_flag_task.delay"
-    ) as mock_task, mock.patch(
-        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
-    ):
-        pp = ProgramPause.objects.create(
-            pause_start=pause_start,
-            pause_end=pause_end,
-            reason="Extended Break"
-        )
-        
-        # Verify multiplier is 3 for extended pause
-        call_args = mock_task.call_args
-        assert call_args[1]['multiplier'] == 3
-
-
-@freeze_time("2026-01-25 12:00:00")  # 28 days before pause (outside window)
-@pytest.mark.django_db(transaction=True)
-def test_pause_created_outside_ordering_window_schedules_for_future(
-    participant_with_vouchers
-):
-    """
-    Test that when a pause is created outside the 11-14 day window,
-    tasks are scheduled for the future (not executed immediately).
-    """
-    # Create pause 28 days in future (outside 11-14 day window)
-    pause_start = timezone.now() + timedelta(days=28)
-    pause_end = pause_start + timedelta(days=7)
-    
-    with mock.patch(
-        "apps.lifeskills.signals.update_voucher_flag_task.delay"
-    ) as mock_immediate, mock.patch(
-        "apps.lifeskills.signals.schedule_voucher_tasks"
-    ) as mock_schedule:
-        pp = ProgramPause.objects.create(
-            pause_start=pause_start,
-            pause_end=pause_end,
-            reason="Future Pause"
-        )
-        
-        # Verify immediate task was NOT called
-        assert not mock_immediate.called
-
-        # Verify scheduling was called for future execution
-        assert mock_schedule.called
-
-
-@freeze_time("2026-01-25 12:00:00")  # 28 days before pause (outside window)
-@pytest.mark.django_db(transaction=True)
-def test_extended_pause_outside_window_schedules_multiplier_3_not_2(
-    participant_with_vouchers
-):
-    """
-    Regression: schedule_voucher_tasks used to hardcode multiplier=2
-    regardless of pause duration, so an extended pause (>=14 days) created
-    outside the 10-14 day immediate-flagging window silently got the short-
-    pause multiplier instead of the correct one. It must compute the
-    multiplier the same way the immediate-flagging path does.
-    """
-    # 21-day pause, 28 days out — outside the window, and long enough to
-    # require multiplier=3 per calculate_multiplier_for_duration.
-    pause_start = timezone.now() + timedelta(days=28)
-    pause_end = pause_start + timedelta(days=20)
-
-    with mock.patch(
-        "apps.voucher.tasks.voucher_scheduling.update_voucher_flag_task.apply_async"
-    ) as mock_apply_async:
-        ProgramPause.objects.create(
-            pause_start=pause_start,
-            pause_end=pause_end,
-            reason="Extended Future Pause",
-        )
-
-        assert mock_apply_async.called
-        # First call schedules activation; assert its multiplier kwarg is 3.
-        activation_call = mock_apply_async.call_args_list[0]
-        assert activation_call.kwargs["kwargs"]["multiplier"] == 3
 
 
 @freeze_time("2026-02-10 12:00:00")
 @pytest.mark.django_db(transaction=True)
-def test_voucher_balance_doubles_with_new_logic(participant_with_vouchers):
+def test_balance_doubles_live_when_pause_enters_its_window(participant_with_vouchers):
     """
-    Test that vouchers are properly flagged and balance doubles when
-    pause is created within ordering window (testing the real signal flow).
+    #141: creating a pause in its double-week window doubles the balance
+    immediately, with no voucher flagging or Celery task involved.
     """
     account = participant_with_vouchers["account"]
-    v1, v2, v3 = participant_with_vouchers["vouchers"]
-    
-    # Get initial balance
     account.refresh_from_db()
     initial_balance = account.available_balance
     assert initial_balance > 0
-    
-    # Create pause 12 days in future
+
     pause_start = timezone.now() + timedelta(days=12)
-    pause_end = pause_start + timedelta(days=7)
-    
-    # Mock Celery task execution but manually call to simulate eager mode
-    with mock.patch(
-        "apps.lifeskills.signals.update_voucher_flag_task.delay"
-    ) as mock_task, mock.patch(
-        "apps.lifeskills.signals.deactivate_expired_pause_vouchers.apply_async"
-    ):
-        pp = ProgramPause.objects.create(
-            pause_start=pause_start,
-            pause_end=pause_end,
-            reason="Week Off"
-        )
-        
-        # Manually execute what the task would do (simulating eager execution)
-        if mock_task.called:
-            voucher_ids = mock_task.call_args[0][0]
-            multiplier = mock_task.call_args[1]['multiplier']
-            
-            for vid in voucher_ids:
-                v = Voucher.objects.get(id=vid)
-                v.program_pause_flag = True
-                v.multiplier = multiplier
-                v.save()
-    
-    # Refresh and check
-    v1.refresh_from_db()
-    v2.refresh_from_db()
+    ProgramPause.objects.create(
+        pause_start=pause_start,
+        pause_end=pause_start + timedelta(days=7),
+        reason="Week Off",
+    )
+
     account.refresh_from_db()
-    
-    # Verify vouchers are flagged with correct multiplier
-    assert v1.program_pause_flag is True
-    assert v1.multiplier == 2
-    assert v2.program_pause_flag is True
-    assert v2.multiplier == 2
-    
-    # Balance should be doubled (2x) during pause
-    # The multiplier is applied in calculate_available_balance
-    balance_during_pause = account.available_balance
-    assert balance_during_pause == initial_balance * 2
-
-
-@pytest.mark.django_db(transaction=True)
-def test_deactivation_task_stops_when_pause_deleted(participant_with_vouchers):
-    """
-    Test that deactivation task handles ProgramPause deletion gracefully.
-    """
-    from apps.lifeskills.tasks.program_pause import deactivate_expired_pause_vouchers
-    
-    # Call task with nonexistent pause ID
-    result = deactivate_expired_pause_vouchers(program_pause_id=99999)
-    
-    # Should return without error (logged warning)
-    assert result is None
+    assert account.available_balance == initial_balance * 2
 
 
 @pytest.mark.django_db(transaction=True) 

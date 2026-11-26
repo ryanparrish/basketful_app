@@ -3,7 +3,7 @@
 > Last updated: 2026-10-17
 
 ## Overview
-Django signals provide automatic responses to model events, enabling seamless automation throughout Basketful. The system automatically handles account creation, voucher generation, user setup, coach/group sync, program-pause voucher flagging, rules-version cache invalidation, and login auditing.
+Django signals provide automatic responses to model events, enabling seamless automation throughout Basketful. The system automatically handles account creation, voucher generation, user setup, coach/group sync, rules-version cache invalidation, and login auditing.
 
 Signal handlers live in `signals.py` files across six apps/modules: `apps/account`, `apps/pantry`, `apps/lifeskills`, `apps/log`, `apps/voucher`, and `core`. There is no `signals.py` in `apps/api` or `apps/orders` — order-number generation, for example, is a model `save()` override, not a signal (see [Order Number Generation](#order-number-generation-not-a-signal) below).
 
@@ -102,7 +102,7 @@ def voucher_post_delete(instance, **kwargs): ...
 
 > ⚠️ **These handlers are not currently connected.** Unlike `account`, `pantry`, `lifeskills`, `log`, and `core`, **`apps/voucher/apps.py` has no `ready()` method and never imports `apps.voucher.signals`**, and nothing else in the codebase imports that module either. Because Django only registers `@receiver`-decorated functions when their module is imported, `voucher_pre_save`/`voucher_post_save`/`voucher_pre_delete`/`voucher_post_delete` are dead code as of this writing — they do not fire. If voucher lifecycle logging is expected to work, `VoucherConfig.ready()` needs to import `apps.voucher.signals`.
 >
-> Program-pause voucher multipliers are **not** handled here — that logic lives in `apps/lifeskills/signals.py` (see below).
+> Program-pause multipliers are **not** handled by signals — they are computed live (see [PROGRAM_PAUSES.md](PROGRAM_PAUSES.md)).
 
 ### 3. Order Number Generation (not a signal)
 
@@ -159,20 +159,7 @@ def sync_coach_user_group(sender, instance, created, **kwargs): ...
 **Triggers**: `LifeskillsCoach` create/update.
 **Actions**: `track_coach_user_change` stashes the previous `user` FK (via `pre_save`) so `sync_coach_user_group` can diff old vs. new. When the linked user changes, the old user is removed from the `'Lifeskills Coach'` group and has `is_staff` revoked (unless they're a superuser or belong to another staff-implying group: `Staff`, `Admin`). The new user is added to the `'Lifeskills Coach'` group and granted `is_staff=True`.
 
-#### Program Pause → Voucher Flagging
-```python
-@receiver(post_save, sender=ProgramPause)
-def handle_program_pause(sender, instance, created, **kwargs): ...
-```
-**Triggers**: `ProgramPause` create/update. Guarded by `instance._skip_signal` to avoid recursion, and skipped entirely for archived pauses (`archive()` saves the pause, which would otherwise re-flag vouchers it just cleared).
-
-**Actions**:
-1. Finds all `Voucher` objects with `active=True, account__active=True`; exits if none
-2. Converts `pause_start` to an EST calendar date (`get_est_date`) and computes `days_until_start`
-3. **If 0–14 days until the pause starts**: immediately dispatches `update_voucher_flag_task.delay(voucher_ids, multiplier=..., activate=True, program_pause_id=...)` with a multiplier from `ProgramPause.calculate_multiplier_for_duration()`, then schedules `deactivate_expired_pause_vouchers.apply_async(eta=...)` for shortly after the earliest affected participant's order window closes (via `OrderWindowSettings` + `get_next_class_datetime`, plus a 5-minute buffer)
-4. **More than 14 days out**: falls back to `schedule_voucher_tasks(vouchers, activate_time=pause_start - 14 days, deactivate_time=pause_end, multiplier=...)` for later Celery-driven execution, so flags turn on when the double-order window opens; the multiplier is computed from the pause's own dates because the shifted `activate_time` would distort it; logs a `VoucherLogger.error()` per voucher and re-raises on unexpected exceptions
-
-> ⚠️ This module hard-codes an EST/America-New-York assumption for the ordering-window calculation (see the `⚠️` warnings in the source).
+Program pauses have no signal: the pause multiplier is read live (`apps/lifeskills/utils.py::active_pause()`), so saving a pause needs no follow-up work. See [PROGRAM_PAUSES.md](PROGRAM_PAUSES.md).
 
 ### 6. Log Signals (auth audit trail)
 
@@ -533,7 +520,7 @@ def initialize_participant(instance, created, **kwargs):
 
 ## Future Enhancements
 
-> Note: Celery-based async dispatch from signals is already in production use (`initialize_participant` schedules `send_new_user_onboarding_email.delay()` via `transaction.on_commit`; `handle_program_pause` dispatches `update_voucher_flag_task.delay()` / `deactivate_expired_pause_vouchers.apply_async()`), so it's listed here as a pattern to extend further, not a greenfield idea.
+> Note: Celery-based async dispatch from signals is already in production use (`initialize_participant` schedules `send_new_user_onboarding_email.delay()` via `transaction.on_commit`), so it's listed here as a pattern to extend further, not a greenfield idea.
 
 - Extend async dispatch to more signal handlers where DB-bound work is currently synchronous (e.g. `create_staff_user_profile_and_onboarding` sends its onboarding email synchronously via `.delay()` call made inline rather than via `transaction.on_commit`)
 - Wire up `apps/voucher/signals.py` in `VoucherConfig.ready()` (currently dead code — see [Voucher Signals](#2-voucher-signals))

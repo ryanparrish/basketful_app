@@ -48,8 +48,6 @@ export interface ProgramPause {
   is_active: boolean;
   archived: boolean;
   archived_at: string | null;
-  last_resync_at: string | null;
-  last_resync_by_username: string | null;
 }
 
 export interface PauseFormData {

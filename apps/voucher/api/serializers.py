@@ -7,6 +7,26 @@ from rest_framework import serializers
 from apps.voucher.models import Voucher, VoucherSetting, OrderVoucher
 
 
+class LivePauseMultiplierMixin(serializers.Serializer):
+    """
+    Adds a read-only ``pause_multiplier``: the live double-week multiplier
+    for vouchers it doubles (applied grocery vouchers, as in
+    calculate_available_balance), else 1 (#141).
+
+    The lookup runs once per response and is cached in the serializer
+    context, which every row of a list shares.
+    """
+    pause_multiplier = serializers.SerializerMethodField()
+
+    def get_pause_multiplier(self, voucher):
+        if voucher.state != 'applied' or voucher.voucher_type != 'grocery':
+            return 1
+        if 'pause_multiplier' not in self.context:
+            from apps.lifeskills.utils import current_pause_multiplier
+            self.context['pause_multiplier'] = current_pause_multiplier()
+        return self.context['pause_multiplier']
+
+
 class VoucherSettingSerializer(serializers.ModelSerializer):
     """Serializer for VoucherSetting model."""
 
@@ -19,7 +39,7 @@ class VoucherSettingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'updated_at']
 
 
-class VoucherSerializer(serializers.ModelSerializer):
+class VoucherSerializer(LivePauseMultiplierMixin, serializers.ModelSerializer):
     """Serializer for Voucher model."""
     voucher_amnt = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
@@ -39,16 +59,15 @@ class VoucherSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'account', 'participant_name', 'participant_customer_number',
             'program_name', 'active', 'voucher_type', 'state',
-            'program_pause_flag', 'multiplier', 'voucher_amnt', 'notes',
+            'pause_multiplier', 'voucher_amnt', 'notes',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'state', 'multiplier', 'voucher_amnt',
-            'created_at', 'updated_at'
+            'id', 'state', 'voucher_amnt', 'created_at', 'updated_at'
         ]
 
 
-class VoucherListSerializer(serializers.ModelSerializer):
+class VoucherListSerializer(LivePauseMultiplierMixin, serializers.ModelSerializer):
     """Simplified serializer for Voucher list views."""
     voucher_amnt = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
@@ -61,9 +80,9 @@ class VoucherListSerializer(serializers.ModelSerializer):
         model = Voucher
         fields = [
             'id', 'participant_name', 'active', 'voucher_type',
-            'state', 'program_pause_flag', 'multiplier', 'voucher_amnt', 'created_at'
+            'state', 'pause_multiplier', 'voucher_amnt', 'created_at'
         ]
-        read_only_fields = ['id', 'state', 'program_pause_flag', 'multiplier', 'voucher_amnt', 'created_at']
+        read_only_fields = ['id', 'state', 'voucher_amnt', 'created_at']
 
 
 class VoucherCreateSerializer(serializers.ModelSerializer):
@@ -71,7 +90,7 @@ class VoucherCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Voucher
-        fields = ['account', 'voucher_type', 'notes', 'program_pause_flag']
+        fields = ['account', 'voucher_type', 'notes']
 
 
 class BulkVoucherCreateSerializer(serializers.Serializer):

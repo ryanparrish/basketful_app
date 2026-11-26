@@ -39,7 +39,6 @@ export const ProgramPausesTab = () => {
   const [overlapError, setOverlapError] = useState<string | null>(null);
   const [pauseSaving, setPauseSaving] = useState(false);
   const [pausesLoading, setPausesLoading] = useState(false);
-  const [resyncingPause, setResyncingPause] = useState<number | null>(null);
 
   const debouncedPauseStart = useDebounce(pauseForm.pause_start, 500);
   const debouncedPauseEnd = useDebounce(pauseForm.pause_end, 500);
@@ -200,31 +199,6 @@ export const ProgramPausesTab = () => {
     }
   };
 
-  const resyncPause = async (id: number) => {
-    setResyncingPause(id);
-    const token = localStorage.getItem('accessToken');
-    try {
-      const res = await fetch(`${API_URL}/api/v1/program-pauses/${id}/resync/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        notify(
-          `Resync complete: ${data.updated_count} vouchers updated, ${data.skipped_count} already correct.`,
-          { type: 'success' },
-        );
-        setPauses(prev => prev.map(p => (p.id === id ? data : p)));
-        if (activePause?.id === id) setActivePause(data);
-      } else {
-        notify(data.detail || 'Error resyncing pause.', { type: 'error' });
-      }
-    } catch {
-      notify('Error resyncing pause.', { type: 'error' });
-    }
-    setResyncingPause(null);
-  };
-
   return (
     <Box sx={{ maxWidth: 860 }}>
       {activePause && (
@@ -284,26 +258,6 @@ export const ProgramPausesTab = () => {
                         onClick={() => openEditModal(pause)}
                       >
                         Edit
-                      </Button>
-                    )}
-                    {pause.is_active && !pause.archived && (
-                      <Button
-                        size="small"
-                        color="error"
-                        variant="outlined"
-                        onClick={() => resyncPause(pause.id)}
-                        disabled={resyncingPause === pause.id}
-                        title={
-                          pause.last_resync_at
-                            ? `Last resync: ${new Date(pause.last_resync_at).toLocaleString()} by ${pause.last_resync_by_username}`
-                            : 'Never resynced — auto-trigger may not have fired'
-                        }
-                      >
-                        {resyncingPause === pause.id ? (
-                          <CircularProgress size={16} />
-                        ) : (
-                          'Resync'
-                        )}
                       </Button>
                     )}
                     {pause.archived ? (

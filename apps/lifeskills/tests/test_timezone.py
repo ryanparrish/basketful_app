@@ -200,13 +200,3 @@ class TestProgramPauseWithTimezone:
         multiplier, message = pp._calculate_pause_status()
         assert multiplier == 2, "Short pause should have multiplier 2"
         assert "Short pause" in message
-
-
-@pytest.mark.django_db
-class TestSignalHandlerTimezone:
-    """Test signal handler uses EST for calculations."""
-    
-    # TODO: Add signal handler test when proper fixtures are available
-    # The signal handler correctly uses EST dates via get_est_date()
-    # See apps/lifeskills/signals.py lines 53-58 for implementation
-    pass

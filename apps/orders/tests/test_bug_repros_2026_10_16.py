@@ -17,8 +17,6 @@ import pytest
 from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
-from apps.account.models import Participant, AccountBalance
-from apps.lifeskills.models import Program
 from apps.orders.models import Order, OrderItem
 from apps.orders.tests.factories import (
     UserFactory,
@@ -966,67 +964,6 @@ def test_m15_order_window_enforced_on_create(singletons):
 
 
 @pytest.mark.django_db
-def test_m14_pause_created_early_flags_vouchers_at_double_week_gate():
-    """M14 — Pauses created >14 days out never get voucher flags during the
-    double week.
-
-    apps/lifeskills/signals.py — the "outside ordering window" branch calls
-    schedule_voucher_tasks(vouchers, activate_time=pause_start, ...): flags
-    are scheduled to activate when the pause STARTS (the no-order week), not
-    when it ENTERS the 10-14-day double-week gate. Participants creating
-    double orders during the double week get no voucher flags.
-
-    Expected: activation is scheduled for pause_start - 14 days with the
-    pause-duration multiplier.
-    Actual (current code): activation scheduled at pause_start -> test FAILS,
-    demonstrating M14.
-    """
-    from datetime import timedelta
-    from decimal import Decimal
-    from unittest import mock
-    from django.utils import timezone
-    from apps.lifeskills.models import ProgramPause
-    from apps.voucher.models import Voucher
-
-    program = ProgramFactory(name="M14 Program")
-    participant = Participant.objects.create(
-        name="M14 Participant", email="m14@example.com",
-        program=program, active=True, adults=2, children=1,
-    )
-    account, _ = AccountBalance.objects.get_or_create(
-        participant=participant, defaults={"base_balance": Decimal("100.0")}
-    )
-    account.vouchers.all().delete()
-    Voucher.objects.create(
-        account=account, active=True, voucher_type="grocery", state="applied"
-    )
-
-    now = timezone.now()
-    pause_start = now + timedelta(days=20)
-    pause_end = pause_start + timedelta(days=7)
-
-    with mock.patch(
-        "apps.voucher.tasks.voucher_scheduling.update_voucher_flag_task"
-    ) as mock_task:
-        ProgramPause.objects.create(
-            pause_start=pause_start, pause_end=pause_end, reason="M14"
-        )
-
-    activate_calls = [
-        c for c in mock_task.apply_async.call_args_list
-        if c.kwargs.get("kwargs", {}).get("activate")
-    ]
-    assert activate_calls, "no voucher activation was scheduled at all"
-    eta = activate_calls[0].kwargs["eta"]
-    expected = pause_start - timedelta(days=14)
-    assert abs((eta - expected).total_seconds()) < 120, (
-        f"activation scheduled at {eta}, expected the double-week gate ~{expected}"
-    )
-    multiplier = activate_calls[0].kwargs["kwargs"]["multiplier"]
-    assert multiplier == 2, f"expected duration multiplier 2, got {multiplier}"
-
-
-@pytest.mark.django_db
 def test_m13_iso_year_used_for_combined_order_week_year(singletons):
     """M13 — ISO week stored with calendar year → year-boundary collisions.
 
@@ -1243,41 +1180,3 @@ def test_h4_failed_bulk_confirm_writes_no_bypass_warning(singletons):
     )
 
 
-@pytest.mark.django_db
-def test_pause_signal_near_term_pause_gets_immediate_activation(mocker):
-    """Review #107 (apps/lifeskills/signals.py:214): a pause less than 10
-    days away must take the immediate-activation path, not the
-    future-scheduling path.
-
-    Old code: the else branch scheduled activation at pause_start - 14d,
-    which is already past for a near-term pause, so flags turned on
-    immediately with NO smart deactivation (stayed on until pause_end).
-    New code: days_until_start <= 14 takes the immediate path with
-    earliest-window-close deactivation.
-    """
-    from django.utils import timezone
-    from datetime import timedelta
-    import apps.lifeskills.signals as pause_signals
-    from apps.lifeskills.models import ProgramPause
-
-    # Signal exits early without active vouchers; give it one.
-    _account_with_vouchers(base_balance=Decimal("50.00"), num_vouchers=1)
-
-    mock_immediate = mocker.patch.object(
-        pause_signals.update_voucher_flag_task, "delay"
-    )
-    mock_scheduled = mocker.patch.object(pause_signals, "schedule_voucher_tasks")
-
-    now = timezone.now()
-    ProgramPause.objects.create(
-        pause_start=now + timedelta(days=5),
-        pause_end=now + timedelta(days=12),
-        reason="near-term test pause",
-    )
-
-    assert mock_immediate.called, (
-        "a pause 5 days out must take the immediate-activation path"
-    )
-    assert not mock_scheduled.called, (
-        "a pause 5 days out must NOT take the future-scheduling path"
-    )

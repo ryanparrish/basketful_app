@@ -72,12 +72,8 @@ def calculate_available_balance(account_balance, limit=2):
     Rules:
       - Sums up to `limit` active grocery vouchers.
       - Applies the CURRENT program-pause multiplier live (see
-        _get_current_pause_multiplier) rather than each voucher's stored
-        program_pause_flag/multiplier — those are only set by a one-shot
-        batch job when a ProgramPause is saved, so a voucher created
-        afterward (a new participant, a replenished voucher) would never
-        get flagged and would silently stay un-doubled. Computing it live
-        means it's always correct regardless of when the voucher was created.
+        apps.lifeskills.utils.active_pause), so it is correct regardless of
+        when the voucher was created.
     """
     if not account_balance:
         return Decimal(0)
@@ -123,10 +119,8 @@ def calculate_hygiene_balance(account_balance) -> Decimal:
 
 def _get_current_pause_multiplier() -> int:
     """Return the active pause multiplier if we're in the ordering window, else 1."""
-    from apps.lifeskills.models import ProgramPause
-    pauses = ProgramPause.objects.all()  # default manager excludes archived
-    multipliers = [pp.multiplier for pp in pauses]
-    return max(multipliers, default=1)
+    from apps.lifeskills.utils import current_pause_multiplier
+    return current_pause_multiplier()
 
 
 def calculate_go_fresh_balance(account_balance) -> Decimal:

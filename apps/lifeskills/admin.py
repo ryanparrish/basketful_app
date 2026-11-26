@@ -58,7 +58,7 @@ class ProgramPauseAdmin(admin.ModelAdmin):
             if not pause.archived:
                 pause.archive()
                 count += 1
-        self.message_user(request, f"{count} pause(s) archived and vouchers cleaned up.", messages.SUCCESS)
+        self.message_user(request, f"{count} pause(s) archived.", messages.SUCCESS)
     archive_pauses.short_description = "Archive selected pauses"
 
     def unarchive_pauses(self, request, queryset):

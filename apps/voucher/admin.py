@@ -31,7 +31,7 @@ class VoucherAdmin(admin.ModelAdmin):
     actions = [mark_as_applied]
 
     # Make some fields read-only to show metadata
-    readonly_fields = ('voucher_amnt', 'notes', 'program_pause_flag', 'multiplier', 'created_at', 'updated_at')
+    readonly_fields = ('voucher_amnt', 'notes', 'created_at', 'updated_at')
     
     # Add filters in the right sidebar
     list_filter = ('voucher_type', 'account', 'state', 'created_at')

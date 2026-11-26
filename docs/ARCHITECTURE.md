@@ -101,8 +101,6 @@ erDiagram
 		string voucher_type
 		string state
 		bool active
-		bool program_pause_flag
-		int multiplier
 	}
 	ORDER {
 		int id PK
@@ -208,8 +206,6 @@ classDiagram
 		+String voucher_type
 		+String state
 		+bool active
-		+bool program_pause_flag
-		+int multiplier
 		+voucher_amnt Decimal
 		+validate_vouchers()
 	}

@@ -1,10 +1,6 @@
-"""Utility functions for managing program pause voucher states."""
-import logging
+"""Program pause helpers: EST dates and the live pause multiplier."""
 import zoneinfo
-from django.db import transaction
 from django.utils import timezone
-
-logger = logging.getLogger(__name__)
 
 
 def get_est_date(dt=None):
@@ -52,126 +48,28 @@ def get_est_date(dt=None):
     return est_dt.date()
 
 
-logger = logging.getLogger(__name__)
-
-
-def set_voucher_pause_state(voucher_ids, activate=False, multiplier=1):
+def active_pause():
     """
-    Set pause state on vouchers in an idempotent, transactional way.
-    
-    Args:
-        voucher_ids (list): List of voucher IDs to update
-        activate (bool): True to flag vouchers, False to clear flags
-        multiplier (int): Multiplier to apply when activating (default 1)
-        
-    Returns:
-        tuple: (updated_count, skipped_count)
-    """
-    from apps.voucher.models import Voucher
-    
-    if not voucher_ids:
-        logger.info("[Voucher State] No voucher IDs provided")
-        return (0, 0)
-    
-    # Ensure list
-    if isinstance(voucher_ids, int):
-        voucher_ids = [voucher_ids]
-    elif not hasattr(voucher_ids, '__iter__'):
-        voucher_ids = list(voucher_ids)
-    
-    target_flag = activate
-    target_multiplier = multiplier if activate else 1
-    
-    updated_count = 0
-    skipped_count = 0
-    
-    with transaction.atomic():
-        vouchers = Voucher.objects.filter(id__in=voucher_ids).select_for_update()
-        
-        for voucher in vouchers:
-            # Check if already in target state (idempotent)
-            if (
-                voucher.program_pause_flag == target_flag
-                and voucher.multiplier == target_multiplier
-            ):
-                skipped_count += 1
-                continue
-            
-            # Update to target state
-            voucher.program_pause_flag = target_flag
-            voucher.multiplier = target_multiplier
-            voucher.save(update_fields=['program_pause_flag', 'multiplier'])
-            updated_count += 1
-    
-    # Log results
-    action = "activated" if activate else "cleared"
-    if updated_count > 0:
-        logger.info(
-            "[Voucher State] %s %d vouchers (multiplier=%d), skipped %d already correct",
-            action.capitalize(),
-            updated_count,
-            target_multiplier,
-            skipped_count
-        )
-    elif skipped_count > 0:
-        logger.info(
-            "[Voucher State] All %d vouchers already %s (idempotent)",
-            skipped_count,
-            action
-        )
-    
-    return (updated_count, skipped_count)
+    The live (non-archived) pause in its double-week window, or None.
 
+    This is the single source of truth for "are we in a double week, and
+    which pause?" Balance, category limits, order creation, the admin
+    voucher screens and failed-order audits all read it; nothing stores a
+    copy (#141).
 
-def pause_in_double_week():
-    """
-    The live (non-archived) pause currently in its double-week window
-    (10-14 days before its start), or None.
-
-    Uses the EST-correct ProgramPause.is_active_gate property rather than
-    the UTC-approximate .active() annotation, matching
-    _get_current_pause_multiplier() in balance_utils.
+    A pause is in its window 10-14 EST days before it starts (see
+    ProgramPause.is_active_gate). If two pauses overlap, the higher
+    multiplier wins, then the earlier start.
     """
     from apps.lifeskills.models import ProgramPause
 
-    return next(
-        (pause for pause in ProgramPause.objects.all() if pause.is_active_gate),
-        None,
-    )
+    # The default manager excludes archived pauses; the table stays small.
+    live_pauses = ProgramPause.objects.order_by('pause_start', 'id')
+    gated_pauses = [pause for pause in live_pauses if pause.is_active_gate]
+    return max(gated_pauses, key=lambda pause: pause.multiplier, default=None)
 
 
-def clear_stale_pause_flags(context):
-    """
-    Clear every voucher's pause flag, unless a live pause is in its
-    double-week window.
-
-    Vouchers don't record which pause flagged them, so a reset can't be
-    scoped to one pause. While another pause is in its window the flags
-    belong to it, and clearing them un-doubles its vouchers (#121).
-
-    Args:
-        context (str): Log prefix naming the caller, e.g. "[Daily Cleanup]".
-
-    Returns:
-        int: Number of vouchers cleared (0 when skipped).
-    """
-    from apps.voucher.models import Voucher
-
-    live_pause = pause_in_double_week()
-    if live_pause is not None:
-        logger.info(
-            "%s Kept voucher pause flags: ProgramPause ID=%s is in its double-week window",
-            context,
-            live_pause.id,
-        )
-        return 0
-
-    flagged_ids = list(
-        Voucher.objects.filter(program_pause_flag=True, active=True).values_list('id', flat=True)
-    )
-    if not flagged_ids:
-        return 0
-
-    updated, _skipped = set_voucher_pause_state(flagged_ids, activate=False)
-    logger.info("%s Cleared %d stale voucher pause flags", context, updated)
-    return updated
+def current_pause_multiplier() -> int:
+    """The live pause multiplier: 2 or 3 during a double week, else 1."""
+    pause = active_pause()
+    return pause.multiplier if pause else 1

@@ -20,8 +20,7 @@ Vouchers are the primary mechanism for allocating shopping credits to participan
 | `voucher_type` | CharField | `'grocery'` or `'life'` (default `'grocery'`) |
 | `state` | CharField | Current lifecycle state (not directly editable — see below) |
 | `active` | BooleanField | Whether the voucher counts toward available balance (default `True`) |
-| `program_pause_flag` | BooleanField | Set when the voucher's activation/deactivation was driven by a program pause |
-| `multiplier` | IntegerField | Balance multiplier applied during program pauses (default: 1; not directly editable). See `PROGRAM_PAUSES.md`. |
+| `program_pause_flag` / `multiplier` | BooleanField / IntegerField | Retired (#141): unused, dropped in a follow-up migration. The pause multiplier is computed live — see `PROGRAM_PAUSES.md`; the API exposes it as read-only `pause_multiplier`. |
 | `notes` | TextField | Free-text notes; used to record bulk-creation source and order-consumption history |
 | `created_at` / `updated_at` | DateTimeField | Auto-managed timestamps |
 | `voucher_amnt` | Property | Redeemable amount — see below |
