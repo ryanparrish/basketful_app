@@ -30,7 +30,7 @@ sum(voucher.voucher_amnt * multiplier
 **Default limit:** 2 vouchers
 
 **Special behavior:**
-- Applies the **live** program-pause multiplier, not each voucher's stored `multiplier`/`program_pause_flag` (those are set by a one-off job when a pause is saved, so vouchers created afterwards would miss them). No voucher is excluded during a pause.
+- Applies the **live** program-pause multiplier (`apps/lifeskills/utils.py::current_pause_multiplier()`), so vouchers created at any time get it. No voucher is excluded during a pause.
 - An order may exceed it only by the global grace allowance (Settings → Grace, off by default); see [VOUCHER_SYSTEM.md](VOUCHER_SYSTEM.md#voucher-consumption).
 - At confirmation, vouchers are consumed using the multiplier recorded on the order when it was placed (`pause_multiplier_at_creation`), not the live one.
 

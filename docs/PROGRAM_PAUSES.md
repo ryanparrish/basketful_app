@@ -122,7 +122,7 @@ days_until_start = (pause_start_est - today_est).days
 | `reason` | CharField(255), nullable | Description of pause reason |
 | `archived` | BooleanField (default False) | Whether the pause has completed cleanup and is hidden from the default manager |
 | `archived_at` | DateTimeField, nullable | When the pause was archived |
-| `last_resync_at` / `last_resync_by_username` | DateTimeField / CharField, nullable | Bookkeeping for manual re-syncs of voucher flags |
+| `last_resync_at` / `last_resync_by_username` | DateTimeField / CharField, nullable | Retired with the Resync button (#141); unused, dropped in a follow-up migration |
 
 `is_active_gate` and `multiplier` are **not stored fields** — they are computed `@property` methods (see below). `ProgramPause.objects` (the default manager) excludes archived pauses; use `ProgramPause.objects.all_pauses()` to include them.
 
@@ -136,20 +136,27 @@ days_until_start = (pause_start_est - today_est).days
 
 ### Class Methods
 
-- **`calculate_multiplier_for_duration(pause_start, pause_end)`:** Pure function version of the duration → multiplier logic above (2 for <14 days, 3 for ≥14 days), used by both the immediate-flagging signal path and the scheduled-task path so they stay consistent
-- **`archive()` / `unarchive()`:** `archive()` resets any vouchers still flagged for this pause (`program_pause_flag=False`, `multiplier=1`) and sets `archived=True`/`archived_at=now()`; `unarchive()` clears those fields (a subsequent save re-triggers the pause signal if the window is still active)
+- **`calculate_multiplier_for_duration(pause_start, pause_end)`:** Pure function version of the duration → multiplier logic above (2 for <14 days, 3 for ≥14 days)
+- **`archive()` / `unarchive()`:** set or clear `archived`/`archived_at`. Nothing else changes: readers compute the multiplier live, so an archived pause stops counting immediately and an unarchived one counts again if it is still in its window
 
 ## Two Separate Mechanisms
 
 ### 1. Pre-Pause Ordering Window — Voucher/Go Fresh Multiplier Boost
 
-During the 10–14 day window before `pause_start`, the `post_save` signal in `apps/lifeskills/signals.py::handle_program_pause()` flags every active voucher (`program_pause_flag=True`) with `multiplier=2` or `multiplier=3` (via `apps.lifeskills.tasks.program_pause.update_voucher_flag_task`). A pause created 0–14 days before it starts is flagged immediately the same way (pauses fewer than 10 days out used to be flagged until `pause_end` with no early clean-up). A pause created more than 14 days out is scheduled by `schedule_voucher_tasks()` to flag at `pause_start - 14 days`, when the double-order window opens, with the multiplier computed from the pause's own dates. An archived pause never re-flags vouchers.
+During the 10–14 day window before `pause_start`, the pause multiplier is 2 (or 3 for an extended pause). Nothing is stored or scheduled to make this happen: every reader computes it live from `apps/lifeskills/utils.py::active_pause()`, which returns the non-archived pause currently in its window (if two overlap, the higher multiplier wins, then the earlier start). `current_pause_multiplier()` returns its multiplier, or 1.
 
-`calculate_available_balance()` (`apps/account/utils/balance_utils.py`) multiplies each selected voucher's amount by the **live** pause multiplier from `_get_current_pause_multiplier()` (the highest `multiplier` across all non-archived pauses), not by the voucher's own stored `multiplier` field — so vouchers created after a pause was saved still get the boost. This is a genuine budget increase, not a restriction. `calculate_go_fresh_balance()` applies the same boost. The per-voucher flags are bookkeeping; they don't drive balances or consumption.
+Readers of the live multiplier:
+
+- `calculate_available_balance()` and `calculate_go_fresh_balance()` (`apps/account/utils/balance_utils.py`) — a genuine budget increase, not a restriction
+- `CategoryLimitValidator._get_active_pause_multiplier()` — category limits, and `Order.pause_multiplier_at_creation` when an order is placed
+- The admin voucher screens — `pause_multiplier` on the voucher API (applied grocery vouchers only), looked up once per response
+- `FailedOrderAttempt.program_pause_active` / `voucher_multiplier` / `program_pause_name`
+
+Vouchers used to carry a copy of this state (`program_pause_flag` / `multiplier`), kept in sync by Celery tasks and a manual Resync button. Every sync path was a chance to drift (#100, #121), so #141 retired them.
 
 At confirmation, `Order._consume_vouchers()` uses the multiplier recorded on the order when it was placed (`Order.pause_multiplier_at_creation`), so an order placed in the double-order window and confirmed after it closes is consumed at the multiplier it was validated against.
 
-Voucher flags get cleared automatically once the participant's own order window closes (`deactivate_expired_pause_vouchers` task) or, at the latest, after `pause_end` (`final_cleanup_after_pause_end`, which also archives the pause) or via the daily `cleanup_expired_pause_flags` safety-net task.
+The nightly `archive_ended_pauses` task (3 AM, Celery beat) archives pauses whose `pause_end` has passed.
 
 ### 2. During the Pause — Hard Order Block
 
@@ -158,15 +165,6 @@ While `pause_start <= now <= pause_end` (checked via `ProgramPause.objects.in_pr
 - `apps/orders/utils/order_validation.py::OrderValidation.enforce_program_pause()` raises a `ValidationError` ("Ordering is unavailable during the program pause...") as Step 0 of `validate_order_items()`
 - The `validate-cart` API action (`apps/orders/api/views.py`) appends a blocking `{'type': 'window', ...}` violation
 - **Escape hatch:** if the participant's `Program` has an unexpired `ProgramWindowOverride` (`core/models.py`) with `force_status='open'`, the block is skipped and ordering is allowed even mid-pause
-
-## Voucher Pause Flag
-
-Each voucher (`apps/voucher/models.py::Voucher`) has two related fields:
-
-- `program_pause_flag` (BooleanField, default `False`) — whether this voucher is currently flagged as part of an active pre-pause window
-- `multiplier` (IntegerField, default `1`, not user-editable) — the multiplier applied to this voucher's amount in balance calculations; set to `2` or `3` alongside the flag, reset to `1` when cleared
-
-Flags/multipliers are set and cleared idempotently by `apps/lifeskills/utils.py::set_voucher_pause_state()`, which is used by the immediate-flagging signal, the scheduled activation/deactivation tasks, and `ProgramPause.archive()`.
 
 ## Checking Pause Status
 
@@ -179,9 +177,9 @@ in_progress_pause = get_in_progress_pause()  # or ProgramPause.objects.in_progre
 is_ordering_blocked = in_progress_pause is not None
 
 # Is any pause currently in its pre-pause multiplier window?
-# (is_active_gate/multiplier are properties, evaluated in Python, not queryable in SQL)
-boosted_pauses = [p for p in ProgramPause.objects.all() if p.is_active_gate]
-current_multiplier = max((p.multiplier for p in boosted_pauses), default=1)
+from apps.lifeskills.utils import active_pause, current_pause_multiplier
+pause = active_pause()            # ProgramPause or None
+multiplier = current_pause_multiplier()  # 2 or 3 during a double week, else 1
 ```
 
 ## Admin Interface
@@ -194,12 +192,7 @@ Program pauses are managed via Django Admin at `/admin/lifeskills/programpause/`
 - The changelist displays an info banner ("`<reason>` — This Pause Is Active") when any non-archived pause currently has `is_active_gate=True`
 - `ProgramPause.clean()` (run via `full_clean()`) rejects invalid pauses: end before start, `pause_start` less than 10 days out, duration over 14 days, or overlapping an existing pause
 
-### Manual Cleanup Command
-
-`python manage.py run_pause_cleanup <pause_id> [<pause_id> ...] [--dry-run] [--force]` (`apps/lifeskills/management/commands/run_pause_cleanup.py`) lets staff manually run `final_cleanup_after_pause_end` for a pause — useful if a Celery `eta` task was missed (broker outage) or to preview/force a voucher reset without waiting for the scheduled time.
-
 ## Related Documentation
 
 - [ACCOUNT_BALANCES.md](ACCOUNT_BALANCES.md) — Balance calculations
-- [VOUCHER_SYSTEM.md](VOUCHER_SYSTEM.md) — Voucher flags
-- [SIGNALS_AUTOMATION.md](SIGNALS_AUTOMATION.md) — Automated pause handling
+- [VOUCHER_SYSTEM.md](VOUCHER_SYSTEM.md) — Vouchers

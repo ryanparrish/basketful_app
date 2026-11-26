@@ -250,29 +250,18 @@ class OrderOrchestration:
                 error_summary = str(e)
                 participant = getattr(account, "participant", None)
                 
-                # Get program pause info
+                # Record the live pause (#141), not a stored voucher flag
                 program_pause_active = False
                 program_pause_name = ""
                 voucher_multiplier = 1
-                
+
                 try:
-                    with transaction.atomic():
-                        from apps.voucher.models import Voucher
-                        pause_voucher = Voucher.objects.filter(
-                            account=account,
-                            active=True,
-                            program_pause_flag=True,
-                        ).order_by("-multiplier").first()
-                        
-                        if pause_voucher:
-                            program_pause_active = True
-                            voucher_multiplier = pause_voucher.multiplier
-                            try:
-                                program_pause_name = (
-                                    pause_voucher.account.participant.program.name
-                                )
-                            except Exception:
-                                program_pause_name = "Active Program Pause"
+                    from apps.lifeskills.utils import active_pause
+                    live_pause = active_pause()
+                    if live_pause is not None:
+                        program_pause_active = True
+                        voucher_multiplier = live_pause.multiplier
+                        program_pause_name = live_pause.reason or "Active Program Pause"
                 except Exception as pause_err:
                     logger.error("Error getting program pause info: %s", pause_err)
                 

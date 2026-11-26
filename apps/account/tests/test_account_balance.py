@@ -384,10 +384,9 @@ class TestAvailableBalanceCalculation:
         self, account_balance, vouchers, voucher_setting
     ):
         """
-        Regression for issue #101: a voucher that was never touched by the
-        one-shot flagging batch (program_pause_flag stays at its default
-        False) must still be doubled while the pre-pause gate is active —
-        the multiplier is computed live, not read off a stale per-voucher flag.
+        Regression for issue #101: every applied voucher is doubled while
+        the pre-pause gate is active — the multiplier is computed live, not
+        read off a per-voucher flag (retired in #141).
         """
         # Participant creation auto-provisions 2 starter vouchers (see
         # apps/pantry/signals.py) independently of this `vouchers` fixture —
@@ -404,13 +403,9 @@ class TestAvailableBalanceCalculation:
             reason='Short pause'
         )
 
-        assert vouchers[0].program_pause_flag is False
-        assert vouchers[1].program_pause_flag is False
-
         result = calculate_available_balance(account_balance, limit=2)
 
-        # 2 vouchers x $100 base balance x multiplier 2, despite neither
-        # voucher ever having program_pause_flag set.
+        # 2 vouchers x $100 base balance x multiplier 2
         assert result == Decimal('400.00')
 
         pause.delete()
@@ -442,8 +437,6 @@ class TestAvailableBalanceCalculation:
             state="applied",
             voucher_type="grocery",
         )
-        assert voucher.program_pause_flag is False
-
         result = calculate_available_balance(account_balance, limit=2)
 
         assert result == Decimal('200.00')  # 1 voucher x $100 x multiplier 2

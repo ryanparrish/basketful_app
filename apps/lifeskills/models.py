@@ -72,6 +72,7 @@ class ProgramPause(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(null=True, blank=True)
+    # Retired with the Resync button (#141); dropped in a follow-up migration.
     last_resync_at = models.DateTimeField(null=True, blank=True)
     last_resync_by_username = models.CharField(max_length=150, null=True, blank=True)
 
@@ -179,17 +180,7 @@ class ProgramPause(models.Model):
         return self.multiplier > 1
     
     def archive(self):
-        """
-        Archive this pause and clear voucher pause flags.
-
-        Sets archived=True and archived_at=now. Voucher flags are cleared
-        unless another pause is in its double-week window (#121).
-        """
-        from apps.lifeskills.utils import clear_stale_pause_flags
-
-        clear_stale_pause_flags(f"[Archive] ProgramPause ID={self.id}:")
-
-        # Mark as archived
+        """Archive this pause: set archived=True and archived_at=now."""
         self.archived = True
         self.archived_at = timezone.now()
         self.save()
@@ -198,8 +189,9 @@ class ProgramPause(models.Model):
         """
         Unarchive this pause.
         
-        Clears archived=False and archived_at=None. If the pause is still 
-        within the ordering window, the save signal will re-flag vouchers.
+        Clears archived=False and archived_at=None. If the pause is still
+        within its double-week window it counts again immediately, since
+        active_pause() reads pauses live.
         """
         self.archived = False
         self.archived_at = None

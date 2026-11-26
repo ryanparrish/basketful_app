@@ -368,8 +368,7 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'socket_timeout': 30,
     'socket_connect_timeout': 30,
     'retry_on_timeout': True,
-    # ETA tasks (e.g. deactivate_expired_pause_vouchers) can be scheduled
-    # many hours in the future. Redis's default visibility_timeout is 3600s;
+    # ETA tasks can be scheduled many hours in the future. Redis's default visibility_timeout is 3600s;
     # any ETA task held longer than that gets re-delivered with the same task
     # ID, causing duplicate execution and infinite re-delivery loops.
     # 21600s (6 hours) covers the longest realistic order-window gap.
@@ -381,8 +380,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.orders.tasks.weekly_orders.create_weekly_combined_orders',
         'schedule': crontab(hour=6, minute=0, day_of_week=1),  # Mondays at 6 AM
     },
-    'cleanup-expired-pause-flags': {
-        'task': 'apps.lifeskills.tasks.program_pause.cleanup_expired_pause_flags',
+    'archive-ended-pauses': {
+        'task': 'apps.lifeskills.tasks.program_pause.archive_ended_pauses',
         'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM
     },
     'sync-mailgun-delivery-status': {

@@ -25,6 +25,7 @@ import {
   useRedirect,
   Labeled,
 } from 'react-admin';
+import type { RaRecord } from 'react-admin';
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
@@ -108,10 +109,16 @@ const StateField = () => {
   );
 };
 
-const MultiplierChip = () => {
+// Live double-week multiplier from the API (#141); 1 outside a double week
+const pauseMultiplierOf = (record?: RaRecord): number =>
+  Number(record?.pause_multiplier ?? 1);
+
+// `label` is read by Datagrid for the column header
+const MultiplierChip = ({ compact = false }: { compact?: boolean; label?: string }) => {
   const record = useRecordContext();
-  if (!record || !record.program_pause_flag || record.multiplier <= 1) return null;
-  const isExtended = record.multiplier >= 3;
+  const multiplier = pauseMultiplierOf(record);
+  if (multiplier <= 1) return null;
+  const isExtended = multiplier >= 3;
   return (
     <span
       style={{
@@ -124,7 +131,7 @@ const MultiplierChip = () => {
         letterSpacing: '0.5px',
       }}
     >
-      {record.multiplier}× {isExtended ? 'EXTENDED PAUSE' : 'PAUSE'}
+      {multiplier}×{!compact && (isExtended ? ' EXTENDED PAUSE' : ' PAUSE')}
     </span>
   );
 };
@@ -327,8 +334,9 @@ const InlineNotesEditor = () => {
 // With Pause field — only renders when a pause multiplier is active
 const WithPauseField = () => {
   const record = useRecordContext();
-  if (!record?.program_pause_flag || record.multiplier <= 1) return null;
-  const effective = Number(record.voucher_amnt) * record.multiplier;
+  const multiplier = pauseMultiplierOf(record);
+  if (!record || multiplier <= 1) return null;
+  const effective = Number(record.voucher_amnt) * multiplier;
   return (
     <FunctionField
       label="Effective Amount (with pause)"
@@ -350,25 +358,7 @@ export const VoucherList = () => (
       <TextField source="participant_name" label="Participant" />
       <TextField source="voucher_type" label="Type" />
       <StateField />
-      <FunctionField
-        label="Multiplier"
-        render={(record: { program_pause_flag: boolean; multiplier: number }) =>
-          record?.program_pause_flag && record.multiplier > 1 ? (
-            <span
-              style={{
-                backgroundColor: record.multiplier >= 3 ? '#EF6C00' : '#F9A825',
-                color: 'white',
-                padding: '3px 8px',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
-            >
-              {record.multiplier}×
-            </span>
-          ) : null
-        }
-      />
+      <MultiplierChip compact label="Multiplier" />
       <FunctionField
         source="voucher_amnt"
         label="Amount"
