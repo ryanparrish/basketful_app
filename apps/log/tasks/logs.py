@@ -28,6 +28,7 @@ if not logger.hasHandlers():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+
 @shared_task
 def log_voucher_application_task(
     order_id, voucher_id, participant_id, applied_amount, remaining
