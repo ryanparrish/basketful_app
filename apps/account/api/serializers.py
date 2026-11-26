@@ -12,6 +12,10 @@ from apps.account.models import (
     GoFreshSettings,
     HygieneSettings,
 )
+from apps.account.utils.balance_utils import NO_ACCOUNT_BALANCES, summarize_balances
+
+# Serializer context key for a BalanceRules loaded once per request.
+BALANCE_RULES_CONTEXT_KEY = 'balance_rules'
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -182,7 +186,17 @@ class ParticipantSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'customer_number', 'archived_at', 'created_at', 'updated_at']
 
     def get_balances(self, obj):
-        return obj.balances()
+        """
+        Use the request's preloaded balance rules when the view supplies them
+        (the participant list, #156); otherwise compute per participant.
+        """
+        rules = self.context.get(BALANCE_RULES_CONTEXT_KEY)
+        if rules is None:
+            return obj.balances()
+        account = getattr(obj, 'accountbalance', None)
+        if account is None:
+            return dict(NO_ACCOUNT_BALANCES)
+        return summarize_balances(account, rules)
 
     def get_base_balance(self, obj):
         try:

@@ -7,7 +7,8 @@ from django.core.validators import MinValueValidator
 from django.contrib.auth.models import User
 from apps.lifeskills.models import Program, LifeskillsCoach
 from .utils.balance_utils import (
-    calculate_full_balance, 
+    NO_ACCOUNT_BALANCES,
+    calculate_full_balance,
     calculate_available_balance,
     calculate_hygiene_balance
 )
@@ -90,12 +91,7 @@ class Participant(BaseModel):
         try:
             account = AccountBalance.objects.get(participant=self)
         except models.ObjectDoesNotExist:
-            return {
-                "full_balance": 0,
-                "available_balance": 0,
-                "hygiene_balance": 0,
-                "go_fresh_balance": 0,
-            }
+            return dict(NO_ACCOUNT_BALANCES)
         return {
             "full_balance": account.full_balance,
             "available_balance": account.available_balance,
